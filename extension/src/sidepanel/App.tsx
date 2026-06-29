@@ -1,14 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
 import type {
   PickerMessage,
-  StyleSnapToken,
+  CapturedElement,
+  ElementRole,
   StyleSnapExport,
 } from "../shared/types";
-import { TokenList } from "./TokenList";
+import { ElementList } from "./ElementList";
 
 export function App() {
   const [active, setActive] = useState(false);
-  const [tokens, setTokens] = useState<StyleSnapToken[]>([]);
+  const [elements, setElements] = useState<CapturedElement[]>([]);
   const [pageUrl, setPageUrl] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
 
@@ -16,7 +17,7 @@ export function App() {
   useEffect(() => {
     const handler = (msg: PickerMessage) => {
       if (msg.kind === "picker/captured") {
-        setTokens((prev) => [...prev, ...msg.tokens]);
+        setElements((prev) => [...prev, msg.element]);
         setPageUrl(msg.pageUrl);
       } else if (msg.kind === "picker/state") {
         setActive(msg.active);
@@ -45,10 +46,17 @@ export function App() {
     }
   }, [active]);
 
-  const remove = (id: string) =>
-    setTokens((prev) => prev.filter((t) => t.id !== id));
+  const removeElement = (id: string) =>
+    setElements((prev) => prev.filter((el) => el.id !== id));
 
-  const clearAll = () => setTokens([]);
+  const setRole = (id: string, role: ElementRole) =>
+    setElements((prev) =>
+      prev.map((el) => (el.id === id ? { ...el, role } : el))
+    );
+
+  const clearAll = () => setElements([]);
+
+  const tokenCount = elements.reduce((n, el) => n + el.tokens.length, 0);
 
   const copy = async () => {
     const payload: StyleSnapExport = {
@@ -58,10 +66,10 @@ export function App() {
         pageUrl: pageUrl || undefined,
         version: "1.0",
       },
-      tokens,
+      elements,
     };
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-    flash(`Copied ${tokens.length} tokens — paste into StyleSnap`);
+    flash(`Copied ${elements.length} elements — paste into StyleSnap`);
   };
 
   return (
@@ -80,15 +88,19 @@ export function App() {
       </header>
 
       <main className="body">
-        {tokens.length === 0 ? (
+        {elements.length === 0 ? (
           <div className="empty">
             <p className="empty-title">Nothing picked yet</p>
             <p className="empty-sub">
-              Start picking and click anything on the page.
+              Start picking and click any element on the page.
             </p>
           </div>
         ) : (
-          <TokenList tokens={tokens} onRemove={remove} />
+          <ElementList
+            elements={elements}
+            onRemove={removeElement}
+            onSetRole={setRole}
+          />
         )}
       </main>
 
@@ -96,14 +108,19 @@ export function App() {
         <button
           className="primary"
           onClick={copy}
-          disabled={tokens.length === 0}
+          disabled={elements.length === 0}
         >
           Copy to StyleSnap
+          {elements.length > 0 && (
+            <span className="badge-inline">
+              {elements.length} el · {tokenCount} tk
+            </span>
+          )}
         </button>
         <button
           className="ghost"
           onClick={clearAll}
-          disabled={tokens.length === 0}
+          disabled={elements.length === 0}
         >
           Clear all
         </button>

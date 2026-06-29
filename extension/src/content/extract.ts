@@ -10,6 +10,7 @@ import type {
   BorderRadiusToken,
   BorderWidthToken,
   ShadowToken,
+  ElementRole,
 } from "../shared/types";
 
 let counter = 0;
@@ -24,6 +25,35 @@ export function describeSource(el: Element): string {
       ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".")
       : "";
   return `${tag}${id}${cls}`;
+}
+
+/**
+ * Best-effort guess of an element's semantic role from its tag/ARIA/classes.
+ * Only a suggestion — the user confirms or changes it in the side panel.
+ * "card" can't be derived from the DOM, so we infer it loosely from class names.
+ */
+export function guessRole(el: Element): ElementRole {
+  const tag = el.tagName.toLowerCase();
+  const role = el.getAttribute("role") ?? "";
+  const cls =
+    typeof el.className === "string" ? el.className.toLowerCase() : "";
+
+  if (tag === "button" || role === "button" || /\bbtn\b|button/.test(cls))
+    return "button";
+  if (tag === "a" || role === "link") return "link";
+  if (tag === "nav" || role === "navigation" || role === "menu" || /\bmenu|navbar?\b/.test(cls))
+    return "menu";
+  if (tag === "input" || tag === "textarea" || tag === "select" || role === "textbox")
+    return "input";
+  if (/^h[1-6]$/.test(tag)) return "heading";
+  if (tag === "img" || tag === "svg" || role === "img")
+    return /\bicon\b/.test(cls) ? "icon" : "image";
+  if (/\bbadge|tag|chip|pill\b/.test(cls)) return "badge";
+  if (/\bcard\b/.test(cls)) return "card";
+  if (tag === "p" || tag === "span" || tag === "label") return "text";
+  if (tag === "section" || tag === "article" || tag === "div" || tag === "main")
+    return "container";
+  return "other";
 }
 
 /** Convert any CSS color (rgb/rgba) to { hex, opacity }. Returns null if transparent. */

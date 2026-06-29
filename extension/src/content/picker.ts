@@ -3,11 +3,13 @@
 // them to the side panel via the background worker. Pick mode is toggled by message.
 
 import type { PickerMessage } from "../shared/types";
-import { extractTokens, previewLabel } from "./extract";
+import { extractTokens, previewLabel, describeSource, guessRole } from "./extract";
 
 const ACCENT = "#6E56F7"; // placeholder StyleSnap accent until DESIGN.md lands
 let active = false;
 let hovered: Element | null = null;
+let elCounter = 0;
+const nextElId = () => `el_${(++elCounter).toString().padStart(3, "0")}`;
 
 // ── Overlay elements (created lazily) ──────────────────────────────
 let outline: HTMLDivElement | null = null;
@@ -84,7 +86,12 @@ function onClick(e: MouseEvent) {
   if (tokens.length === 0) return; // "Nothing to grab here" — no-op
   const msg: PickerMessage = {
     kind: "picker/captured",
-    tokens,
+    element: {
+      id: nextElId(),
+      role: guessRole(el),
+      label: describeSource(el),
+      tokens,
+    },
     pageUrl: location.href,
   };
   chrome.runtime.sendMessage(msg);

@@ -3,9 +3,9 @@
 export * from "../../../docs/types";
 
 // Messages exchanged between content script, background, and side panel.
-import type { StyleSnapToken } from "../../../docs/types";
+import type { CapturedElement } from "../../../docs/types";
 
 export type PickerMessage =
   | { kind: "picker/setActive"; active: boolean }
-  | { kind: "picker/captured"; tokens: StyleSnapToken[]; pageUrl: string }
+  | { kind: "picker/captured"; element: CapturedElement; pageUrl: string }
   | { kind: "picker/state"; active: boolean };
