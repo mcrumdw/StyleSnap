@@ -142,3 +142,6 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-06-29 | Token schema v1.0 → v2.0 | `b60664a` |
 | 2026-06-29 | Added this decision log | — |
 | 2026-06-29 | DESIGN.md scaffold v1 → v2: added agent-instruction block, foundations (spacing/radius/shadow/layout/breakpoints), color interactive+semantic states, data-states, iconography, motion, accessibility | — |
+| 2026-06-29 | Added PRD.md (web-app draft v1, scope = web app + light ecosystem context; types.ts v2.0 as input boundary) | — |
+| 2026-06-29 | Filled DESIGN.md (bold & expressive direction): electric indigo `#5B2EFF` primary, hot-pink accent, hard offset shadow signature, Space Grotesk/Inter/JetBrains Mono, light-first (dark mode deferred) | — |
+| 2026-06-29 | PRD.md → draft v2: integrated ideas from `docs/PRD-webtool.md` v0.1 (North-Star <10min, Maya/Jonas personas + JTBD, paste-first ingest, rule-based dedup with duplicate-vs-"similar", suggestive-never-destructive + reversible merges + Create System gate, deterministic+provenance design.md, in-session MVP architecture, tech stack, risks). **Decision: human review + gap completion (manual core, AI as accelerator) is the product's core value — raw JSON without review is untrusted.** `docs/PRD-webtool.md` v0.1 is superseded by PRD.md. | — |
