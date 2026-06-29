@@ -141,3 +141,4 @@ missing is what the "complete manually or with AI" step resolves before export.
 |---|---|---|
 | 2026-06-29 | Token schema v1.0 → v2.0 | `b60664a` |
 | 2026-06-29 | Added this decision log | — |
+| 2026-06-29 | DESIGN.md scaffold v1 → v2: added agent-instruction block, foundations (spacing/radius/shadow/layout/breakpoints), color interactive+semantic states, data-states, iconography, motion, accessibility | — |
