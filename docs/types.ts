@@ -1,6 +1,13 @@
 // StyleSnap — Shared Token Types
 // Single source of truth for all three codebases (Figma Plugin, Webtool, Browser Extension)
 // docs/types.ts
+//
+// Schema version: 2.0
+//
+// This is the RAW CAPTURE / TRANSPORT format. It intentionally only models
+// primitive values + the context needed to derive semantic roles later.
+// Semantic roles ("color.action.primary"), scales, and component definitions
+// are built in the Webtool on top of this data — they do NOT live here.
 
 // ─────────────────────────────────────────
 // Token Types
@@ -8,6 +15,7 @@
 
 export type TokenType =
   | "color"
+  | "gradient"        // NEW: web buttons/backgrounds are often gradients
   | "typography"
   | "spacing"
   | "border-radius"
@@ -18,26 +26,79 @@ export type TokenType =
 // Token Values
 // ─────────────────────────────────────────
 
-export type ColorValue = string; // hex, e.g. "#FF46AF"
+// Always normalized to 6-digit hex on capture (convert rgb()/hsl()/named here).
+// Alpha is NEVER baked into the hex — it lives in the token's `opacity` field
+// so there is exactly one representation of transparency.
+export type ColorValue = string; // e.g. "#FF46AF"
+
+export interface GradientStop {
+  color: ColorValue; // 6-digit hex
+  opacity: number;   // 0–1
+  position: number;  // 0–1 along the gradient axis
+}
+
+export interface GradientValue {
+  kind: "linear" | "radial" | "conic";
+  angle?: number;        // degrees — linear only
+  stops: GradientStop[]; // 2+ stops, ordered by position
+}
 
 export interface TypographyValue {
-  fontFamily: string;
-  fontSize: number;    // px
-  fontWeight: number;  // e.g. 400, 600, 700
-  lineHeight: number;  // unitless ratio, e.g. 1.5
+  fontFamily: string;        // primary family, e.g. "Inter"
+  fontStack?: string[];      // full CSS fallback stack, e.g. ["Inter", "system-ui", "sans-serif"]
+  fontSize: number;          // px
+  fontWeight: number;        // 100–900 (normalize "bold"/"normal" on capture)
+  fontStyle?: "normal" | "italic";
+  lineHeight: number;        // unitless ratio, e.g. 1.5 (convert from px if needed — lossy)
+  letterSpacing?: number;    // px
+  textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
 }
 
 export type SpacingValue = number;      // px
 export type BorderRadiusValue = number; // px
 export type BorderWidthValue = number;  // px
 
-export interface ShadowValue {
+// A single box-shadow layer. CSS box-shadow can stack multiple layers and can
+// be inset, so ShadowValue is an ARRAY of these.
+export interface ShadowLayer {
+  inset: boolean;   // NEW: inner vs drop shadow
   offsetX: number;  // px
   offsetY: number;  // px
   blur: number;     // px
   spread: number;   // px
-  color: string;    // hex
+  color: ColorValue; // hex
   opacity: number;  // 0–1
+}
+
+export type ShadowValue = ShadowLayer[]; // one or more stacked shadows
+
+// ─────────────────────────────────────────
+// Capture Context
+// ─────────────────────────────────────────
+// Best-effort metadata captured at extraction time so the Webtool can DERIVE
+// semantic roles deterministically instead of purely predicting them.
+// Any field may be absent (hashed class names, inline styles, etc.) — treat
+// these as confidence-weighted hints, not guarantees.
+
+export type CaptureState =
+  | "default"
+  | "hover"
+  | "focus"
+  | "active"
+  | "disabled"
+  | "visited";
+
+export interface TokenContext {
+  cssProperty?: string;   // where the value was used: "background-color" | "color" | "border-color" ...
+  element?: string;       // tag name, e.g. "button" | "h1" | "nav"
+  ariaRole?: string;      // e.g. "alert" | "button" | "navigation"
+  state?: CaptureState;   // pseudo-class the value came from
+  selector?: string;      // CSS selector (browser extension)
+  // The author's own name for this value — the strongest role signal when present:
+  //   • CSS custom property:  "--color-primary"
+  //   • utility class:        "bg-blue-500" / "text-red-600"
+  //   • Figma Variable/Style: "color/action/primary"
+  authoredName?: string;
 }
 
 // ─────────────────────────────────────────
@@ -45,10 +106,18 @@ export interface ShadowValue {
 // ─────────────────────────────────────────
 
 interface BaseToken {
-  id: string;          // unique, e.g. "token_001"
-  source: string;      // Figma layer name, e.g. "Button/Primary"
-  name: string | null; // assigned by user in Webtool, null until named
-  merged: boolean;     // true if this token was merged from a duplicate
+  id: string;            // GLOBALLY unique — UUID or source-prefixed ("ext_…", "fig_…")
+                         // so merging multiple exports never collides.
+  captureId: string;     // groups tokens captured from the SAME element/selection,
+                         // so the Webtool can later reconstruct components.
+  source: string;        // Figma: layer name ("Button/Primary").
+                         // Extension: element descriptor / selector.
+  name: string | null;   // user-assigned in Webtool, null until named.
+  occurrences: number;   // how many times this value appeared — frequency signal
+                         // for ranking primitives & suggesting roles.
+  merged: boolean;       // true if duplicates were collapsed into this token.
+  mergedFrom?: string[]; // ids of the duplicate tokens collapsed into this one.
+  context?: TokenContext;
 }
 
 // ─────────────────────────────────────────
@@ -59,6 +128,11 @@ export interface ColorToken extends BaseToken {
   type: "color";
   value: ColorValue;
   opacity: number; // 0–1, default 1
+}
+
+export interface GradientToken extends BaseToken {
+  type: "gradient";
+  value: GradientValue;
 }
 
 export interface TypographyToken extends BaseToken {
@@ -92,6 +166,7 @@ export interface ShadowToken extends BaseToken {
 
 export type StyleSnapToken =
   | ColorToken
+  | GradientToken
   | TypographyToken
   | SpacingToken
   | BorderRadiusToken
@@ -107,7 +182,7 @@ export interface StyleSnapMeta {
   exportedAt: string;   // ISO 8601, e.g. "2026-06-28T10:00:00Z"
   figmaFile?: string;   // only present when source is "figma"
   pageUrl?: string;     // only present when source is "browser-extension"
-  version: string;      // schema version, e.g. "1.0"
+  version: string;      // schema version, e.g. "2.0"
 }
 
 export interface StyleSnapExport {
