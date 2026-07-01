@@ -10,8 +10,7 @@
 > *producers*, described only as much as needed for context. The boundary with
 > this app is the `types.ts` JSON contract (§4, §13).
 >
-> v2 integrates ideas from the earlier `docs/PRD-webtool.md` (v0.1) and commits
-> to **human review + completion** as the core value (§2, §8).
+> This PRD commits to **human review + completion** as the core value (§2, §8).
 
 ---
 
@@ -136,12 +135,13 @@ everything before it is reversible; it produces the finalized, stable set.
 
 ### 7.3 Duplicate detection (rule-based, V1)
 - **FR-9** Flag **exact duplicates** and **"similar"** values per type — a deliberate two-level distinction:
-  - **Color:** exact hex = duplicate; within a small ΔE / hex-distance threshold = similar.
-  - **Numeric (spacing / radius / border-width):** equal = duplicate; within ±1px = similar.
+  - **Color:** exact hex = duplicate; within a small perceptual ΔE threshold = similar (Appendix A).
+  - **Numeric (spacing / radius / border-width):** equal = duplicate; within a small relative tolerance = similar (Appendix A).
   - **Typography:** same `fontFamily` + `fontSize` + `fontWeight` = duplicate.
   - **Shadow:** all layer fields equal = duplicate.
 - **FR-10** Rank a canonical candidate per cluster (by `occurrences` + context strength).
 - **FR-11** Detection is **suggestive, never destructive** — flags only; the user decides.
+- The exact clustering algorithm, per-type distance functions, and thresholds are specified in **Appendix A**.
 
 ### 7.4 Merge
 - **FR-12** Select a duplicate/similar cluster → choose the surviving value → merge; set `merged: true` and record `mergedFrom` ids.
@@ -210,8 +210,7 @@ it (`DECISIONS.md` §5).
 A single file to paste into Claude Code / Cursor as design-system context.
 
 - **Semantic-first, two-tier:** roles lead, primitives underneath (e.g.
-  `color.action.primary → brand-indigo / #5B2EFF`). This supersedes v0.1's flat
-  primitive-only sketch (`DECISIONS.md` §2.3).
+  `color.action.primary → brand-indigo / #5B2EFF`); see `DECISIONS.md` §2.3 for the two-tier model.
 - **Provenance annotated:** note where a value came from (e.g. `from Button/Primary`).
 - **Foundations included:** spacing scale, radius, shadow, type scale, breakpoints.
 - **Deterministic ordering** so re-exports diff cleanly in git / AI loops.
@@ -277,4 +276,103 @@ A single file to paste into Claude Code / Cursor as design-system context.
 
 ---
 
-*PRD version: draft v2 — integrates `docs/PRD-webtool.md` v0.1; review + completion is core.*
+## Appendix A — Deduplication algorithm (rule-based, V1)
+
+Implements FR-9–FR-13. **One shared clustering routine + a per-type distance
+function.** Output is always *suggestive* — clusters the user confirms; nothing
+auto-applies.
+
+### A.1 Shared clustering — occurrence-led "leader" clustering
+
+Measure every candidate against a fixed leader (not transitively) to avoid
+**chaining** (A≈B, B≈C, but A≠C collapsing into one).
+
+```
+cluster(tokens, distance, dupT, simT):
+  pool = tokens sorted by (occurrences desc, value asc)    # deterministic
+  clusters = []
+  while pool not empty:
+    leader = pool.shift()                  # most-used remaining value = survivor
+    members, rest = [], []
+    for t in pool:
+      d = distance(leader, t)
+      (d <= simT ? members : rest).push({ t, d })
+    clusters.push({
+      canonical:  leader,
+      duplicates: members where d <= dupT,
+      similar:    members where dupT < d <= simT })
+    pool = rest
+  return clusters
+```
+
+O(n²) (fine for hundreds of tokens), stable output. On merge:
+`survivor.occurrences = Σ cluster`, and `mergedFrom` keeps the originals' ids
+**and their `context`**, so the survivor inherits every role hint for §7.5.
+
+### A.2 Color — perceptual distance (never raw hex distance)
+
+Convert sRGB → OKLab and use Euclidean distance (ΔEOK); or CIEDE2000 (ΔE00).
+Recommended library: **`culori`**. Never cluster across differing `opacity`.
+
+```
+colorDistance(a, b) = (a.opacity !== b.opacity) ? Infinity : dEOK(a.value, b.value)
+```
+
+| Level | ΔEOK (OKLab) | ΔE00 (CIEDE2000) |
+|---|---|---|
+| exact | 0 | 0 |
+| **duplicate** | ≤ 0.02 | ≤ 1.0 |
+| **similar** | ≤ 0.05 | ≤ 3.0 |
+
+Expose the dup/similar cutoffs as **one "merge sensitivity" slider**.
+
+### A.3 Numeric (spacing / radius / border-width) — 1-D gap clustering
+
+Hybrid absolute+relative tolerance, so it behaves at 4px and 64px alike.
+
+```
+tol(v) = max(1, round(0.05 * v))           # border-width: floor 0.5px
+sort unique values ascending
+walk; start a new cluster when  v - clusterMax > tol(clusterMax)
+exact-equal members = duplicate; within tol = similar
+canonical = highest occurrence; tie-break → nearest 4px grid step
+```
+
+So 14/15/16 cluster (canonical snaps toward a clean scale) while 4 and 8 never collapse.
+
+### A.4 Typography — normalize, then composite key + size-scale
+
+```
+normalize: family = first-in-stack, lowercased, de-quoted; weight numeric
+           ("bold"→700, "normal"→400); size rounded to 0.5px
+dupKey  = family | size | weight | style | letterSpacing | textTransform
+          → identical key = duplicate
+similar = same (family, weight, style) AND |Δsize| within tol()   # reveals a type scale
+```
+
+Keep `letterSpacing` / `textTransform` in the key — a tracked uppercase label is
+a *different* token from body text at the same size/weight.
+
+### A.5 Shadow & gradient
+
+```
+shadow duplicate: same layer count AND for every layer →
+   inset equal, |Δ offset/blur/spread| ≤ 1px, colorDistance ≤ 0.02, |Δ opacity| ≤ 0.02
+shadow similar:   same count & inset pattern, geometry within ~2px, color ≤ 0.05
+gradient (conservative): same kind & stop count, each stop colorDistance ≤ 0.02
+   AND |Δposition| ≤ 2%, (linear) |Δangle| ≤ 3°; otherwise leave for manual review
+```
+
+### A.6 Cross-cutting rules
+
+- **Value-based dedup (adopted):** collapse primitives by value regardless of
+  context; the survivor inherits all contexts, which then drive role mapping
+  (§7.5). Revisit only if it proves too aggressive.
+- **Deterministic ordering** everywhere → clean export diffs.
+- **Suggest, never auto-apply**; reversible until Create System (FR-13).
+- **One sensitivity slider** controls dup/similar thresholds, not per-type knobs.
+- **Library:** `culori` covers all color math; numeric/typography logic is plain JS.
+
+---
+
+*PRD version: draft v2 — review + completion is core.*
