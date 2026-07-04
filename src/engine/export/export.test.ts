@@ -6,9 +6,9 @@
 import { describe, expect, it } from "vitest";
 import { parseStyleSnapExport } from "../../contract/schema";
 import {
+  ORACLE_ASSIGNMENTS,
   ORACLE_MERGES,
   ORACLE_NAMES,
-  ORACLE_ROLES,
   oracleCaptures,
   oracleRawTokens,
   oracleViewTokens,
@@ -25,7 +25,7 @@ function oracleExportInput(): ExportInput {
     mergeCount: ORACLE_MERGES.length,
     tokens: oracleViewTokens(),
     rawById: new Map(raw.map((t) => [t.id, t])),
-    roles: ORACLE_ROLES,
+    assignments: ORACLE_ASSIGNMENTS,
     names: ORACLE_NAMES,
   };
 }
@@ -144,10 +144,41 @@ describe("design.md export (FR-24) — the oracle", () => {
 
   it("every reviewed token appears by resolved name or role", () => {
     const input = oracleExportInput();
+    const rolesByToken = new Map<string, string>();
+    for (const [role, id] of input.assignments) rolesByToken.set(id, role);
     for (const token of input.tokens) {
-      const label = input.roles.get(token.id) ?? ORACLE_NAMES.get(token.id);
+      const label = rolesByToken.get(token.id) ?? ORACLE_NAMES.get(token.id);
       if (label) expect(md, token.id).toContain(`\`${label}\``);
     }
+  });
+});
+
+describe("multi-role primitives (Phase 8 acceptance)", () => {
+  it("one primitive backs two roles: two role rows, one primitives entry", () => {
+    const input = oracleExportInput();
+    // The team decides links use the brand blue too.
+    input.assignments = new Map(ORACLE_ASSIGNMENTS).set("color/text/link", "ext_001");
+    const md = generateDesignMd(input);
+
+    const primary = md.split("\n").find((l) => l.startsWith("| `color/action/primary` |"));
+    const link = md.split("\n").find((l) => l.startsWith("| `color/text/link` |"));
+    expect(primary).toContain("`color/brand-blue`");
+    expect(link).toContain("`color/brand-blue`");
+    // The primitive is listed exactly once — one primitive, many uses.
+    const primitiveRows = md.split("\n").filter((l) => l.startsWith("| `color/brand-blue` |"));
+    expect(primitiveRows).toHaveLength(1);
+    // And text/link no longer shows up in §Gaps.
+    expect(md.split("## Gaps")[1]).not.toContain("`color/text/link`");
+  });
+
+  it("the ink primitive is referenced by text/primary AND surface/overlay", () => {
+    // Straight from the oracle: overlay = ink @ 50%, text = ink — one entry.
+    const md = generateDesignMd(oracleExportInput());
+    const overlay = md.split("\n").find((l) => l.startsWith("| `color/surface/overlay` |"));
+    const text = md.split("\n").find((l) => l.startsWith("| `color/text/primary` |"));
+    expect(overlay).toContain("`color/ink` @ 50%");
+    expect(text).toContain("`color/ink`");
+    expect(md.split("\n").filter((l) => l.startsWith("| `color/ink` |"))).toHaveLength(1);
   });
 });
 

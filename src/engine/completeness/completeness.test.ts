@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ColorToken, StyleSnapToken } from "../../contract/types";
-import { ORACLE_ROLES, oracleViewTokens as oracleView } from "../testing/oracle";
+import { ORACLE_ASSIGNMENTS, oracleViewTokens as oracleView } from "../testing/oracle";
 import { computeChecklist } from "./index";
 
 describe("completeness checklist (FR-18 / B.5) — the oracle acceptance", () => {
-  const checklist = computeChecklist(oracleView(), ORACLE_ROLES);
+  const checklist = computeChecklist(oracleView(), ORACLE_ASSIGNMENTS);
   const gaps = checklist.items.filter((i) => i.status === "gap").map((i) => i.id);
 
   it("flags exactly the gaps in design.example.md §Gaps", () => {
@@ -51,37 +51,37 @@ describe("gaps clear live (FR-19 acceptance)", () => {
   };
 
   it("adding a focus color with the role confirmed clears its gap", () => {
-    const roles = new Map(ORACLE_ROLES).set("manual_1", "color/border/focus");
-    const checklist = computeChecklist([...oracleView(), focusColor], roles);
+    const assignments = new Map(ORACLE_ASSIGNMENTS).set("color/border/focus", "manual_1");
+    const checklist = computeChecklist([...oracleView(), focusColor], assignments);
     const focus = checklist.items.find((i) => i.id === "color/border/focus")!;
     expect(focus.status).toBe("met");
     expect(checklist.requiredTotal - checklist.requiredMet).toBe(3);
   });
 
   it("completing every required item flips `complete`", () => {
-    const roles = new Map(ORACLE_ROLES);
+    const assignments = new Map(ORACLE_ASSIGNMENTS);
     const extras: StyleSnapToken[] = ["focus", "success", "warning", "info"].map((kind) => ({
       ...focusColor,
       id: `manual_${kind}`,
       captureId: `manual-${kind}`,
       name: null,
     }));
-    roles.set("manual_focus", "color/border/focus");
-    roles.set("manual_success", "color/feedback/success");
-    roles.set("manual_warning", "color/feedback/warning");
-    roles.set("manual_info", "color/feedback/info");
-    const checklist = computeChecklist([...oracleView(), ...extras], roles);
+    assignments.set("color/border/focus", "manual_focus");
+    assignments.set("color/feedback/success", "manual_success");
+    assignments.set("color/feedback/warning", "manual_warning");
+    assignments.set("color/feedback/info", "manual_info");
+    const checklist = computeChecklist([...oracleView(), ...extras], assignments);
     expect(checklist.complete).toBe(true);
     // Recommended/info gaps remain — completeness ≠ silence.
     expect(checklist.items.some((i) => i.status === "gap")).toBe(true);
   });
 
   it("dropping spacing slots below 4 re-opens the scale gap", () => {
-    const roles = new Map(ORACLE_ROLES);
-    roles.delete("ext_024");
-    roles.delete("ext_025");
-    roles.delete("ext_026");
-    const checklist = computeChecklist(oracleView(), roles);
+    const assignments = new Map(ORACLE_ASSIGNMENTS);
+    assignments.delete("space/lg");
+    assignments.delete("space/xl");
+    assignments.delete("space/2xl");
+    const checklist = computeChecklist(oracleView(), assignments);
     const scale = checklist.items.find((i) => i.id === "space-scale")!;
     expect(scale.status).toBe("gap");
     expect(scale.description).toContain("Only 3");

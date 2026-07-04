@@ -43,9 +43,11 @@ const FOUNDATION_TYPES: TokenType[] = ["spacing", "border-radius", "border-width
 
 export function computeChecklist(
   tokens: StyleSnapToken[],
-  confirmedRoles: ReadonlyMap<string, string>,
+  /** Phase 8 — role → token id (the pool's `assignments`, merge-resolved). */
+  assignments: ReadonlyMap<string, string>,
 ): Checklist {
-  const assigned = new Set(confirmedRoles.values());
+  const assigned = new Set(assignments.keys());
+  const assignedTokenIds = new Set(assignments.values());
   const items: ChecklistItem[] = [];
 
   const roleItem = (role: string, severity: "required" | "recommended"): ChecklistItem => {
@@ -135,10 +137,10 @@ export function computeChecklist(
     items.push(roleItem(role, "recommended"));
   }
 
-  // Captured foundation values without a confirmed slot (oracle: the 12px).
+  // Captured foundation values no slot points at (oracle: the 12px).
   for (const token of tokens) {
     if (!FOUNDATION_TYPES.includes(token.type)) continue;
-    if (confirmedRoles.has(token.id)) continue;
+    if (assignedTokenIds.has(token.id)) continue;
     const valueLabel =
       token.type === "shadow" ? "shadow" : `${token.value as number}px ${token.type}`;
     items.push({

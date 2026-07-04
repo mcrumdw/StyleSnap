@@ -5,6 +5,7 @@ import type { StyleSnapExport } from "../contract/types";
 import {
   addManualToken,
   appendImport,
+  assignRole,
   createSystem,
   defaultProjectName,
   deserializeDraft,
@@ -14,9 +15,11 @@ import {
   poolTokenCount,
   poolTokens,
   removeManualToken,
+  resolveAssignments,
   serializeDraft,
   setDecision,
   setProjectName,
+  unassignRole,
 } from "./pool";
 
 const fixture = (name: string) =>
@@ -78,21 +81,60 @@ describe("token pool (FR-3)", () => {
 });
 
 describe("decisions (FR-16 — nothing finalizes without confirmation)", () => {
-  it("stores, patches, and clears per-token decisions", () => {
+  it("stores and clears per-token names", () => {
     let pool = emptyPool();
-    pool = setDecision(pool, "t1", { role: "color/action/primary" });
     pool = setDecision(pool, "t1", { name: "color/brand-blue" });
-    expect(pool.decisions.t1).toEqual({ role: "color/action/primary", name: "color/brand-blue" });
-
-    // undefined removes the field; an empty decision disappears entirely.
-    pool = setDecision(pool, "t1", { role: undefined });
     expect(pool.decisions.t1).toEqual({ name: "color/brand-blue" });
     pool = setDecision(pool, "t1", { name: undefined });
     expect(pool.decisions.t1).toBeUndefined();
+  });
+});
 
-    // null = explicit "no role" — a decision, distinct from undecided.
-    pool = setDecision(pool, "t2", { role: null });
-    expect(pool.decisions.t2).toEqual({ role: null });
+describe("role assignments (Phase 8 — roles point at primitives)", () => {
+  it("one primitive can carry several roles; removing one leaves the other", () => {
+    let pool = emptyPool();
+    pool = assignRole(pool, "color/action/primary", "green_1");
+    pool = assignRole(pool, "color/text/link", "green_1");
+    expect(pool.assignments).toEqual({
+      "color/action/primary": "green_1",
+      "color/text/link": "green_1",
+    });
+    pool = unassignRole(pool, "color/text/link");
+    expect(pool.assignments).toEqual({ "color/action/primary": "green_1" });
+  });
+
+  it("reassigning a role moves it — a role has exactly one primitive", () => {
+    let pool = emptyPool();
+    pool = assignRole(pool, "color/action/primary", "blue_1");
+    pool = assignRole(pool, "color/action/primary", "blue_2");
+    expect(pool.assignments["color/action/primary"]).toBe("blue_2");
+  });
+
+  it("merge remaps assignments to the survivor; un-merge restores them", () => {
+    let pool = emptyPool();
+    pool = assignRole(pool, "color/text/link", "ext_002");
+    pool = assignRole(pool, "color/action/primary", "ext_001");
+
+    // ext_002 is absorbed into ext_001 — the link role follows the survivor.
+    const merge = { survivorId: "ext_001", mergedIds: ["ext_002"], mergedAt: "t" };
+    expect(resolveAssignments(pool.assignments, [merge])).toEqual({
+      "color/text/link": "ext_001",
+      "color/action/primary": "ext_001",
+    });
+    // Un-merge (the record is removed) — the original target comes back.
+    expect(resolveAssignments(pool.assignments, [])).toEqual({
+      "color/text/link": "ext_002",
+      "color/action/primary": "ext_001",
+    });
+  });
+
+  it("resolution follows merge chains", () => {
+    const assignments = { "space/md": "a" };
+    const chain = [
+      { survivorId: "b", mergedIds: ["a"], mergedAt: "t1" },
+      { survivorId: "c", mergedIds: ["b"], mergedAt: "t2" },
+    ];
+    expect(resolveAssignments(assignments, chain)).toEqual({ "space/md": "c" });
   });
 });
 
@@ -154,7 +196,7 @@ describe("localStorage draft (FR-29)", () => {
     expect(isSystemCreated(restored!)).toBe(true);
   });
 
-  it("round-trips manual tokens; removal cleans decisions and merges", () => {
+  it("round-trips manual tokens; removal cleans decisions, merges, assignments", () => {
     let pool = poolWithBothFixtures();
     pool = addManualToken(pool, {
       id: "manual_1",
@@ -167,27 +209,50 @@ describe("localStorage draft (FR-29)", () => {
       value: "#5B2EFF",
       opacity: 1,
     });
-    pool = setDecision(pool, "manual_1", { role: "color/border/focus" });
+    pool = assignRole(pool, "color/border/focus", "manual_1");
     expect(deserializeDraft(serializeDraft(pool))).toEqual(pool);
 
     pool = removeManualToken(pool, "manual_1");
     expect(pool.manual).toHaveLength(0);
-    expect(pool.decisions.manual_1).toBeUndefined();
+    expect(pool.assignments["color/border/focus"]).toBeUndefined();
 
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.manual;
     expect(deserializeDraft(JSON.stringify(legacy))?.manual).toEqual([]);
   });
 
-  it("round-trips role/name decisions; legacy drafts get an empty map", () => {
+  it("round-trips names + assignments; legacy drafts get empty maps", () => {
     let pool = poolWithBothFixtures();
-    pool = setDecision(pool, "ext_001", { role: "color/action/primary" });
-    pool = setDecision(pool, "ext_008", { role: null, name: "color/gray-500" });
+    pool = setDecision(pool, "ext_008", { name: "color/gray-500" });
+    pool = assignRole(pool, "color/action/primary", "ext_001");
     expect(deserializeDraft(serializeDraft(pool))).toEqual(pool);
 
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.decisions;
-    expect(deserializeDraft(JSON.stringify(legacy))?.decisions).toEqual({});
+    delete legacy.assignments;
+    const restored = deserializeDraft(JSON.stringify(legacy));
+    expect(restored?.decisions).toEqual({});
+    expect(restored?.assignments).toEqual({});
+  });
+
+  it("migrates pre-Phase-8 drafts: decisions[id].role → assignments[role] = id", () => {
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    legacy.decisions = {
+      ext_001: { role: "color/action/primary", name: "color/brand-blue" },
+      ext_006: { role: "color/text/primary" },
+      ext_008: { role: null, name: "color/gray-500" }, // explicit "no role"
+    };
+    delete legacy.assignments;
+    const restored = deserializeDraft(JSON.stringify(legacy));
+    expect(restored?.assignments).toEqual({
+      "color/action/primary": "ext_001",
+      "color/text/primary": "ext_006",
+    });
+    // Names survive; the old role field is gone.
+    expect(restored?.decisions).toEqual({
+      ext_001: { name: "color/brand-blue" },
+      ext_008: { name: "color/gray-500" },
+    });
   });
 
   it("returns null for a missing, corrupt, or invalid draft — never throws", () => {

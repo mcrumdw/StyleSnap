@@ -4,6 +4,7 @@ import { CreateSystemDialog } from "../components/CreateSystemDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ExportPanel } from "../components/ExportPanel";
 import { ImportZone } from "../components/ImportZone";
+import { SystemView } from "../components/SystemView";
 import { Workspace } from "../components/Workspace";
 import { computeChecklist } from "../engine/completeness";
 import { applyMerges } from "../engine/dedup";
@@ -14,9 +15,12 @@ import {
   isSystemCreated,
   poolTokenCount,
   poolTokens,
+  resolveAssignments,
 } from "../state/pool";
 import { usePool } from "../state/usePool";
 import { poolEntries } from "../state/workspace";
+
+type Tab = "workspace" | "system";
 
 export function Home() {
   const {
@@ -24,7 +28,9 @@ export function Home() {
     addImport,
     mergeCluster,
     unmerge,
-    decide,
+    setName,
+    assign,
+    unassign,
     addManual,
     updateManual,
     removeManual,
@@ -33,6 +39,7 @@ export function Home() {
     startOver,
   } = usePool();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [tab, setTab] = useState<Tab>("workspace");
 
   const entries = useMemo(() => poolEntries(pool), [pool]);
   const total = poolTokenCount(pool);
@@ -46,10 +53,8 @@ export function Home() {
   const exportInput = useMemo((): ExportInput => {
     const raw = poolTokens(pool);
     const view = applyMerges(raw.map((token) => ({ token })), pool.merges).map((e) => e.token);
-    const roles = new Map<string, string>();
     const names = new Map<string, string>();
     for (const [id, decision] of Object.entries(pool.decisions)) {
-      if (typeof decision.role === "string") roles.set(id, decision.role);
       if (decision.name !== undefined) names.set(id, decision.name);
     }
     return {
@@ -60,13 +65,13 @@ export function Home() {
       mergeCount: pool.merges.length,
       tokens: view,
       rawById: new Map(raw.map((t) => [t.id, t])),
-      roles,
+      assignments: new Map(Object.entries(resolveAssignments(pool.assignments, pool.merges))),
       names,
     };
   }, [pool, projectName]);
 
   const checklist = useMemo(
-    () => computeChecklist(exportInput.tokens, exportInput.roles),
+    () => computeChecklist(exportInput.tokens, exportInput.assignments),
     [exportInput],
   );
   const designMd = useMemo(() => generateDesignMd(exportInput), [exportInput]);
@@ -77,6 +82,20 @@ export function Home() {
   const gapCount = useMemo(
     () => checklist.items.filter((i) => i.status === "gap").length,
     [checklist],
+  );
+
+  // The system view shows the reviewed tokens with user names overlaid.
+  const systemTokens = useMemo(
+    () =>
+      exportInput.tokens.map((token) => {
+        const name = pool.decisions[token.id]?.name;
+        return name !== undefined ? { ...token, name } : token;
+      }),
+    [exportInput, pool.decisions],
+  );
+  const resolvedAssignments = useMemo(
+    () => resolveAssignments(pool.assignments, pool.merges),
+    [pool.assignments, pool.merges],
   );
 
   return (
@@ -122,18 +141,57 @@ export function Home() {
             />
           )}
 
-          <Workspace
-            entries={entries}
-            merges={pool.merges}
-            decisions={pool.decisions}
-            onMergeCluster={mergeCluster}
-            onUnmerge={unmerge}
-            onDecide={decide}
-            onAddManual={addManual}
-            onUpdateManual={updateManual}
-            onRemoveManual={removeManual}
-            locked={created}
-          />
+          {/* Phase 8 — workspace ↔ system view tabs. */}
+          <nav
+            role="tablist"
+            aria-label="Views"
+            className="flex w-full gap-2 border-b-2 border-border-default"
+          >
+            {(
+              [
+                ["workspace", "Workspace"],
+                ["system", "System"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={`-mb-0.5 rounded-t-sm border-2 border-b-0 px-4 py-2 font-heading text-card-title font-bold ${
+                  tab === id
+                    ? "border-border-default bg-surface-card text-text-primary"
+                    : "border-transparent text-text-muted hover:text-text-primary"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          {tab === "workspace" ? (
+            <Workspace
+              entries={entries}
+              merges={pool.merges}
+              decisions={pool.decisions}
+              assignments={pool.assignments}
+              onMergeCluster={mergeCluster}
+              onUnmerge={unmerge}
+              onSetName={setName}
+              onAssign={assign}
+              onUnassign={unassign}
+              onAddManual={addManual}
+              onUpdateManual={updateManual}
+              onRemoveManual={removeManual}
+              locked={created}
+            />
+          ) : (
+            <SystemView
+              tokens={systemTokens}
+              assignments={resolvedAssignments}
+              onGoToChecklist={() => setTab("workspace")}
+            />
+          )}
 
           <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-12">
             <h2 className="font-heading text-section-header font-bold">

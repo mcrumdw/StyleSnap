@@ -130,6 +130,75 @@ only run-through works; deployed URL works.
 
 ---
 
+## Phase 8 — Role-model inversion + System view (post-MVP fix)
+
+**Why (found in user testing, 2026-07-04):** roles are stored as a single
+`role` field per token (`decisions[tokenId].role` in `src/state/pool.ts`) —
+a 1:1 relationship. That's backwards per DECISIONS.md §2.3: **roles point at
+primitives**, and one primitive routinely carries several roles (the merged
+green = `color/action/primary` AND `color/text/link`; ink = text AND border
+AND shadow color). The current model cannot even reproduce the oracle, where
+`color/ink` backs both `color/text/primary` and `color/surface/overlay`.
+Additionally there is no view showing the main primitives with their semantic
+uses.
+
+**8a — Data model (do first, engine/state only):**
+
+- Replace per-token `role` with one map in pool state:
+  `assignments: Partial<Record<Role, string /* tokenId */>>`.
+  Each role → exactly one primitive (map key uniqueness enforces it); a
+  primitive may be referenced by any number of roles. `decisions` keeps only
+  `name`.
+- Migration on localStorage load: `decisions[id].role = r` →
+  `assignments[r] = id`, then strip the old field. Old drafts must load
+  without data loss.
+- Merge interaction: when a merge absorbs token ids (or un-merge restores
+  them), remap `assignments` values pointing at absorbed ids to the survivor
+  (and back on undo). Add unit tests for both directions.
+- `derive.ts` output becomes role-keyed: `Map<Role, Array<{tokenId,
+  confidence}>>` — a token with hints for two roles suggests both.
+- Completeness = required Appendix B keys missing from `assignments`.
+- Export reads the map: primitives listed once; the roles table may reference
+  the same primitive repeatedly. Deterministic sort unchanged (role order =
+  Appendix B).
+
+**8b — UI:**
+
+- **RolePicker → additive.** "Assign role…" adds a chip; a token card shows
+  ALL roles pointing at it; chips removable individually. If the chosen role
+  is already assigned to another token, show "currently → `<name>` — 
+  reassign?" (explicit confirm; never steal silently).
+- **New System view** (nav tab next to the workspace) — the "main variables +
+  their semantic use" screen, grouped by role subcategory:
+  - **Colors first**, subsections in Appendix B order: **Text · Surface ·
+    Action · Border · Feedback**. Each entry = swatch + primitive name + hex +
+    the role it fills. A primitive appearing in several subsections shows the
+    SAME name/swatch each time — visibly "one primitive, many uses," never a
+    suspected duplicate.
+  - A **Primitives strip** on top: every color primitive ordered by
+    occurrences, with count of roles referencing it; role-less primitives
+    visibly flagged ("unused — assign or drop").
+  - Same pattern (lighter) for Type, Spacing, Radius, Shadow.
+  - Unfilled required roles render as gap slots (dashed border, per DESIGN.md
+    drag affordance) linking to the checklist.
+- Workspace token cards: role chip becomes role chips (plural).
+
+**Accept:**
+
+- Merged green carries `color/action/primary` + `color/text/link`
+  simultaneously; removing one leaves the other.
+- Oracle reproduces exactly: `color/ink` referenced by `color/text/primary`
+  AND `color/surface/overlay` from one primitive entry.
+- Reassigning an occupied role asks for confirmation and updates both cards.
+- Merge + un-merge with assigned roles keeps assignments pointing at the
+  right survivor (unit-tested).
+- Old localStorage drafts (pre-Phase-8) migrate losslessly.
+- System view: every color subsection populated from fixtures; a role-less
+  primitive is flagged; no console errors; export unchanged except now
+  reflecting multi-role reality.
+
+---
+
 ## Backlog (do NOT pull into MVP)
 
 AI assist (FR-20), Figma Variables export, W3C token output format, component

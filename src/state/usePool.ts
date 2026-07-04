@@ -5,6 +5,7 @@ import {
   addManualToken,
   addMerge,
   appendImport,
+  assignRole,
   clearDraft,
   createSystem as createSystemPure,
   emptyPool,
@@ -14,8 +15,8 @@ import {
   saveDraft,
   setDecision,
   setProjectName as setProjectNamePure,
+  unassignRole,
   updateManualToken,
-  type TokenDecision,
   type TokenPool,
 } from "./pool";
 
@@ -48,15 +49,24 @@ export function usePool() {
     setPool((current) => removeMerge(current, survivorId));
   }, []);
 
-  const decide = useCallback((tokenId: string, patch: TokenDecision) => {
-    setPool((current) => setDecision(current, tokenId, patch));
+  const setName = useCallback((tokenId: string, name: string | undefined) => {
+    setPool((current) => setDecision(current, tokenId, { name }));
+  }, []);
+
+  /** Point a role at a primitive (Phase 8). Overwrites — the UI confirms reassigns. */
+  const assign = useCallback((role: string, tokenId: string) => {
+    setPool((current) => assignRole(current, role, tokenId));
+  }, []);
+
+  const unassign = useCallback((role: string) => {
+    setPool((current) => unassignRole(current, role));
   }, []);
 
   /** Add a manual token (FR-19); confirming a role in the same step is atomic. */
   const addManual = useCallback((token: StyleSnapToken, role?: string) => {
     setPool((current) => {
       let next = addManualToken(current, token);
-      if (role) next = setDecision(next, token.id, { role });
+      if (role) next = assignRole(next, role, token.id);
       return next;
     });
   }, []);
@@ -64,7 +74,14 @@ export function usePool() {
   const updateManual = useCallback((token: StyleSnapToken, role?: string | null) => {
     setPool((current) => {
       let next = updateManualToken(current, token);
-      if (role !== undefined) next = setDecision(next, token.id, { role });
+      if (role !== undefined) {
+        // The dialog edits ONE role for a manual token: retarget it, dropping
+        // whatever this token carried before.
+        for (const [r, id] of Object.entries(next.assignments)) {
+          if (id === token.id && r !== role) next = unassignRole(next, r);
+        }
+        if (role !== null) next = assignRole(next, role, token.id);
+      }
       return next;
     });
   }, []);
@@ -92,7 +109,9 @@ export function usePool() {
     addImport,
     mergeCluster,
     unmerge,
-    decide,
+    setName,
+    assign,
+    unassign,
     addManual,
     updateManual,
     removeManual,

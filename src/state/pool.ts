@@ -22,13 +22,12 @@ export interface PoolImport {
 }
 
 /**
- * A user decision about one token (Phase 4). Suggestions are always computed
- * live from the engine; ONLY explicit decisions persist here — that is what
- * "nothing finalizes without confirmation" (FR-16) means in the data model.
+ * A user decision about one token. Since Phase 8 this is the NAME only —
+ * roles live in `assignments` (roles point at primitives, DECISIONS.md §2.3).
+ * Suggestions are always computed live from the engine; only explicit
+ * decisions persist here (FR-16: nothing finalizes without confirmation).
  */
 export interface TokenDecision {
-  /** Confirmed role; `null` = user explicitly chose "no role (primitive)". */
-  role?: string | null;
   /** User-assigned slash-nested name (FR-21). */
   name?: string;
 }
@@ -37,8 +36,16 @@ export interface TokenPool {
   imports: PoolImport[];
   /** User-confirmed merges (Phase 3) — applied as a view, reversible until Create System. */
   merges: MergeRecord[];
-  /** Confirmed roles + names per token id (Phase 4). */
+  /** Per-token decisions (name only since Phase 8). */
   decisions: Record<string, TokenDecision>;
+  /**
+   * Phase 8 — role → token id. Each role points at exactly ONE primitive (map
+   * key uniqueness enforces it); a primitive may be referenced by any number
+   * of roles. Values are RAW token ids: merges are a view, so resolution to
+   * the current survivor happens at read time (see workspace.resolveAssignments)
+   * and un-merge restores the original targets for free.
+   */
+  assignments: Record<string, string>;
   /** Manually added tokens (Phase 5, FR-19) — user-owned, editable, removable. */
   manual: StyleSnapToken[];
   /** User-edited project name (Phase 6); when unset, derived from the first import. */
@@ -48,7 +55,7 @@ export interface TokenPool {
 }
 
 export function emptyPool(): TokenPool {
-  return { imports: [], merges: [], decisions: {}, manual: [] };
+  return { imports: [], merges: [], decisions: {}, assignments: {}, manual: [] };
 }
 
 /** Append a validated export to the pool. Pure — returns a new pool. */
@@ -76,25 +83,62 @@ export function removeMerge(pool: TokenPool, survivorId: string): TokenPool {
   return { ...pool, merges: pool.merges.filter((m) => m.survivorId !== survivorId) };
 }
 
-/**
- * Set or clear one field of a token's decision. `undefined` removes the field
- * (falls back to the live suggestion); empty decisions are dropped entirely.
- */
+/** Set or clear a token's name (FR-21). `undefined` clears back to unnamed. */
 export function setDecision(
   pool: TokenPool,
   tokenId: string,
   patch: TokenDecision,
 ): TokenPool {
-  const next: TokenDecision = { ...pool.decisions[tokenId], ...patch };
-  if (patch.role === undefined && "role" in patch) delete next.role;
-  if (patch.name === undefined && "name" in patch) delete next.name;
   const decisions = { ...pool.decisions };
-  if (next.role === undefined && next.name === undefined) {
+  if (patch.name === undefined) {
     delete decisions[tokenId];
   } else {
-    decisions[tokenId] = next;
+    decisions[tokenId] = { name: patch.name };
   }
   return { ...pool, decisions };
+}
+
+// ─────────────────────────────────────────
+// Role assignments (Phase 8) — role → primitive
+// ─────────────────────────────────────────
+
+/**
+ * Point a role at a token. Overwrites any previous target — the UI asks for
+ * explicit confirmation before stealing a role from another primitive.
+ */
+export function assignRole(pool: TokenPool, role: string, tokenId: string): TokenPool {
+  return { ...pool, assignments: { ...pool.assignments, [role]: tokenId } };
+}
+
+export function unassignRole(pool: TokenPool, role: string): TokenPool {
+  const assignments = { ...pool.assignments };
+  delete assignments[role];
+  return { ...pool, assignments };
+}
+
+/**
+ * Resolve assignments through the merge view: a role pointing at an absorbed
+ * token follows the chain to its current survivor. Because the stored ids
+ * stay raw, un-merge restores the original targets with no bookkeeping.
+ */
+export function resolveAssignments(
+  assignments: Record<string, string>,
+  merges: MergeRecord[],
+): Record<string, string> {
+  const survivorOf = new Map<string, string>();
+  for (const merge of merges) {
+    for (const id of merge.mergedIds) survivorOf.set(id, merge.survivorId);
+  }
+  const resolve = (id: string): string => {
+    let current = id;
+    for (let hops = 0; hops < merges.length && survivorOf.has(current); hops++) {
+      current = survivorOf.get(current)!;
+    }
+    return current;
+  };
+  return Object.fromEntries(
+    Object.entries(assignments).map(([role, id]) => [role, resolve(id)]),
+  );
 }
 
 // ─────────────────────────────────────────
@@ -123,6 +167,9 @@ export function removeManualToken(pool: TokenPool, tokenId: string): TokenPool {
     // A merge it survived is dropped; merges that absorbed it skip it safely.
     merges: pool.merges.filter((m) => m.survivorId !== tokenId),
     decisions,
+    assignments: Object.fromEntries(
+      Object.entries(pool.assignments).filter(([, id]) => id !== tokenId),
+    ),
   };
 }
 
@@ -221,21 +268,39 @@ export function deserializeDraft(text: string | null): TokenPool | null {
     merges.push({ survivorId: m.survivorId, mergedIds: m.mergedIds, mergedAt: m.mergedAt });
   }
 
-  // Decisions were added in Phase 4 — older drafts simply have none.
-  const rawDecisions = (json as Partial<TokenPool>).decisions ?? {};
+  // Decisions were added in Phase 4. Pre-Phase-8 drafts stored a `role`
+  // field per token (1:1) — migrate it into the role→token `assignments` map
+  // losslessly. An explicit "no role" (null) has no assignment equivalent
+  // and simply drops; a name is kept either way.
+  const rawDecisions = (json as { decisions?: unknown }).decisions ?? {};
   if (typeof rawDecisions !== "object" || rawDecisions === null || Array.isArray(rawDecisions)) {
     return null;
   }
   const decisions: Record<string, TokenDecision> = {};
-  for (const [tokenId, entry] of Object.entries(rawDecisions)) {
-    const d = entry as TokenDecision;
+  const migratedAssignments: Record<string, string> = {};
+  // Deterministic migration order in the (formerly possible) case where two
+  // tokens carried the same role string: the lowest token id wins.
+  const decisionEntries = Object.entries(rawDecisions).sort(([a], [b]) => (a < b ? -1 : 1));
+  for (const [tokenId, entry] of decisionEntries) {
+    const d = entry as { role?: string | null; name?: string };
     if (typeof d !== "object" || d === null) return null;
     if (d.role !== undefined && d.role !== null && typeof d.role !== "string") return null;
     if (d.name !== undefined && typeof d.name !== "string") return null;
-    const clean: TokenDecision = {};
-    if (d.role !== undefined) clean.role = d.role;
-    if (d.name !== undefined) clean.name = d.name;
-    if (clean.role !== undefined || clean.name !== undefined) decisions[tokenId] = clean;
+    if (typeof d.role === "string" && !(d.role in migratedAssignments)) {
+      migratedAssignments[d.role] = tokenId;
+    }
+    if (d.name !== undefined) decisions[tokenId] = { name: d.name };
+  }
+
+  // Assignments were added in Phase 8 — merged with anything migrated above.
+  const rawAssignments = (json as Partial<TokenPool>).assignments ?? {};
+  if (typeof rawAssignments !== "object" || rawAssignments === null || Array.isArray(rawAssignments)) {
+    return null;
+  }
+  const assignments: Record<string, string> = { ...migratedAssignments };
+  for (const [role, tokenId] of Object.entries(rawAssignments)) {
+    if (typeof tokenId !== "string") return null;
+    assignments[role] = tokenId;
   }
 
   // Manual tokens were added in Phase 5 — older drafts simply have none.
@@ -268,7 +333,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
       tokens: parsed.data.tokens,
     });
   }
-  const pool: TokenPool = { imports, merges, decisions, manual };
+  const pool: TokenPool = { imports, merges, decisions, assignments, manual };
   if (projectName !== undefined) pool.projectName = projectName;
   if (systemCreatedAt !== undefined) pool.systemCreatedAt = systemCreatedAt;
   return pool;

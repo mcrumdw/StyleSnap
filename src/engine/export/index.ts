@@ -34,8 +34,11 @@ export interface ExportInput {
   tokens: StyleSnapToken[];
   /** Raw tokens by id — to describe merged-away values in provenance notes. */
   rawById: ReadonlyMap<string, StyleSnapToken>;
-  /** Confirmed roles by token id (FR-16 — only confirmations count). */
-  roles: ReadonlyMap<string, string>;
+  /**
+   * Phase 8 — role → token id, merge-resolved (FR-16: confirmations only).
+   * One primitive may back several roles; each role maps to exactly one.
+   */
+  assignments: ReadonlyMap<string, string>;
   /** User-assigned names by token id. */
   names: ReadonlyMap<string, string>;
 }
@@ -107,27 +110,35 @@ function captureLabel(meta: StyleSnapMeta): string {
 }
 
 /**
- * Tokens of one type with a confirmed role. Color/typography roles sort
+ * Role rows of one type: one row PER ROLE (the same primitive may appear in
+ * several rows — roles point at primitives). Color/typography roles sort
  * alphabetically; foundation slots sort in scale order (xs → 2xl, Appendix B).
  */
-function withRole(input: ExportInput, type: StyleSnapToken["type"]) {
+function roleRows(
+  input: ExportInput,
+  type: StyleSnapToken["type"],
+): Array<{ role: string; token: StyleSnapToken }> {
+  const byId = new Map(input.tokens.map((t) => [t.id, t]));
   const scale = type !== "color" && type !== "typography" && type !== "gradient";
-  return input.tokens
-    .filter((t) => t.type === type && input.roles.has(t.id))
-    .sort((a, b) => {
-      const roleA = input.roles.get(a.id)!;
-      const roleB = input.roles.get(b.id)!;
-      if (scale) {
-        const byIndex = roleOrderIndex(roleA) - roleOrderIndex(roleB);
-        if (byIndex !== 0) return byIndex;
-      }
-      return byString(roleA, roleB);
-    });
+  const rows: Array<{ role: string; token: StyleSnapToken }> = [];
+  for (const [role, tokenId] of input.assignments) {
+    const token = byId.get(tokenId);
+    if (token && token.type === type) rows.push({ role, token });
+  }
+  return rows.sort((a, b) => {
+    if (scale) {
+      const byIndex = roleOrderIndex(a.role) - roleOrderIndex(b.role);
+      if (byIndex !== 0) return byIndex;
+    }
+    return byString(a.role, b.role);
+  });
 }
 
+/** Tokens no role points at — the role-less primitives. */
 function withoutRole(input: ExportInput, type: StyleSnapToken["type"]) {
+  const assignedIds = new Set(input.assignments.values());
   return input.tokens
-    .filter((t) => t.type === type && !input.roles.has(t.id))
+    .filter((t) => t.type === type && !assignedIds.has(t.id))
     .sort((a, b) => byString(nameOf(a, input.names), nameOf(b, input.names)));
 }
 
@@ -170,9 +181,8 @@ function colorSection(input: ExportInput): string {
     "|---|---|---|---|",
   ];
 
-  for (const token of withRole(input, "color")) {
+  for (const { role, token } of roleRows(input, "color")) {
     if (token.type !== "color") continue;
-    const role = input.roles.get(token.id)!;
     // Two-tier: a translucent color IS a primitive at an opacity ("ink @ 50%").
     const base = token.opacity < 1 ? fullOpacityPrimitive(token.value, input) : undefined;
     const name = nameOf(base ?? token, input.names);
@@ -279,8 +289,8 @@ function typographySection(input: ExportInput): string {
       `| ${label} | ${v.fontSize}px / ${v.fontWeight} / ${v.lineHeight} | ${typographyExtras(token)} | ${provenance(token, input)} |`,
     );
   };
-  for (const token of withRole(input, "typography")) {
-    if (token.type === "typography") row(token, `\`${input.roles.get(token.id)!}\``);
+  for (const { role, token } of roleRows(input, "typography")) {
+    if (token.type === "typography") row(token, `\`${role}\``);
   }
   for (const token of withoutRole(input, "typography")) {
     if (token.type === "typography") row(token, `*(primitive)* \`${nameOf(token, input.names)}\``);
@@ -296,20 +306,20 @@ function foundationsSection(input: ExportInput): string {
     title: string,
     withProvenance: boolean,
   ) => {
-    const assigned = withRole(input, type);
+    const assigned = roleRows(input, type);
     if (assigned.length === 0 && withoutRole(input, type).length === 0) return;
-    const parts = assigned.map((token) => {
-      const slot = `\`${input.roles.get(token.id)!}\` ${token.value as number}`;
+    const parts = assigned.map(({ role, token }) => {
+      const slot = `\`${role}\` ${token.value as number}`;
       return withProvenance ? `${slot} (${provenance(token, input)})` : slot;
     });
     const notes: string[] = [];
     // Values merged into an assigned slot (e.g. the oracle's 15px → space/md 16).
-    for (const token of assigned) {
+    for (const { role, token } of assigned) {
       for (const id of token.mergedFrom ?? []) {
         const raw = input.rawById.get(id);
         if (raw && raw.type === type && raw.value !== token.value) {
           notes.push(
-            `A ${raw.value as number}px capture, ${raw.occurrences}×, was merged into \`${input.roles.get(token.id)!}\` ${token.value as number}.`,
+            `A ${raw.value as number}px capture, ${raw.occurrences}×, was merged into \`${role}\` ${token.value as number}.`,
           );
         }
       }
@@ -327,14 +337,17 @@ function foundationsSection(input: ExportInput): string {
   numericScaleLine("border-radius", "Radius", true);
   numericScaleLine("border-width", "Border width", true);
 
-  const shadows = [...withRole(input, "shadow"), ...withoutRole(input, "shadow")];
-  if (shadows.length > 0) {
+  const shadowRows = [
+    ...roleRows(input, "shadow").map(({ role, token }) => ({ label: `\`${role}\``, token })),
+    ...withoutRole(input, "shadow").map((token) => ({
+      label: `*(primitive)* \`${nameOf(token, input.names)}\``,
+      token,
+    })),
+  ];
+  if (shadowRows.length > 0) {
     lines.push("**Shadows**", "", "| Token | Value | Provenance |", "|---|---|---|");
-    for (const token of shadows) {
+    for (const { label, token } of shadowRows) {
       if (token.type !== "shadow") continue;
-      const label = input.roles.has(token.id)
-        ? `\`${input.roles.get(token.id)!}\``
-        : `*(primitive)* \`${nameOf(token, input.names)}\``;
       lines.push(
         `| ${label} | ${shadowValueText(token.value, input)} | ${provenance(token, input)} |`,
       );
@@ -346,7 +359,7 @@ function foundationsSection(input: ExportInput): string {
 
 /** §Gaps — one bullet per open checklist item (FR-27). */
 export function gapBullets(input: ExportInput): string[] {
-  const checklist = computeChecklist(input.tokens, input.roles);
+  const checklist = computeChecklist(input.tokens, input.assignments);
   return checklist.items
     .filter((item) => item.status === "gap")
     .map((item) => gapBullet(item));
@@ -420,14 +433,20 @@ export function generateCleanedJson(input: ExportInput): CleanedExport {
   if (figma?.figmaFile) meta.figmaFile = figma.figmaFile;
   if (browser?.pageUrl) meta.pageUrl = browser.pageUrl;
 
-  // Canonical order: type → role → name → value → id.
+  // Canonical order: type → role → name → value → id. A multi-role token
+  // sorts by its alphabetically-first role.
+  const firstRoleOf = new Map<string, string>();
+  for (const [role, tokenId] of input.assignments) {
+    const current = firstRoleOf.get(tokenId);
+    if (current === undefined || role < current) firstRoleOf.set(tokenId, role);
+  }
   const TYPE_ORDER = ["color", "gradient", "typography", "spacing", "border-radius", "border-width", "shadow"];
   const tokens = input.tokens
     .map((token) => ({ ...token, name: nameOf(token, input.names) }))
     .sort((a, b) => {
       const byType = TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type);
       if (byType !== 0) return byType;
-      const byRole = byString(input.roles.get(a.id) ?? "\uffff", input.roles.get(b.id) ?? "\uffff");
+      const byRole = byString(firstRoleOf.get(a.id) ?? "\uffff", firstRoleOf.get(b.id) ?? "\uffff");
       if (byRole !== 0) return byRole;
       const byName = byString(a.name!, b.name!);
       if (byName !== 0) return byName;

@@ -1,4 +1,3 @@
-import type { RoleSuggestion } from "../engine/roles";
 import type { PoolEntry } from "../state/workspace";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
@@ -10,11 +9,14 @@ interface TokenCardProps {
   entry: PoolEntry;
   /** Dedup flag from the Phase 3 engine (FR-6). */
   flag?: "dup" | "sim";
-  /** Live role suggestion from the Phase 4 engine. */
-  roleSuggestion?: RoleSuggestion;
-  /** User's confirmed role (string), explicit "no role" (null), or none yet. */
-  roleDecision?: string | null;
-  onDecideRole?: (role: string | null | undefined) => void;
+  /** ALL confirmed roles pointing at this token (Phase 8 — multi-role). */
+  assignedRoles?: string[];
+  /** Live engine suggestions for this token. */
+  suggestedRoles?: string[];
+  /** Name of the primitive currently holding a role (reassign confirm). */
+  holderLabel?: (role: string) => string | undefined;
+  onAssignRole?: (role: string) => void;
+  onUnassignRole?: (role: string) => void;
   onSetName?: (name: string | undefined) => void;
   /** Opens the merge dialog for this token's cluster. */
   onReviewCluster?: () => void;
@@ -34,9 +36,11 @@ const ORIGIN_LABELS = { figma: "Figma", "browser-extension": "Web", manual: "Man
 export function TokenCard({
   entry,
   flag,
-  roleSuggestion,
-  roleDecision,
-  onDecideRole,
+  assignedRoles = [],
+  suggestedRoles = [],
+  holderLabel = () => undefined,
+  onAssignRole,
+  onUnassignRole,
   onSetName,
   onReviewCluster,
   onUnmerge,
@@ -64,12 +68,14 @@ export function TokenCard({
 
       <TokenPreview token={token} />
 
-      {onDecideRole && (
+      {onAssignRole && onUnassignRole && (
         <RolePicker
           tokenType={token.type}
-          suggestion={roleSuggestion}
-          decision={roleDecision}
-          onDecide={onDecideRole}
+          assigned={assignedRoles}
+          suggested={suggestedRoles}
+          holderLabel={holderLabel}
+          onAssign={onAssignRole}
+          onUnassign={onUnassignRole}
         />
       )}
 

@@ -8,9 +8,14 @@ import {
   type Sensitivity,
 } from "../engine/dedup";
 import { computeChecklist } from "../engine/completeness";
-import { deriveRoleSuggestions } from "../engine/roles";
+import {
+  deriveRoleCandidates,
+  fallbackName,
+  roleOrderIndex,
+  topSuggestionsByToken,
+} from "../engine/roles";
 import type { StyleSnapToken } from "../contract/types";
-import type { TokenDecision } from "../state/pool";
+import { resolveAssignments, type TokenDecision } from "../state/pool";
 import {
   captureGroups,
   DEFAULT_FILTERS,
@@ -59,10 +64,15 @@ const MERGE_NOUNS: Record<TokenType, string> = {
 interface WorkspaceProps {
   entries: PoolEntry[];
   merges: MergeRecord[];
+  /** Per-token name decisions. */
   decisions: Record<string, TokenDecision>;
+  /** Phase 8 — role → raw token id (resolved through merges here). */
+  assignments: Record<string, string>;
   onMergeCluster: (survivorId: string, mergedIds: string[]) => void;
   onUnmerge: (survivorId: string) => void;
-  onDecide: (tokenId: string, patch: TokenDecision) => void;
+  onSetName: (tokenId: string, name: string | undefined) => void;
+  onAssign: (role: string, tokenId: string) => void;
+  onUnassign: (role: string) => void;
   onAddManual: (token: StyleSnapToken, role?: string) => void;
   onUpdateManual: (token: StyleSnapToken, role?: string | null) => void;
   onRemoveManual: (tokenId: string) => void;
@@ -79,9 +89,12 @@ export function Workspace({
   entries,
   merges,
   decisions,
+  assignments,
   onMergeCluster,
   onUnmerge,
-  onDecide,
+  onSetName,
+  onAssign,
+  onUnassign,
   onAddManual,
   onUpdateManual,
   onRemoveManual,
@@ -112,27 +125,46 @@ export function Workspace({
     () => new Map(entries.map((e) => [e.token.id, e.token])),
     [entries],
   );
-  const suggestions = useMemo(
-    () => deriveRoleSuggestions(view.map((e) => e.token), rawById),
+  const candidates = useMemo(
+    () => deriveRoleCandidates(view.map((e) => e.token), rawById),
     [view, rawById],
   );
-  const effectiveRoleOf = (tokenId: string): string | undefined => {
-    const decided = decisions[tokenId]?.role;
-    if (decided !== undefined) return decided ?? undefined;
-    return suggestions.get(tokenId)?.role;
-  };
+  const suggestionChips = useMemo(() => topSuggestionsByToken(candidates), [candidates]);
 
-  // FR-18 — completeness against CONFIRMED roles only, recomputed live.
-  const confirmedRoles = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const [id, decision] of Object.entries(decisions)) {
-      if (typeof decision.role === "string") map.set(id, decision.role);
+  // Assignments resolve through the merge view: a role pointing at an
+  // absorbed token follows its survivor; un-merge restores it (Phase 8).
+  const resolved = useMemo(() => resolveAssignments(assignments, merges), [assignments, merges]);
+  const rolesByToken = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [role, tokenId] of Object.entries(resolved)) {
+      map.set(tokenId, [...(map.get(tokenId) ?? []), role]);
+    }
+    for (const roles of map.values()) {
+      roles.sort((a, b) => roleOrderIndex(a) - roleOrderIndex(b));
     }
     return map;
-  }, [decisions]);
+  }, [resolved]);
+
+  // Suggestions for roles someone already holds stay hidden — the picker's
+  // reassign flow is the only path that can move a confirmed role.
+  const suggestedFor = (tokenId: string): string[] =>
+    (suggestionChips.get(tokenId) ?? []).filter((role) => !(role in resolved));
+
+  /** Name of the primitive currently holding a role — the reassign prompt. */
+  const holderLabel = (role: string): string | undefined => {
+    const holderId = resolved[role];
+    if (holderId === undefined) return undefined;
+    const holder = view.find((e) => e.token.id === holderId);
+    return holder ? holder.token.name ?? fallbackName(holder.token) : undefined;
+  };
+
+  const effectiveRoleOf = (tokenId: string): string | undefined =>
+    rolesByToken.get(tokenId)?.[0] ?? suggestedFor(tokenId)[0];
+
+  // FR-18 — completeness against CONFIRMED assignments only, recomputed live.
   const checklist = useMemo(
-    () => computeChecklist(view.map((e) => e.token), confirmedRoles),
-    [view, confirmedRoles],
+    () => computeChecklist(view.map((e) => e.token), new Map(Object.entries(resolved))),
+    [view, resolved],
   );
 
   // Detection re-flags live on sensitivity change; it never merges by itself.
@@ -299,10 +331,12 @@ export function Workspace({
                     key={id}
                     entry={entry}
                     flag={flags.get(id)}
-                    roleSuggestion={suggestions.get(id)}
-                    roleDecision={decisions[id]?.role}
-                    onDecideRole={(role) => onDecide(id, { role })}
-                    onSetName={(name) => onDecide(id, { name })}
+                    assignedRoles={rolesByToken.get(id) ?? []}
+                    suggestedRoles={suggestedFor(id)}
+                    holderLabel={holderLabel}
+                    onAssignRole={(role) => onAssign(role, id)}
+                    onUnassignRole={onUnassign}
+                    onSetName={(name) => onSetName(id, name)}
                     onReviewCluster={
                       !locked && clusterId ? () => setOpenClusterId(clusterId) : undefined
                     }
@@ -315,7 +349,7 @@ export function Workspace({
                             setTokenDialog({
                               mode: "edit",
                               token: entry.token,
-                              role: confirmedRoles.get(id),
+                              role: rolesByToken.get(id)?.[0],
                             })
                         : undefined
                     }
