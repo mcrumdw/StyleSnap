@@ -202,18 +202,22 @@ async function captureNode(node: SceneNode, out: RawCapture[]): Promise<void> {
       node.paddingRight,
       node.paddingBottom,
       node.paddingLeft,
-      node.itemSpacing,
     ];
+    // With space-between, itemSpacing holds the COMPUTED gap (depends on frame
+    // width, not on a design decision) — a layout artifact, not a token.
+    if (node.primaryAxisAlignItems !== "SPACE_BETWEEN") {
+      spacings.push(node.itemSpacing);
+    }
     for (const s of spacings) {
       if (typeof s === "number" && s > 0) {
-        out.push({ type: "spacing", value: s, source, captureId });
+        out.push({ type: "spacing", value: round2(s), source, captureId });
       }
     }
   }
 
   // border-radius
   if ("cornerRadius" in node && typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
-    out.push({ type: "border-radius", value: node.cornerRadius, source, captureId });
+    out.push({ type: "border-radius", value: round2(node.cornerRadius), source, captureId });
   }
 
   // border-width (only when the node actually has a visible stroke)
@@ -224,7 +228,7 @@ async function captureNode(node: SceneNode, out: RawCapture[]): Promise<void> {
     "strokes" in node &&
     (node.strokes as readonly Paint[]).some((s) => s.visible !== false)
   ) {
-    out.push({ type: "border-width", value: node.strokeWeight, source, captureId });
+    out.push({ type: "border-width", value: round2(node.strokeWeight), source, captureId });
   }
 
   // shadow
