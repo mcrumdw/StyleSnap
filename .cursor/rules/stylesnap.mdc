@@ -1,0 +1,13 @@
+---
+description: StyleSnap project rules — always apply
+alwaysApply: true
+---
+
+All project instructions live in `AGENTS.md` at the repo root (single source
+of truth for every coding agent). Read it in full before doing anything and
+treat its rules as hard constraints — especially: DESIGN.md §0 (design tokens
+only), PRD Appendix A (dedup algorithm) and Appendix B (role taxonomy) are
+canonical, `docs/types.ts` is never edited or redefined, and
+`docs/examples/design.example.md` is the export oracle.
+
+Build phases and acceptance checks: `docs/BUILD_PLAN.md`.
