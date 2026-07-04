@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import type { DedupCluster } from "../engine/dedup";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
 import { TokenPreview } from "./TokenPreview";
+import { useDialog } from "./useDialog";
 
 interface MergeDialogProps {
   cluster: DedupCluster;
@@ -32,12 +33,7 @@ function distanceCaption(token: StyleSnapToken, distance: number, level: "duplic
  */
 export function MergeDialog({ cluster, onMerge, onClose }: MergeDialogProps) {
   const [survivorId, setSurvivorId] = useState(cluster.canonical.id);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dialogRef = useDialog(onClose);
 
   const rows = [
     { token: cluster.canonical, caption: "canonical — most used", level: null },
@@ -55,6 +51,7 @@ export function MergeDialog({ cluster, onMerge, onClose }: MergeDialogProps) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Merge duplicates"

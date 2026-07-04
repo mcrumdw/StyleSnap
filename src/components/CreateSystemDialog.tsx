@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import type { Checklist } from "../engine/completeness";
 import { Button } from "./Button";
+import { useDialog } from "./useDialog";
 
 interface CreateSystemDialogProps {
   projectName: string;
@@ -25,12 +25,7 @@ export function CreateSystemDialog({
   onConfirm,
   onClose,
 }: CreateSystemDialogProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+  const dialogRef = useDialog(onClose);
   const requiredOpen = checklist.requiredTotal - checklist.requiredMet;
 
   return (
@@ -39,6 +34,7 @@ export function CreateSystemDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Create System"

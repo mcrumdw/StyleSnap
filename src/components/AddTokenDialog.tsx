@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type {
   BorderRadiusToken,
   BorderWidthToken,
@@ -11,6 +11,7 @@ import type {
 import { rolesForType, validateSlashName } from "../engine/roles";
 import { Button } from "./Button";
 import { Input } from "./Input";
+import { useDialog } from "./useDialog";
 
 /** Types the manual form supports (FR-19: color picker, type fields, numeric). */
 const MANUAL_TYPES: TokenType[] = ["color", "typography", "spacing", "border-radius", "border-width"];
@@ -68,12 +69,7 @@ export function AddTokenDialog({
   const [weight, setWeight] = useState(editingTypo?.value.fontWeight ?? 400);
   const [lineHeight, setLineHeight] = useState(editingTypo?.value.lineHeight ?? 1.5);
   const [numeric, setNumeric] = useState(editingNumeric?.value ?? 16);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dialogRef = useDialog(onClose);
 
   function save() {
     const trimmedName = name.trim();
@@ -124,6 +120,7 @@ export function AddTokenDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={editing ? "Edit token" : "Add token"}

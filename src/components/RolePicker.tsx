@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { TokenType } from "../contract/types";
 import { rolesForType, type RoleSuggestion } from "../engine/roles";
 import { Button } from "./Button";
@@ -22,6 +22,7 @@ interface RolePickerProps {
 export function RolePicker({ tokenType, suggestion, decision, onDecide }: RolePickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const roles = rolesForType(tokenType);
   if (roles.length === 0) return null; // e.g. gradient — no taxonomy roles
@@ -30,15 +31,29 @@ export function RolePicker({ tokenType, suggestion, decision, onDecide }: RolePi
   const effective = confirmed ? decision : decision === null ? undefined : suggestion?.role;
   const matches = roles.filter((r) => r.role.includes(query.toLowerCase().trim()));
 
-  const pick = (role: string | null | undefined) => {
-    onDecide(role);
+  const close = () => {
     setOpen(false);
     setQuery("");
+    triggerRef.current?.focus();
+  };
+
+  const pick = (role: string | null | undefined) => {
+    onDecide(role);
+    close();
   };
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      onKeyDown={(e) => {
+        if (open && e.key === "Escape") {
+          e.stopPropagation();
+          close();
+        }
+      }}
+    >
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
@@ -56,7 +71,7 @@ export function RolePicker({ tokenType, suggestion, decision, onDecide }: RolePi
 
       {open && (
         <>
-          <div className="fixed inset-0 z-sticky" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-sticky" onClick={close} />
           <div className="absolute left-0 top-full z-dropdown mt-2 w-72 rounded-md border-2 border-border-default bg-surface-card p-3 shadow-modal">
             {suggestion && !confirmed && (
               <Button size="sm" className="mb-2 w-full" onClick={() => pick(suggestion.role)}>

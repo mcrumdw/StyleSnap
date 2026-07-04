@@ -80,7 +80,7 @@ export function Home() {
   );
 
   return (
-    <main className="mx-auto flex max-w-container flex-col items-center gap-12 px-6 py-12">
+    <main id="main" className="mx-auto flex max-w-container flex-col items-center gap-12 px-6 py-12">
       {!hasTokens ? (
         <>
           <EmptyState heading="Nothing snapped yet" message="Drop a capture to begin." />

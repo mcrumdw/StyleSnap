@@ -37,7 +37,9 @@ export function ExportPanel({ projectName, designMd, cleanedJson, gapCount }: Ex
   return (
     <section className="flex w-full flex-col gap-6 rounded-md border-2 border-border-default bg-surface-card p-6 shadow-card">
       <div className="flex flex-col gap-1">
-        <h2 className="font-heading text-section-header font-bold">Your system is ready</h2>
+        <h2 className="font-heading text-section-header font-bold">
+          Your system's ready. Ship it.
+        </h2>
         <p className="text-base text-text-muted">
           Remember: there's no account — <strong>the JSON export is your save file</strong>.
           {gapCount > 0 && ` ${gapCount} open gap${gapCount === 1 ? " is" : "s are"} flagged in both exports.`}
