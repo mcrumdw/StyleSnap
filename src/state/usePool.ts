@@ -6,12 +6,14 @@ import {
   addMerge,
   appendImport,
   clearDraft,
+  createSystem as createSystemPure,
   emptyPool,
   loadDraft,
   removeManualToken,
   removeMerge,
   saveDraft,
   setDecision,
+  setProjectName as setProjectNamePure,
   updateManualToken,
   type TokenDecision,
   type TokenPool,
@@ -71,6 +73,15 @@ export function usePool() {
     setPool((current) => removeManualToken(current, tokenId));
   }, []);
 
+  const setProjectName = useCallback((name: string) => {
+    setPool((current) => setProjectNamePure(current, name));
+  }, []);
+
+  /** FR-23 — finalize. Merges lock; the export timestamp is pinned here. */
+  const createSystem = useCallback(() => {
+    setPool((current) => createSystemPure(current, new Date().toISOString()));
+  }, []);
+
   const startOver = useCallback(() => {
     clearDraft(localStorage);
     setPool(emptyPool());
@@ -85,6 +96,8 @@ export function usePool() {
     addManual,
     updateManual,
     removeManual,
+    setProjectName,
+    createSystem,
     startOver,
   };
 }

@@ -5,14 +5,18 @@ import type { StyleSnapExport } from "../contract/types";
 import {
   addManualToken,
   appendImport,
+  createSystem,
+  defaultProjectName,
   deserializeDraft,
   emptyPool,
   importLabel,
+  isSystemCreated,
   poolTokenCount,
   poolTokens,
   removeManualToken,
   serializeDraft,
   setDecision,
+  setProjectName,
 } from "./pool";
 
 const fixture = (name: string) =>
@@ -135,6 +139,19 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.merges;
     expect(deserializeDraft(JSON.stringify(legacy))?.merges).toEqual([]);
+  });
+
+  it("round-trips projectName + systemCreatedAt; derives a default name", () => {
+    let pool = poolWithBothFixtures();
+    expect(defaultProjectName(pool)).toBe("Lumen Design v3"); // figma file wins
+    expect(isSystemCreated(pool)).toBe(false);
+
+    pool = setProjectName(pool, "Lumen");
+    pool = createSystem(pool, "2026-07-04T12:00:00Z");
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.projectName).toBe("Lumen");
+    expect(restored?.systemCreatedAt).toBe("2026-07-04T12:00:00Z");
+    expect(isSystemCreated(restored!)).toBe(true);
   });
 
   it("round-trips manual tokens; removal cleans decisions and merges", () => {

@@ -66,6 +66,8 @@ interface WorkspaceProps {
   onAddManual: (token: StyleSnapToken, role?: string) => void;
   onUpdateManual: (token: StyleSnapToken, role?: string | null) => void;
   onRemoveManual: (tokenId: string) => void;
+  /** After Create System (FR-23): merges are locked — no merge/un-merge actions. */
+  locked?: boolean;
 }
 
 type TokenDialog =
@@ -83,6 +85,7 @@ export function Workspace({
   onAddManual,
   onUpdateManual,
   onRemoveManual,
+  locked = false,
 }: WorkspaceProps) {
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_FILTERS);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("default");
@@ -246,8 +249,13 @@ export function Workspace({
           </Button>
         )}
 
+        {locked && (
+          <span className="ml-auto rounded-sm border-2 border-border-default bg-surface-page px-3 py-1 font-mono text-badge text-text-muted">
+            SYSTEM CREATED — merges locked
+          </span>
+        )}
         {/* DESIGN.md §5.1 sensitivity slider — re-flags live, never re-merges. */}
-        <label className="ml-auto flex items-center gap-3">
+        <label className={`${locked ? "hidden " : ""}ml-auto flex items-center gap-3`}>
           <span className="text-caption font-medium text-text-muted">strict</span>
           <input
             type="range"
@@ -295,8 +303,12 @@ export function Workspace({
                     roleDecision={decisions[id]?.role}
                     onDecideRole={(role) => onDecide(id, { role })}
                     onSetName={(name) => onDecide(id, { name })}
-                    onReviewCluster={clusterId ? () => setOpenClusterId(clusterId) : undefined}
-                    onUnmerge={entry.token.merged ? () => handleUnmerge(id) : undefined}
+                    onReviewCluster={
+                      !locked && clusterId ? () => setOpenClusterId(clusterId) : undefined
+                    }
+                    onUnmerge={
+                      !locked && entry.token.merged ? () => handleUnmerge(id) : undefined
+                    }
                     onEditManual={
                       entry.origin === "manual"
                         ? () =>

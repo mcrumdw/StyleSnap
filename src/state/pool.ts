@@ -41,6 +41,10 @@ export interface TokenPool {
   decisions: Record<string, TokenDecision>;
   /** Manually added tokens (Phase 5, FR-19) — user-owned, editable, removable. */
   manual: StyleSnapToken[];
+  /** User-edited project name (Phase 6); when unset, derived from the first import. */
+  projectName?: string;
+  /** Set by Create System (FR-23) — locks merges and pins the export timestamp. */
+  systemCreatedAt?: string;
 }
 
 export function emptyPool(): TokenPool {
@@ -120,6 +124,34 @@ export function removeManualToken(pool: TokenPool, tokenId: string): TokenPool {
     merges: pool.merges.filter((m) => m.survivorId !== tokenId),
     decisions,
   };
+}
+
+// ─────────────────────────────────────────
+// Create System (Phase 6, FR-23)
+// ─────────────────────────────────────────
+
+export function setProjectName(pool: TokenPool, name: string): TokenPool {
+  return { ...pool, projectName: name };
+}
+
+/** Finalize: merges lock, exports use this timestamp (re-exports stay byte-identical). */
+export function createSystem(pool: TokenPool, at: string): TokenPool {
+  return { ...pool, systemCreatedAt: at };
+}
+
+export function isSystemCreated(pool: TokenPool): boolean {
+  return pool.systemCreatedAt !== undefined;
+}
+
+/** PRD §16 (decided): prefill from meta.figmaFile / the pageUrl domain. */
+export function defaultProjectName(pool: TokenPool): string {
+  for (const imp of pool.imports) {
+    if (imp.meta.figmaFile) return imp.meta.figmaFile;
+  }
+  for (const imp of pool.imports) {
+    if (imp.meta.pageUrl) return hostnameOf(imp.meta.pageUrl);
+  }
+  return "Untitled";
 }
 
 export function poolTokens(pool: TokenPool): StyleSnapToken[] {
@@ -216,6 +248,11 @@ export function deserializeDraft(text: string | null): TokenPool | null {
     manual.push(parsed.data);
   }
 
+  // Project name + Create System stamp were added in Phase 6 — optional strings.
+  const { projectName, systemCreatedAt } = json as Partial<TokenPool>;
+  if (projectName !== undefined && typeof projectName !== "string") return null;
+  if (systemCreatedAt !== undefined && typeof systemCreatedAt !== "string") return null;
+
   const imports: PoolImport[] = [];
   for (const entry of (json as { imports: unknown[] }).imports) {
     const imp = entry as PoolImport;
@@ -231,7 +268,10 @@ export function deserializeDraft(text: string | null): TokenPool | null {
       tokens: parsed.data.tokens,
     });
   }
-  return { imports, merges, decisions, manual };
+  const pool: TokenPool = { imports, merges, decisions, manual };
+  if (projectName !== undefined) pool.projectName = projectName;
+  if (systemCreatedAt !== undefined) pool.systemCreatedAt = systemCreatedAt;
+  return pool;
 }
 
 export function loadDraft(storage: Pick<Storage, "getItem">): TokenPool | null {

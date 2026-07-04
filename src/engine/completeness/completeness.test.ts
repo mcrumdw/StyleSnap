@@ -1,65 +1,7 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseStyleSnapExport } from "../../contract/schema";
 import type { ColorToken, StyleSnapToken } from "../../contract/types";
-import { applyMerges, type MergeRecord } from "../dedup";
+import { ORACLE_ROLES, oracleViewTokens as oracleView } from "../testing/oracle";
 import { computeChecklist } from "./index";
-
-const fixture = (name: string) =>
-  readFileSync(new URL(`../../../docs/fixtures/${name}`, import.meta.url), "utf-8");
-
-function allTokens(): StyleSnapToken[] {
-  const tokens: StyleSnapToken[] = [];
-  for (const name of ["capture-browser-messy.json", "capture-figma-clean.json"]) {
-    const result = parseStyleSnapExport(fixture(name));
-    if (!result.ok) throw new Error(`fixture ${name} should parse`);
-    tokens.push(...result.data.tokens);
-  }
-  return tokens;
-}
-
-// The post-Phase-4 state from docs/examples/design.example.md: the oracle's
-// merges applied and its roles confirmed.
-const ORACLE_MERGES: MergeRecord[] = [
-  { survivorId: "ext_001", mergedIds: ["ext_002", "ext_003", "ext_004", "fig_001"], mergedAt: "t" },
-  { survivorId: "ext_006", mergedIds: ["ext_007", "fig_002"], mergedAt: "t" },
-  { survivorId: "ext_010", mergedIds: ["fig_003"], mergedAt: "t" },
-  { survivorId: "ext_015", mergedIds: ["ext_016", "fig_006"], mergedAt: "t" },
-  { survivorId: "ext_023", mergedIds: ["ext_022", "fig_007"], mergedAt: "t" },
-  { survivorId: "fig_008", mergedIds: ["ext_028"], mergedAt: "t" },
-  { survivorId: "fig_009", mergedIds: ["ext_031"], mergedAt: "t" },
-];
-
-const ORACLE_ROLES = new Map<string, string>([
-  ["ext_001", "color/action/primary"],
-  ["ext_005", "color/action/primary-hover"],
-  ["ext_011", "color/border/default"],
-  ["ext_012", "color/feedback/error"],
-  ["ext_009", "color/surface/card"],
-  ["fig_004", "color/surface/overlay"],
-  ["ext_010", "color/surface/page"],
-  ["ext_008", "color/text/muted"],
-  ["ext_006", "color/text/primary"],
-  ["ext_014", "type/display"],
-  ["fig_005", "type/heading"],
-  ["ext_015", "type/body"],
-  ["ext_017", "type/caption"],
-  ["ext_019", "space/xs"],
-  ["ext_020", "space/sm"],
-  ["ext_023", "space/md"],
-  ["ext_024", "space/lg"],
-  ["ext_025", "space/xl"],
-  ["ext_026", "space/2xl"],
-  ["ext_027", "radius/sm"],
-  ["fig_008", "radius/md"],
-  ["ext_029", "border-width/default"],
-  ["ext_030", "shadow/sm"],
-  ["fig_009", "shadow/md"],
-]);
-
-function oracleView(): StyleSnapToken[] {
-  return applyMerges(allTokens().map((token) => ({ token })), ORACLE_MERGES).map((e) => e.token);
-}
 
 describe("completeness checklist (FR-18 / B.5) — the oracle acceptance", () => {
   const checklist = computeChecklist(oracleView(), ORACLE_ROLES);
