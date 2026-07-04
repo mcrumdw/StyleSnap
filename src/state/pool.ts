@@ -21,14 +21,28 @@ export interface PoolImport {
   tokens: StyleSnapToken[];
 }
 
+/**
+ * A user decision about one token (Phase 4). Suggestions are always computed
+ * live from the engine; ONLY explicit decisions persist here — that is what
+ * "nothing finalizes without confirmation" (FR-16) means in the data model.
+ */
+export interface TokenDecision {
+  /** Confirmed role; `null` = user explicitly chose "no role (primitive)". */
+  role?: string | null;
+  /** User-assigned slash-nested name (FR-21). */
+  name?: string;
+}
+
 export interface TokenPool {
   imports: PoolImport[];
   /** User-confirmed merges (Phase 3) — applied as a view, reversible until Create System. */
   merges: MergeRecord[];
+  /** Confirmed roles + names per token id (Phase 4). */
+  decisions: Record<string, TokenDecision>;
 }
 
 export function emptyPool(): TokenPool {
-  return { imports: [], merges: [] };
+  return { imports: [], merges: [], decisions: {} };
 }
 
 /** Append a validated export to the pool. Pure — returns a new pool. */
@@ -54,6 +68,27 @@ export function addMerge(pool: TokenPool, merge: MergeRecord): TokenPool {
 /** Un-merge (FR-13): drop the record; the view restores itself exactly. */
 export function removeMerge(pool: TokenPool, survivorId: string): TokenPool {
   return { ...pool, merges: pool.merges.filter((m) => m.survivorId !== survivorId) };
+}
+
+/**
+ * Set or clear one field of a token's decision. `undefined` removes the field
+ * (falls back to the live suggestion); empty decisions are dropped entirely.
+ */
+export function setDecision(
+  pool: TokenPool,
+  tokenId: string,
+  patch: TokenDecision,
+): TokenPool {
+  const next: TokenDecision = { ...pool.decisions[tokenId], ...patch };
+  if (patch.role === undefined && "role" in patch) delete next.role;
+  if (patch.name === undefined && "name" in patch) delete next.name;
+  const decisions = { ...pool.decisions };
+  if (next.role === undefined && next.name === undefined) {
+    delete decisions[tokenId];
+  } else {
+    decisions[tokenId] = next;
+  }
+  return { ...pool, decisions };
 }
 
 export function poolTokens(pool: TokenPool): StyleSnapToken[] {
@@ -123,6 +158,23 @@ export function deserializeDraft(text: string | null): TokenPool | null {
     merges.push({ survivorId: m.survivorId, mergedIds: m.mergedIds, mergedAt: m.mergedAt });
   }
 
+  // Decisions were added in Phase 4 — older drafts simply have none.
+  const rawDecisions = (json as Partial<TokenPool>).decisions ?? {};
+  if (typeof rawDecisions !== "object" || rawDecisions === null || Array.isArray(rawDecisions)) {
+    return null;
+  }
+  const decisions: Record<string, TokenDecision> = {};
+  for (const [tokenId, entry] of Object.entries(rawDecisions)) {
+    const d = entry as TokenDecision;
+    if (typeof d !== "object" || d === null) return null;
+    if (d.role !== undefined && d.role !== null && typeof d.role !== "string") return null;
+    if (d.name !== undefined && typeof d.name !== "string") return null;
+    const clean: TokenDecision = {};
+    if (d.role !== undefined) clean.role = d.role;
+    if (d.name !== undefined) clean.name = d.name;
+    if (clean.role !== undefined || clean.name !== undefined) decisions[tokenId] = clean;
+  }
+
   const imports: PoolImport[] = [];
   for (const entry of (json as { imports: unknown[] }).imports) {
     const imp = entry as PoolImport;
@@ -138,7 +190,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
       tokens: parsed.data.tokens,
     });
   }
-  return { imports, merges };
+  return { imports, merges, decisions };
 }
 
 export function loadDraft(storage: Pick<Storage, "getItem">): TokenPool | null {

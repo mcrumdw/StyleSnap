@@ -8,7 +8,7 @@ import { usePool } from "../state/usePool";
 import { poolEntries } from "../state/workspace";
 
 export function Home() {
-  const { pool, addImport, mergeCluster, unmerge, startOver } = usePool();
+  const { pool, addImport, mergeCluster, unmerge, decide, startOver } = usePool();
   const entries = useMemo(() => poolEntries(pool), [pool]);
   const total = poolTokenCount(pool);
   const hasTokens = pool.imports.length > 0;
@@ -34,8 +34,10 @@ export function Home() {
           <Workspace
             entries={entries}
             merges={pool.merges}
+            decisions={pool.decisions}
             onMergeCluster={mergeCluster}
             onUnmerge={unmerge}
+            onDecide={decide}
           />
 
           <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-12">

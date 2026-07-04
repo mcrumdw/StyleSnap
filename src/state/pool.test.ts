@@ -10,6 +10,7 @@ import {
   poolTokenCount,
   poolTokens,
   serializeDraft,
+  setDecision,
 } from "./pool";
 
 const fixture = (name: string) =>
@@ -70,6 +71,25 @@ describe("token pool (FR-3)", () => {
   });
 });
 
+describe("decisions (FR-16 — nothing finalizes without confirmation)", () => {
+  it("stores, patches, and clears per-token decisions", () => {
+    let pool = emptyPool();
+    pool = setDecision(pool, "t1", { role: "color/action/primary" });
+    pool = setDecision(pool, "t1", { name: "color/brand-blue" });
+    expect(pool.decisions.t1).toEqual({ role: "color/action/primary", name: "color/brand-blue" });
+
+    // undefined removes the field; an empty decision disappears entirely.
+    pool = setDecision(pool, "t1", { role: undefined });
+    expect(pool.decisions.t1).toEqual({ name: "color/brand-blue" });
+    pool = setDecision(pool, "t1", { name: undefined });
+    expect(pool.decisions.t1).toBeUndefined();
+
+    // null = explicit "no role" — a decision, distinct from undecided.
+    pool = setDecision(pool, "t2", { role: null });
+    expect(pool.decisions.t2).toEqual({ role: null });
+  });
+});
+
 describe("malformed capture (FR-2 acceptance)", () => {
   it("is rejected with the friendly error and its 4 specific issues", () => {
     const result = parseStyleSnapExport(fixture("capture-malformed.json"));
@@ -113,6 +133,17 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.merges;
     expect(deserializeDraft(JSON.stringify(legacy))?.merges).toEqual([]);
+  });
+
+  it("round-trips role/name decisions; legacy drafts get an empty map", () => {
+    let pool = poolWithBothFixtures();
+    pool = setDecision(pool, "ext_001", { role: "color/action/primary" });
+    pool = setDecision(pool, "ext_008", { role: null, name: "color/gray-500" });
+    expect(deserializeDraft(serializeDraft(pool))).toEqual(pool);
+
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    delete legacy.decisions;
+    expect(deserializeDraft(JSON.stringify(legacy))?.decisions).toEqual({});
   });
 
   it("returns null for a missing, corrupt, or invalid draft — never throws", () => {

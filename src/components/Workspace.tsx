@@ -7,6 +7,8 @@ import {
   type MergeRecord,
   type Sensitivity,
 } from "../engine/dedup";
+import { deriveRoleSuggestions } from "../engine/roles";
+import type { TokenDecision } from "../state/pool";
 import {
   captureGroups,
   DEFAULT_FILTERS,
@@ -53,12 +55,21 @@ const MERGE_NOUNS: Record<TokenType, string> = {
 interface WorkspaceProps {
   entries: PoolEntry[];
   merges: MergeRecord[];
+  decisions: Record<string, TokenDecision>;
   onMergeCluster: (survivorId: string, mergedIds: string[]) => void;
   onUnmerge: (survivorId: string) => void;
+  onDecide: (tokenId: string, patch: TokenDecision) => void;
 }
 
-/** PRD §7.2–7.4 — the token workspace with live dedup flags and merge. */
-export function Workspace({ entries, merges, onMergeCluster, onUnmerge }: WorkspaceProps) {
+/** PRD §7.2–7.5, §7.7 — the token workspace: flags, merge, roles, naming. */
+export function Workspace({
+  entries,
+  merges,
+  decisions,
+  onMergeCluster,
+  onUnmerge,
+  onDecide,
+}: WorkspaceProps) {
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_FILTERS);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("default");
   const [openClusterId, setOpenClusterId] = useState<string | null>(null);
@@ -68,7 +79,30 @@ export function Workspace({ entries, merges, onMergeCluster, onUnmerge }: Worksp
     setFilters((f) => ({ ...f, [key]: value }));
 
   // Merges are a view over the raw pool — reversible until Create System.
-  const view = useMemo(() => applyMerges(entries, merges), [entries, merges]);
+  // User-assigned names overlay the raw tokens the same way.
+  const view = useMemo(() => {
+    const merged = applyMerges(entries, merges);
+    return merged.map((entry) => {
+      const name = decisions[entry.token.id]?.name;
+      return name !== undefined ? { ...entry, token: { ...entry.token, name } } : entry;
+    });
+  }, [entries, merges, decisions]);
+
+  // Role suggestions are always derived live (never persisted): the raw map
+  // lets merge survivors inherit their absorbed tokens' contexts (A.1).
+  const rawById = useMemo(
+    () => new Map(entries.map((e) => [e.token.id, e.token])),
+    [entries],
+  );
+  const suggestions = useMemo(
+    () => deriveRoleSuggestions(view.map((e) => e.token), rawById),
+    [view, rawById],
+  );
+  const effectiveRoleOf = (tokenId: string): string | undefined => {
+    const decided = decisions[tokenId]?.role;
+    if (decided !== undefined) return decided ?? undefined;
+    return suggestions.get(tokenId)?.role;
+  };
 
   // Detection re-flags live on sensitivity change; it never merges by itself.
   const clusters = useMemo(
@@ -88,7 +122,7 @@ export function Workspace({ entries, merges, onMergeCluster, onUnmerge }: Worksp
 
   const elements = useMemo(() => captureGroups(view), [view]);
   const visible = useMemo(() => filterEntries(view, filters, flaggedIds), [view, filters, flaggedIds]);
-  const groups = useMemo(() => groupByType(visible), [visible]);
+  const groups = groupByType(visible, effectiveRoleOf);
   const isFiltered = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
 
   const openCluster = clusters.find((c) => c.id === openClusterId) ?? null;
@@ -211,14 +245,19 @@ export function Workspace({ entries, merges, onMergeCluster, onUnmerge }: Worksp
             </h2>
             <div className="grid grid-cols-3 gap-6">
               {group.entries.map((entry) => {
-                const clusterId = clusterIdByToken.get(entry.token.id);
+                const id = entry.token.id;
+                const clusterId = clusterIdByToken.get(id);
                 return (
                   <TokenCard
-                    key={entry.token.id}
+                    key={id}
                     entry={entry}
-                    flag={flags.get(entry.token.id)}
+                    flag={flags.get(id)}
+                    roleSuggestion={suggestions.get(id)}
+                    roleDecision={decisions[id]?.role}
+                    onDecideRole={(role) => onDecide(id, { role })}
+                    onSetName={(name) => onDecide(id, { name })}
                     onReviewCluster={clusterId ? () => setOpenClusterId(clusterId) : undefined}
-                    onUnmerge={entry.token.merged ? () => handleUnmerge(entry.token.id) : undefined}
+                    onUnmerge={entry.token.merged ? () => handleUnmerge(id) : undefined}
                   />
                 );
               })}

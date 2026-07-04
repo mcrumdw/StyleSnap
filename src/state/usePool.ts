@@ -9,6 +9,8 @@ import {
   loadDraft,
   removeMerge,
   saveDraft,
+  setDecision,
+  type TokenDecision,
   type TokenPool,
 } from "./pool";
 
@@ -41,10 +43,14 @@ export function usePool() {
     setPool((current) => removeMerge(current, survivorId));
   }, []);
 
+  const decide = useCallback((tokenId: string, patch: TokenDecision) => {
+    setPool((current) => setDecision(current, tokenId, patch));
+  }, []);
+
   const startOver = useCallback(() => {
     clearDraft(localStorage);
     setPool(emptyPool());
   }, []);
 
-  return { pool, addImport, mergeCluster, unmerge, startOver };
+  return { pool, addImport, mergeCluster, unmerge, decide, startOver };
 }

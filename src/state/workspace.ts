@@ -5,6 +5,7 @@
 // search + filters (FR-7, FR-8). No React in here.
 
 import type { StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types";
+import { roleOrderIndex } from "../engine/roles";
 import type { TokenPool } from "./pool";
 
 /** A token plus the provenance of the import it arrived in (FR-3). */
@@ -193,12 +194,24 @@ export interface TokenGroup {
   entries: PoolEntry[];
 }
 
-/** Groups in canonical type order, canonically sorted inside, empty groups omitted. */
-export function groupByType(entries: PoolEntry[]): TokenGroup[] {
+/**
+ * Groups in canonical type order, canonically sorted inside (with roles in
+ * Appendix B order when provided — role-less last), empty groups omitted.
+ */
+export function groupByType(
+  entries: PoolEntry[],
+  roleOf?: (tokenId: string) => string | undefined,
+): TokenGroup[] {
   return TOKEN_TYPE_ORDER.flatMap((type) => {
     const inGroup = entries
       .filter((e) => e.token.type === type)
-      .sort((a, b) => canonicalCompare(a.token, b.token));
+      .sort((a, b) => {
+        if (roleOf) {
+          const byRole = roleOrderIndex(roleOf(a.token.id)) - roleOrderIndex(roleOf(b.token.id));
+          if (byRole !== 0) return byRole;
+        }
+        return canonicalCompare(a.token, b.token);
+      });
     return inGroup.length > 0
       ? [{ type, label: TOKEN_TYPE_LABELS[type], entries: inGroup }]
       : [];
