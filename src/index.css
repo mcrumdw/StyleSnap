@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface-page font-body text-text-primary;
+  }
+
+  /* Every interactive element gets the 2px offset focus ring (DESIGN.md §11).
+     The 2px offset gap keeps the ring visible even on brand-primary surfaces. */
+  :focus-visible {
+    outline: 2px solid theme("colors.focus-ring");
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      transform: none !important;
+    }
+  }
+}
