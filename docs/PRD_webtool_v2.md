@@ -131,13 +131,13 @@ everything before it is reversible; it produces the finalized, stable set.
 - **FR-5** Group tokens by `type` (color, gradient, typography, spacing, border-radius, border-width, shadow); show per-group **counts**; hide empty groups.
 - **FR-6** Per token: **value preview** (swatch / type specimen / numeric chip / shadow & gradient preview), `source` provenance, `occurrences`, assigned `name` (or "unnamed"), derived-role chip, and a **duplicate/similar badge** when flagged.
 - **FR-7** Search/filter (by type, source, named/unnamed, flagged).
-- **FR-8** Reconstruct capture **groupings** via `captureId` (tokens from the same element) to support later component work.
+- **FR-8** **Display** capture groupings via `captureId` (tokens from the same element) — a "from the same element" grouping/filter in the workspace, nothing more in MVP. Component *reconstruction* from these groups is V3 (§13).
 
 ### 7.3 Duplicate detection (rule-based, V1)
 - **FR-9** Flag **exact duplicates** and **"similar"** values per type — a deliberate two-level distinction:
   - **Color:** exact hex = duplicate; within a small perceptual ΔE threshold = similar (Appendix A).
   - **Numeric (spacing / radius / border-width):** equal = duplicate; within a small relative tolerance = similar (Appendix A).
-  - **Typography:** same `fontFamily` + `fontSize` + `fontWeight` = duplicate.
+  - **Typography:** identical normalized composite key = duplicate — the key is `fontFamily + fontSize + fontWeight + fontStyle + letterSpacing + textTransform + lineHeight` (full definition in A.4). Tokens equal in everything **except `lineHeight`** are flagged **similar**, never auto-merged.
   - **Shadow:** all layer fields equal = duplicate.
 - **FR-10** Rank a canonical candidate per cluster (by `occurrences` + context strength).
 - **FR-11** Detection is **suggestive, never destructive** — flags only; the user decides.
@@ -170,8 +170,8 @@ everything before it is reversible; it produces the finalized, stable set.
 - **FR-27** Flag any remaining gaps in every export so the consumer knows what's undefined.
 
 ### 7.9 Session & persistence
-- **FR-28** V1 state is **in-session** (refresh = empty); **JSON export is the save mechanism**, clearly messaged.
-- **FR-29** Optional **localStorage draft** to survive accidental refresh (stretch).
+- **FR-28** V1 has no backend; **JSON export is the save mechanism**, clearly messaged.
+- **FR-29** **localStorage draft (MVP, promoted 2026-07-04)** — the working state auto-saves to localStorage and is restored on load, so an accidental refresh never loses work (a refresh mid-demo must not be fatal). Not a substitute for JSON export.
 
 ## 8. Design principles (the "confidence pattern")
 
@@ -230,18 +230,26 @@ A single file to paste into Claude Code / Cursor as design-system context.
 
 - **MVP** — paste/upload + validate, token workspace, **rule-based dedup +
   merge**, **manual role assignment**, **manual gap completion**, `design.md` +
-  cleaned-JSON export, in-session state.
+  cleaned-JSON export, localStorage draft (FR-29).
 - **V2** — AI assistance (similarity/role suggestion, AI gap-fill, naming),
-  completeness automation, localStorage draft.
+  completeness automation.
 - **V3** — Figma Variables/Styles export, project persistence/accounts,
   component reconstruction from `captureId`.
+
+**De-scope order (locked 2026-07-04).** The golden demo path — *paste → see
+the 30-blues problem → dedupe/merge → name → export `design.md`* — is
+untouchable. If the timeline compresses, simplify in this order: (1) the
+completeness checklist shrinks to a static gap list, (2) manual scale-builders
+shrink to plain add/edit token forms, (3) role assignment falls back to a
+simple dropdown per token (taxonomy from Appendix B). Never cut dedup, merge,
+or the `design.md` export.
 
 ## 14. Tech & architecture
 
 | Item | Choice |
 |---|---|
 | Frontend | React + Vite |
-| Backend / DB | **None for V1** — state in-session (JSON export = save) |
+| Backend / DB | **None for V1** — state in-browser (localStorage draft, FR-29; JSON export = save) |
 | Data contract | `docs/types.ts` v2.0 — imported, never redefined |
 | AI | Anthropic API (V2 — for FR-20 assistance) |
 | Deployment | Vercel or Netlify (static) |
@@ -253,16 +261,16 @@ A single file to paste into Claude Code / Cursor as design-system context.
 |---|---|
 | Schema drift across the three codebases | `types.ts` v2.0 locked; web app imports it directly |
 | Rule-based dedup misses "visually same" colors | Tune threshold; mark as "similar" (suggest, don't force); AI matching in V2 |
-| In-session-only state loses work on refresh | Clear messaging; JSON export as save; localStorage draft (stretch) |
+| Losing work on refresh | localStorage draft (FR-29, MVP); JSON export as the real save; clear messaging |
 | `design.md` not actually useful to AI tools | Validate by pasting a real export into Claude Code / Cursor during testing |
 | AI suggestions erode trust if wrong | Human-in-the-loop everywhere; proposals only; consistent-with-capture rule |
 
 ## 16. Dependencies & open questions
 
 - **`types.ts` contract stability** — the hard dependency; changes coordinated across surfaces.
-- **Project name** for the `design.md` header — derive from `meta.figmaFile` / `meta.pageUrl`, or ask the user?
-- **Naming convention default** — `color/brand-primary` vs `brand-primary`; pick one, consistent with `design.md` output and `DESIGN.md`.
-- **Who owns the Figma export** (this app vs the Figma plugin)?
+- ~~**Project name** for the `design.md` header~~ — **Decided 2026-07-04:** prefill from `meta.figmaFile` / the domain of `meta.pageUrl` on first import; editable field in the workspace; exports use it. No blocking prompt.
+- ~~**Naming convention default**~~ — **Decided 2026-07-04: slash-nested** (`color/action/primary`, `space/md`) everywhere — UI, `design.md`, cleaned JSON. It is Figma Variables' native nesting, so the Figma export needs no name mapping. Role taxonomy in **Appendix B**.
+- **Who owns the Figma export** (this app vs the Figma plugin)? *Leaning plugin: a static web app with no backend can't do Figma REST OAuth; deferred to V3.*
 - **Output token format** — adopt W3C Design Tokens? (recommended, §9).
 
 ## 17. Out of scope (V1)
@@ -271,7 +279,7 @@ A single file to paste into Claude Code / Cursor as design-system context.
 - StyleSnap's own UI design (see `DESIGN.md`).
 - Generating production application code (downstream of `design.md`).
 - Dependency graph (which text style uses which color).
-- User accounts / backend / persistence (V1 is in-session).
+- User accounts / backend / server-side persistence (V1 is local: localStorage draft + JSON export).
 - Mobile-responsive layout — desktop-first for the demo.
 
 ---
@@ -315,8 +323,11 @@ Convert sRGB → OKLab and use Euclidean distance (ΔEOK); or CIEDE2000 (ΔE00).
 Recommended library: **`culori`**. Never cluster across differing `opacity`.
 
 ```
-colorDistance(a, b) = (a.opacity !== b.opacity) ? Infinity : dEOK(a.value, b.value)
+colorDistance(a, b) = (|a.opacity - b.opacity| > 0.01) ? Infinity : dEOK(a.value, b.value)
 ```
+
+(Opacity uses an ε of 0.01, not strict equality — float noise like `0.8` vs
+`0.7999999` must not split a cluster.)
 
 | Level | ΔEOK (OKLab) | ΔE00 (CIEDE2000) |
 |---|---|---|
@@ -344,14 +355,21 @@ So 14/15/16 cluster (canonical snaps toward a clean scale) while 4 and 8 never c
 
 ```
 normalize: family = first-in-stack, lowercased, de-quoted; weight numeric
-           ("bold"→700, "normal"→400); size rounded to 0.5px
-dupKey  = family | size | weight | style | letterSpacing | textTransform
+           ("bold"→700, "normal"→400); size rounded to 0.5px;
+           lineHeight rounded to 0.05 (kills float noise: 1.4999 ≡ 1.5)
+dupKey  = family | size | weight | style | letterSpacing | textTransform | lineHeight
           → identical key = duplicate
 similar = same (family, weight, style) AND |Δsize| within tol()   # reveals a type scale
+        OR identical key except lineHeight                        # lineHeight conflict
 ```
 
 Keep `letterSpacing` / `textTransform` in the key — a tracked uppercase label is
 a *different* token from body text at the same size/weight.
+
+`lineHeight` is in the key (decided 2026-07-04): merging two tokens that differ
+only in line-height would silently drop one value, violating "suggestive, never
+destructive." Instead they surface as **similar**, and the merge dialog shows
+the line-height conflict so the user picks the survivor knowingly.
 
 ### A.5 Shadow & gradient
 
@@ -368,11 +386,100 @@ gradient (conservative): same kind & stop count, each stop colorDistance ≤ 0.0
 - **Value-based dedup (adopted):** collapse primitives by value regardless of
   context; the survivor inherits all contexts, which then drive role mapping
   (§7.5). Revisit only if it proves too aggressive.
-- **Deterministic ordering** everywhere → clean export diffs.
+- **Deterministic ordering** everywhere → clean export diffs. The canonical
+  sort key (workspace, exports, cleaned JSON): **`type` (fixed order: color,
+  gradient, typography, spacing, border-radius, border-width, shadow) → role
+  (Appendix B order, role-less last) → `name` (asc, unnamed last) → value
+  (asc) → `id`** as final tiebreak.
 - **Suggest, never auto-apply**; reversible until Create System (FR-13).
-- **One sensitivity slider** controls dup/similar thresholds, not per-type knobs.
+- **One sensitivity slider** controls dup/similar thresholds, not per-type
+  knobs. Three positions scaling every type's thresholds uniformly:
+  **strict = ×0.5 · default = ×1 · loose = ×1.5** (e.g. color similar ΔEOK
+  0.025 / 0.05 / 0.075; numeric tol 2.5% / 5% / 7.5%). Changing it re-flags
+  live; it never re-merges or un-merges anything by itself.
 - **Library:** `culori` covers all color math; numeric/typography logic is plain JS.
 
 ---
 
-*PRD version: draft v2 — review + completion is core.*
+## Appendix B — Canonical role taxonomy (V1, lean core set)
+
+Decided 2026-07-04. This is the fixed vocabulary behind role assignment
+(§7.5), the completeness checklist (FR-18), and the `design.md` structure
+(§11). **Naming is slash-nested** (`color/action/primary`) — Figma Variables'
+native nesting, so the Figma export needs no name mapping. Component-level
+roles (`button/bg`, …) are deliberately deferred to V3.
+
+Semantic roles point at user-named **primitives** (two-tier, `DECISIONS.md`
+§2.3). Primitives live under a type prefix with a free name chosen by the
+user: `color/brand-indigo`, `font/space-grotesk`.
+
+### B.1 Color roles (17)
+
+| Role | Meaning | Required for "complete" |
+|---|---|---|
+| `color/text/primary` | Default text | ✅ |
+| `color/text/muted` | Secondary text, captions | ✅ |
+| `color/text/inverse` | Text on dark/brand fills | — |
+| `color/text/link` | Links | — |
+| `color/surface/page` | App/page background | ✅ |
+| `color/surface/card` | Cards, panels, inputs | ✅ |
+| `color/surface/overlay` | Modal scrim | — |
+| `color/action/primary` | Primary buttons, active nav | ✅ |
+| `color/action/primary-hover` | Hover state | ✅ |
+| `color/action/primary-active` | Pressed state | — |
+| `color/action/secondary` | Secondary CTAs | — |
+| `color/border/default` | Card/input borders, dividers | ✅ |
+| `color/border/focus` | Keyboard focus ring | ✅ |
+| `color/feedback/success` | Confirmation | ✅ |
+| `color/feedback/warning` | Caution | ✅ |
+| `color/feedback/error` | Errors, destructive | ✅ |
+| `color/feedback/info` | Neutral information | ✅ |
+
+### B.2 Typography roles (6)
+
+`type/display` · `type/heading` · `type/subheading` · `type/body` (✅) ·
+`type/caption` · `type/mono`. Required for complete: `type/body` +
+at least one of `type/display` / `type/heading` (✅).
+
+### B.3 Foundation scales
+
+Scales are **named slots**, assigned to deduped primitives:
+
+- **Spacing:** `space/xs · sm · md · lg · xl · 2xl` — complete = **≥ 4 steps** assigned (✅).
+- **Radius:** `radius/sm · md · lg · full` — complete = **≥ 1** (✅).
+- **Shadow:** `shadow/sm · md · lg` — complete = **≥ 1** (✅).
+- **Border width:** `border-width/default · thick` — complete = `default` (✅).
+- **Interaction states:** hover + active shades exist for `color/action/primary` (✅ — counted via B.1).
+
+### B.4 Context → role derivation hints (FR-14)
+
+Strongest signal first (per `DECISIONS.md` §2.4): `authoredName` always wins
+when parseable. Then:
+
+| Context signal | Candidate role |
+|---|---|
+| `background-color` on `body`/`main`/`html` | `color/surface/page` |
+| `background-color` on `button` / `[role=button]` | `color/action/primary` (or `secondary` by frequency rank) |
+| `background-color` elsewhere | `color/surface/card` |
+| `color` on `h1–h3` | `color/text/primary` + `type/heading` |
+| `color` on `p`/`body` | `color/text/primary` + `type/body` |
+| `color` on `a` | `color/text/link` |
+| `border-color` | `color/border/default` |
+| any color with `state: hover/active` | matching `color/action/primary-*` |
+| `[role=alert]` / `aria-invalid` context | `color/feedback/*` |
+| `box-shadow` value | `shadow/*` slot by size rank |
+| spacing values | `space/*` slots by ascending size |
+
+Unmatched tokens stay primitives — a role is never forced (FR-16).
+
+### B.5 Completeness checklist (FR-18) = the ✅ rows above
+
+12 color roles + body-plus-one type roles + the scale minima. The checklist UI
+shows each unmet ✅ item as a specific, actionable gap ("No `space/*` scale yet
+— assign at least 4 spacing steps").
+
+---
+
+*PRD version: draft v2.1 — review + completion is core. 2026-07-04: typography
+dup key includes `lineHeight` (A.4); Appendix B role taxonomy; naming =
+slash-nested; project name derived + editable (§16).*
