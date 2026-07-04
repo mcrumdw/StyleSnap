@@ -4,6 +4,7 @@
 import type { StyleSnapExport, StyleSnapToken } from "../../docs/types";
 import { parseStyleSnapExport } from "../../docs/schema";
 import { extractTokens } from "./extract";
+import { createAssets } from "./create";
 
 // One row in the import preview: what would be created in Figma.
 export interface ImportPreviewEntry {
@@ -16,6 +17,7 @@ export interface ImportPreviewEntry {
 type UiMessage =
   | { type: "extract-tokens" }
   | { type: "validate-import"; json: string }
+  | { type: "create-import"; json: string }
   | { type: "notify"; message: string };
 
 // Messages sandbox → UI
@@ -29,7 +31,8 @@ type PluginMessage =
       skippedUnnamed: number;
       versionWarning?: string;
     }
-  | { type: "import-invalid"; error: string; details: string[] };
+  | { type: "import-invalid"; error: string; details: string[] }
+  | { type: "create-done"; created: number; skipped: number; errors: string[] };
 
 figma.showUI(__html__, { width: 320, height: 480, themeColors: true });
 
@@ -102,6 +105,19 @@ figma.ui.onmessage = async (msg: UiMessage) => {
         skippedUnnamed,
         versionWarning: result.versionWarning,
       });
+      return;
+    }
+    case "create-import": {
+      const result = parseStyleSnapExport(msg.json);
+      if (!result.ok) {
+        postToUi({ type: "import-invalid", error: result.error, details: result.details });
+        return;
+      }
+      const summary = await createAssets(result.data);
+      postToUi({ type: "create-done", ...summary });
+      if (summary.created > 0) {
+        figma.notify(`StyleSnap: ${summary.created} styles/variables created`);
+      }
       return;
     }
     case "extract-tokens": {

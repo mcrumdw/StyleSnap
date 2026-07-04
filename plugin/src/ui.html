@@ -134,6 +134,19 @@
         status.textContent = text;
         break;
       }
+      case "create-done": {
+        const status = $("import-status");
+        let text = "✓ " + msg.created + " created";
+        if (msg.skipped > 0) text += " · " + msg.skipped + " skipped (already existed or unnamed)";
+        if (msg.errors.length > 0) {
+          status.className = "status warn";
+          text += " · " + msg.errors.length + " failed: " + msg.errors[0];
+        } else {
+          status.className = "status";
+        }
+        status.textContent = text;
+        break;
+      }
       case "import-invalid": {
         renderImportPreview([]);
         $("btn-import").disabled = true;
@@ -251,8 +264,10 @@
   });
 
   $("btn-import").addEventListener("click", () => {
-    // Task 5 wires this up to actual style/variable creation.
-    $("import-status").textContent = "Creation is not implemented yet (Task 5)";
+    $("btn-import").disabled = true;
+    $("import-status").className = "status";
+    $("import-status").textContent = "Creating styles & variables…";
+    post({ type: "create-import", json: $("import-json").value.trim() });
   });
 </script>
 </body>
