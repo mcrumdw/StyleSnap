@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  /* Figma injects --figma-color-* variables because manifest has themeColors: true */
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: 11px/1.5 Inter, system-ui, sans-serif;
+    color: var(--figma-color-text, #111);
+    background: var(--figma-color-bg, #fff);
+    padding: 12px;
+  }
+  h1 { font-size: 13px; margin-bottom: 8px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  .tab {
+    flex: 1; padding: 6px 0; text-align: center; cursor: pointer;
+    border: 1px solid var(--figma-color-border, #e5e5e5); border-radius: 6px;
+    background: none; color: inherit; font: inherit;
+  }
+  .tab.active {
+    background: var(--figma-color-bg-brand, #5B2EFF);
+    color: var(--figma-color-text-onbrand, #fff);
+    border-color: transparent;
+  }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  button.primary {
+    width: 100%; padding: 8px; margin-top: 12px; cursor: pointer;
+    background: var(--figma-color-bg-brand, #5B2EFF);
+    color: var(--figma-color-text-onbrand, #fff);
+    border: none; border-radius: 6px; font: inherit; font-weight: 600;
+  }
+  button.primary:disabled { opacity: 0.4; cursor: default; }
+  .status { margin-top: 8px; min-height: 16px; color: var(--figma-color-text-secondary, #666); }
+  textarea {
+    width: 100%; height: 120px; resize: vertical; font: 10px/1.4 monospace;
+    color: inherit; background: var(--figma-color-bg-secondary, #f5f5f5);
+    border: 1px solid var(--figma-color-border, #e5e5e5); border-radius: 6px; padding: 8px;
+  }
+  ul#token-list { list-style: none; max-height: 240px; overflow-y: auto; }
+</style>
+</head>
+<body>
+  <h1>StyleSnap</h1>
+
+  <div class="tabs">
+    <button class="tab active" data-panel="export">Export</button>
+    <button class="tab" data-panel="import">Import</button>
+  </div>
+
+  <div id="panel-export" class="panel active">
+    <div id="export-hint">Select a frame or component to get started</div>
+    <ul id="token-list"></ul>
+    <button class="primary" id="btn-extract" disabled>Extract tokens</button>
+    <button class="primary" id="btn-copy" disabled>Copy to StyleSnap</button>
+    <div class="status" id="export-status"></div>
+  </div>
+
+  <div id="panel-import" class="panel">
+    <textarea id="import-json" placeholder="Paste cleaned JSON from the StyleSnap Webtool"></textarea>
+    <button class="primary" id="btn-import" disabled>Create Styles &amp; Variables</button>
+    <div class="status" id="import-status"></div>
+  </div>
+
+<script>
+  let lastExport = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  // Tab switching
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+      tab.classList.add("active");
+      $("panel-" + tab.dataset.panel).classList.add("active");
+    });
+  });
+
+  // Sandbox → UI
+  window.onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg) return;
+    switch (msg.type) {
+      case "selection-changed":
+        $("btn-extract").disabled = !msg.hasSelection;
+        $("export-hint").textContent = msg.hasSelection
+          ? "Ready — click Extract tokens"
+          : "Select a frame or component to get started";
+        break;
+      case "extraction-result":
+        lastExport = msg.payload;
+        $("btn-copy").disabled = false;
+        $("export-status").textContent =
+          msg.payload.tokens.length + " tokens extracted";
+        break;
+      case "extraction-empty":
+        $("export-status").textContent = "No tokens found in this selection";
+        break;
+    }
+  };
+
+  // UI → sandbox
+  const post = (msg) => parent.postMessage({ pluginMessage: msg }, "*");
+
+  $("btn-extract").addEventListener("click", () => {
+    $("export-status").textContent = "Extracting…";
+    post({ type: "extract-tokens" });
+  });
+
+  $("btn-copy").addEventListener("click", () => {
+    if (!lastExport) return;
+    const json = JSON.stringify(lastExport, null, 2);
+    // navigator.clipboard is unavailable in the plugin iframe — use execCommand
+    const ta = document.createElement("textarea");
+    ta.value = json;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    $("export-status").textContent = "✓ Copied — paste into StyleSnap Webtool";
+  });
+
+  $("import-json").addEventListener("input", (e) => {
+    $("btn-import").disabled = e.target.value.trim().length === 0;
+  });
+
+  $("btn-import").addEventListener("click", () => {
+    // Task 4/5 wire this up to validation + style creation.
+    $("import-status").textContent = "Import is not implemented yet (Task 4/5)";
+  });
+</script>
+</body>
+</html>
