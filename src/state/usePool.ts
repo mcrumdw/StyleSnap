@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import type { StyleSnapExport } from "../contract/types";
+import type { StyleSnapExport, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
 import {
+  addManualToken,
   addMerge,
   appendImport,
   clearDraft,
   emptyPool,
   loadDraft,
+  removeManualToken,
   removeMerge,
   saveDraft,
   setDecision,
+  updateManualToken,
   type TokenDecision,
   type TokenPool,
 } from "./pool";
@@ -47,10 +50,41 @@ export function usePool() {
     setPool((current) => setDecision(current, tokenId, patch));
   }, []);
 
+  /** Add a manual token (FR-19); confirming a role in the same step is atomic. */
+  const addManual = useCallback((token: StyleSnapToken, role?: string) => {
+    setPool((current) => {
+      let next = addManualToken(current, token);
+      if (role) next = setDecision(next, token.id, { role });
+      return next;
+    });
+  }, []);
+
+  const updateManual = useCallback((token: StyleSnapToken, role?: string | null) => {
+    setPool((current) => {
+      let next = updateManualToken(current, token);
+      if (role !== undefined) next = setDecision(next, token.id, { role });
+      return next;
+    });
+  }, []);
+
+  const removeManual = useCallback((tokenId: string) => {
+    setPool((current) => removeManualToken(current, tokenId));
+  }, []);
+
   const startOver = useCallback(() => {
     clearDraft(localStorage);
     setPool(emptyPool());
   }, []);
 
-  return { pool, addImport, mergeCluster, unmerge, decide, startOver };
+  return {
+    pool,
+    addImport,
+    mergeCluster,
+    unmerge,
+    decide,
+    addManual,
+    updateManual,
+    removeManual,
+    startOver,
+  };
 }

@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { parseStyleSnapExport } from "../contract/schema";
 import type { StyleSnapExport } from "../contract/types";
 import {
+  addManualToken,
   appendImport,
   deserializeDraft,
   emptyPool,
   importLabel,
   poolTokenCount,
   poolTokens,
+  removeManualToken,
   serializeDraft,
   setDecision,
 } from "./pool";
@@ -133,6 +135,31 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.merges;
     expect(deserializeDraft(JSON.stringify(legacy))?.merges).toEqual([]);
+  });
+
+  it("round-trips manual tokens; removal cleans decisions and merges", () => {
+    let pool = poolWithBothFixtures();
+    pool = addManualToken(pool, {
+      id: "manual_1",
+      captureId: "manual-1",
+      source: "manual entry",
+      name: null,
+      occurrences: 1,
+      merged: false,
+      type: "color",
+      value: "#5B2EFF",
+      opacity: 1,
+    });
+    pool = setDecision(pool, "manual_1", { role: "color/border/focus" });
+    expect(deserializeDraft(serializeDraft(pool))).toEqual(pool);
+
+    pool = removeManualToken(pool, "manual_1");
+    expect(pool.manual).toHaveLength(0);
+    expect(pool.decisions.manual_1).toBeUndefined();
+
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    delete legacy.manual;
+    expect(deserializeDraft(JSON.stringify(legacy))?.manual).toEqual([]);
   });
 
   it("round-trips role/name decisions; legacy drafts get an empty map", () => {

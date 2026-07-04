@@ -8,7 +8,7 @@
 // Everything in this file is a pure function so it can be unit-tested without
 // React or a browser.
 
-import { styleSnapExportSchema } from "../contract/schema";
+import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
 
@@ -39,10 +39,12 @@ export interface TokenPool {
   merges: MergeRecord[];
   /** Confirmed roles + names per token id (Phase 4). */
   decisions: Record<string, TokenDecision>;
+  /** Manually added tokens (Phase 5, FR-19) — user-owned, editable, removable. */
+  manual: StyleSnapToken[];
 }
 
 export function emptyPool(): TokenPool {
-  return { imports: [], merges: [], decisions: {} };
+  return { imports: [], merges: [], decisions: {}, manual: [] };
 }
 
 /** Append a validated export to the pool. Pure — returns a new pool. */
@@ -91,12 +93,41 @@ export function setDecision(
   return { ...pool, decisions };
 }
 
+// ─────────────────────────────────────────
+// Manual tokens (Phase 5, FR-19)
+// ─────────────────────────────────────────
+
+export function addManualToken(pool: TokenPool, token: StyleSnapToken): TokenPool {
+  return { ...pool, manual: [...pool.manual, token] };
+}
+
+/** Replace a manual token in place (same id). */
+export function updateManualToken(pool: TokenPool, token: StyleSnapToken): TokenPool {
+  return {
+    ...pool,
+    manual: pool.manual.map((t) => (t.id === token.id ? token : t)),
+  };
+}
+
+/** Remove a manual token and everything that referenced it. */
+export function removeManualToken(pool: TokenPool, tokenId: string): TokenPool {
+  const decisions = { ...pool.decisions };
+  delete decisions[tokenId];
+  return {
+    ...pool,
+    manual: pool.manual.filter((t) => t.id !== tokenId),
+    // A merge it survived is dropped; merges that absorbed it skip it safely.
+    merges: pool.merges.filter((m) => m.survivorId !== tokenId),
+    decisions,
+  };
+}
+
 export function poolTokens(pool: TokenPool): StyleSnapToken[] {
-  return pool.imports.flatMap((imp) => imp.tokens);
+  return [...pool.imports.flatMap((imp) => imp.tokens), ...pool.manual];
 }
 
 export function poolTokenCount(pool: TokenPool): number {
-  return pool.imports.reduce((n, imp) => n + imp.tokens.length, 0);
+  return pool.imports.reduce((n, imp) => n + imp.tokens.length, pool.manual.length);
 }
 
 /** Human label for an import's origin, e.g. "lumen.app (browser extension)". */
@@ -175,6 +206,16 @@ export function deserializeDraft(text: string | null): TokenPool | null {
     if (clean.role !== undefined || clean.name !== undefined) decisions[tokenId] = clean;
   }
 
+  // Manual tokens were added in Phase 5 — older drafts simply have none.
+  const rawManual = (json as Partial<TokenPool>).manual ?? [];
+  if (!Array.isArray(rawManual)) return null;
+  const manual: StyleSnapToken[] = [];
+  for (const entry of rawManual) {
+    const parsed = styleSnapTokenSchema.safeParse(entry);
+    if (!parsed.success) return null;
+    manual.push(parsed.data);
+  }
+
   const imports: PoolImport[] = [];
   for (const entry of (json as { imports: unknown[] }).imports) {
     const imp = entry as PoolImport;
@@ -190,7 +231,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
       tokens: parsed.data.tokens,
     });
   }
-  return { imports, merges, decisions };
+  return { imports, merges, decisions, manual };
 }
 
 export function loadDraft(storage: Pick<Storage, "getItem">): TokenPool | null {

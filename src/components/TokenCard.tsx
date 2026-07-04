@@ -20,7 +20,12 @@ interface TokenCardProps {
   onReviewCluster?: () => void;
   /** Un-merge (FR-13) — only offered on merge survivors. */
   onUnmerge?: () => void;
+  /** Manual tokens (FR-19) can be edited and removed. */
+  onEditManual?: () => void;
+  onRemoveManual?: () => void;
 }
+
+const ORIGIN_LABELS = { figma: "Figma", "browser-extension": "Web", manual: "Manual" } as const;
 
 /**
  * DESIGN.md §5.1 token card: value preview · mono name (or "unnamed" muted
@@ -35,9 +40,11 @@ export function TokenCard({
   onSetName,
   onReviewCluster,
   onUnmerge,
+  onEditManual,
+  onRemoveManual,
 }: TokenCardProps) {
-  const { token, meta } = entry;
-  const sourceLabel = meta.source === "figma" ? "Figma" : "Web";
+  const { token } = entry;
+  const sourceLabel = ORIGIN_LABELS[entry.origin];
 
   return (
     <div className="flex flex-col gap-3 rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
@@ -76,7 +83,7 @@ export function TokenCard({
         )}
       </p>
 
-      {(flag || (token.merged && onUnmerge)) && (
+      {(flag || (token.merged && onUnmerge) || onEditManual || onRemoveManual) && (
         <div className="flex gap-2">
           {flag && onReviewCluster && (
             <Button size="sm" variant="secondary" onClick={onReviewCluster}>
@@ -86,6 +93,16 @@ export function TokenCard({
           {token.merged && onUnmerge && (
             <Button size="sm" variant="ghost" onClick={onUnmerge}>
               Un-merge
+            </Button>
+          )}
+          {onEditManual && (
+            <Button size="sm" variant="ghost" onClick={onEditManual}>
+              Edit
+            </Button>
+          )}
+          {onRemoveManual && (
+            <Button size="sm" variant="ghost" onClick={onRemoveManual}>
+              Remove
             </Button>
           )}
         </div>

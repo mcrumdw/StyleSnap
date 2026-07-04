@@ -8,17 +8,26 @@ import type { StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types
 import { roleOrderIndex } from "../engine/roles";
 import type { TokenPool } from "./pool";
 
-/** A token plus the provenance of the import it arrived in (FR-3). */
+export type TokenOrigin = StyleSnapMeta["source"] | "manual";
+
+/** A token plus its provenance: the import it arrived in, or manual entry. */
 export interface PoolEntry {
   token: StyleSnapToken;
-  importId: string;
-  meta: StyleSnapMeta;
+  origin: TokenOrigin;
+  /** Capture provenance — absent for manually added tokens. */
+  meta?: StyleSnapMeta;
+  importId?: string;
 }
 
 export function poolEntries(pool: TokenPool): PoolEntry[] {
-  return pool.imports.flatMap((imp) =>
-    imp.tokens.map((token) => ({ token, importId: imp.importId, meta: imp.meta })),
-  );
+  return [
+    ...pool.imports.flatMap((imp) =>
+      imp.tokens.map(
+        (token): PoolEntry => ({ token, origin: imp.meta.source, importId: imp.importId, meta: imp.meta }),
+      ),
+    ),
+    ...pool.manual.map((token): PoolEntry => ({ token, origin: "manual" })),
+  ];
 }
 
 // ─────────────────────────────────────────
@@ -134,7 +143,7 @@ export function formatValue(token: StyleSnapToken): string {
 export interface WorkspaceFilters {
   search: string;
   type: TokenType | "all";
-  source: StyleSnapMeta["source"] | "all";
+  source: TokenOrigin | "all";
   named: "all" | "named" | "unnamed";
   /** "flagged" needs the dedup engine (Phase 3); until then no token is flagged. */
   flagged: "all" | "flagged";
@@ -171,10 +180,10 @@ export function filterEntries(
   flaggedIds: ReadonlySet<string> = new Set(),
 ): PoolEntry[] {
   const query = filters.search.trim().toLowerCase();
-  return entries.filter(({ token, meta, ...rest }) => {
-    const entry = { token, meta, ...rest };
+  return entries.filter((entry) => {
+    const { token } = entry;
     if (filters.type !== "all" && token.type !== filters.type) return false;
-    if (filters.source !== "all" && meta.source !== filters.source) return false;
+    if (filters.source !== "all" && entry.origin !== filters.source) return false;
     if (filters.named === "named" && token.name === null) return false;
     if (filters.named === "unnamed" && token.name !== null) return false;
     if (filters.flagged === "flagged" && !flaggedIds.has(token.id)) return false;

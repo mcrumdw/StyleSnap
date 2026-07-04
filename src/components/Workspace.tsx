@@ -7,7 +7,9 @@ import {
   type MergeRecord,
   type Sensitivity,
 } from "../engine/dedup";
+import { computeChecklist } from "../engine/completeness";
 import { deriveRoleSuggestions } from "../engine/roles";
+import type { StyleSnapToken } from "../contract/types";
 import type { TokenDecision } from "../state/pool";
 import {
   captureGroups,
@@ -19,7 +21,9 @@ import {
   type PoolEntry,
   type WorkspaceFilters,
 } from "../state/workspace";
+import { AddTokenDialog } from "./AddTokenDialog";
 import { Button } from "./Button";
+import { ChecklistPanel } from "./ChecklistPanel";
 import { MergeDialog } from "./MergeDialog";
 import { Toast } from "./Toast";
 import { TokenCard } from "./TokenCard";
@@ -59,9 +63,16 @@ interface WorkspaceProps {
   onMergeCluster: (survivorId: string, mergedIds: string[]) => void;
   onUnmerge: (survivorId: string) => void;
   onDecide: (tokenId: string, patch: TokenDecision) => void;
+  onAddManual: (token: StyleSnapToken, role?: string) => void;
+  onUpdateManual: (token: StyleSnapToken, role?: string | null) => void;
+  onRemoveManual: (tokenId: string) => void;
 }
 
-/** PRD §7.2–7.5, §7.7 — the token workspace: flags, merge, roles, naming. */
+type TokenDialog =
+  | { mode: "add"; presetType?: StyleSnapToken["type"]; presetRole?: string }
+  | { mode: "edit"; token: StyleSnapToken; role?: string };
+
+/** PRD §7.2–7.7 — the token workspace: flags, merge, roles, naming, gaps. */
 export function Workspace({
   entries,
   merges,
@@ -69,10 +80,14 @@ export function Workspace({
   onMergeCluster,
   onUnmerge,
   onDecide,
+  onAddManual,
+  onUpdateManual,
+  onRemoveManual,
 }: WorkspaceProps) {
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_FILTERS);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("default");
   const [openClusterId, setOpenClusterId] = useState<string | null>(null);
+  const [tokenDialog, setTokenDialog] = useState<TokenDialog | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const set = <K extends keyof WorkspaceFilters>(key: K, value: WorkspaceFilters[K]) =>
@@ -103,6 +118,19 @@ export function Workspace({
     if (decided !== undefined) return decided ?? undefined;
     return suggestions.get(tokenId)?.role;
   };
+
+  // FR-18 — completeness against CONFIRMED roles only, recomputed live.
+  const confirmedRoles = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [id, decision] of Object.entries(decisions)) {
+      if (typeof decision.role === "string") map.set(id, decision.role);
+    }
+    return map;
+  }, [decisions]);
+  const checklist = useMemo(
+    () => computeChecklist(view.map((e) => e.token), confirmedRoles),
+    [view, confirmedRoles],
+  );
 
   // Detection re-flags live on sensitivity change; it never merges by itself.
   const clusters = useMemo(
@@ -142,7 +170,17 @@ export function Workspace({
 
   return (
     <section className="flex w-full flex-col gap-8">
+      <ChecklistPanel
+        checklist={checklist}
+        onAddToken={({ tokenType, role }) =>
+          setTokenDialog({ mode: "add", presetType: tokenType, presetRole: role })
+        }
+      />
+
       <div className="flex flex-wrap items-center gap-4">
+        <Button size="sm" onClick={() => setTokenDialog({ mode: "add" })}>
+          Add token
+        </Button>
         <input
           type="search"
           value={filters.search}
@@ -171,6 +209,7 @@ export function Workspace({
           <option value="all">All</option>
           <option value="browser-extension">Web</option>
           <option value="figma">Figma</option>
+          <option value="manual">Manual</option>
         </Select>
         <Select
           label="Name"
@@ -258,6 +297,19 @@ export function Workspace({
                     onSetName={(name) => onDecide(id, { name })}
                     onReviewCluster={clusterId ? () => setOpenClusterId(clusterId) : undefined}
                     onUnmerge={entry.token.merged ? () => handleUnmerge(id) : undefined}
+                    onEditManual={
+                      entry.origin === "manual"
+                        ? () =>
+                            setTokenDialog({
+                              mode: "edit",
+                              token: entry.token,
+                              role: confirmedRoles.get(id),
+                            })
+                        : undefined
+                    }
+                    onRemoveManual={
+                      entry.origin === "manual" ? () => onRemoveManual(id) : undefined
+                    }
                   />
                 );
               })}
@@ -271,6 +323,25 @@ export function Workspace({
           cluster={openCluster}
           onMerge={handleMerge}
           onClose={() => setOpenClusterId(null)}
+        />
+      )}
+      {tokenDialog && (
+        <AddTokenDialog
+          presetType={tokenDialog.mode === "add" ? tokenDialog.presetType : undefined}
+          presetRole={tokenDialog.mode === "add" ? tokenDialog.presetRole : undefined}
+          editing={tokenDialog.mode === "edit" ? tokenDialog.token : undefined}
+          editingRole={tokenDialog.mode === "edit" ? tokenDialog.role : undefined}
+          onSave={(token, role) => {
+            if (tokenDialog.mode === "edit") {
+              onUpdateManual(token, role ?? null);
+              setToast("Token updated.");
+            } else {
+              onAddManual(token, role);
+              setToast(role ? `Added — ${role} has a home now.` : "Token added.");
+            }
+            setTokenDialog(null);
+          }}
+          onClose={() => setTokenDialog(null)}
         />
       )}
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}

@@ -74,7 +74,7 @@ describe("filters (FR-7)", () => {
   it("filters by type + source combined", () => {
     const result = filterEntries(entries, { ...DEFAULT_FILTERS, type: "color", source: "figma" });
     expect(result).toHaveLength(4);
-    expect(result.every((e) => e.token.type === "color" && e.meta.source === "figma")).toBe(true);
+    expect(result.every((e) => e.token.type === "color" && e.origin === "figma")).toBe(true);
   });
 
   it("filters by named/unnamed (all fixture tokens are unnamed)", () => {
