@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "source": "browser-extension",
+    "exportedAt": "2026-07-03T14:22:00Z",
+    "pageUrl": "https://lumen.app",
+    "version": "2.0"
+  },
+  "tokens": [
+    { "id": "ext_bad_1", "captureId": "cap-1", "source": ".btn", "name": null, "occurrences": 5, "merged": false,
+      "type": "color", "value": "rgba(46,107,255,0.5)", "opacity": 1 },
+    { "id": "ext_bad_2", "captureId": "cap-2", "source": ".card", "name": null, "merged": false,
+      "type": "color", "value": "#FFFFFF", "opacity": 1.5 },
+    { "id": "ext_bad_3", "captureId": "cap-3", "source": ".hero", "name": null, "occurrences": 1, "merged": false,
+      "type": "blur", "value": 12 }
+  ]
+}

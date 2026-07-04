@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-06-29
+Last updated: 2026-07-04
 
 ---
 
@@ -76,6 +76,38 @@ context is missing. Signals, strongest first:
 obfuscated markup mean it is sometimes absent — treat it as confidence-weighted
 hints, not guarantees.
 
+### 2.5 Runtime validation — a zod twin of `types.ts` (`docs/schema.ts`)
+TypeScript types are erased at compile time, so `types.ts` cannot validate the
+JSON a user pastes into the Webtool at runtime (PRD FR-2). The Webtool
+validates every import with a zod schema, `docs/schema.ts`, that structurally
+mirrors `types.ts` v2.0.
+
+- **`types.ts` remains the canonical contract** all three codebases read; the
+  zod schema is its runtime twin, used only by the Webtool's import step.
+- **Drift protection:** compile-time assertions at the bottom of `schema.ts`
+  make `tsc` fail if the schema and `types.ts` ever diverge structurally.
+  Any future schema change (v2.x) must touch both files in the same commit.
+- **Envelope only:** the schema checks structure (field types, 6-digit hex,
+  0–1 opacity, known token types) — it deliberately does **not** judge design
+  quality. Raw, messy, unconsolidated captures are valid by design (§2.2);
+  consolidation is the Webtool's job, after import.
+- **Value constraints live only in the schema** (hex format, ranges, "2+
+  gradient stops") because the type system can't express them — that is the
+  schema's added value, not drift.
+- `schema.ts` also exports `parseStyleSnapExport()`, the single paste-zone
+  entry point: never throws, returns the typed export or a friendly error
+  (FR-2) plus an FR-4 version warning on `meta.version` mismatch.
+
+### 2.6 Contract distribution — copy the file, `version` catches drift
+Decided 2026-07-04. The three codebases live in separate repos, so "all import
+the same `types.ts`" needs a mechanism. **This repo's `docs/types.ts` is
+canonical; Theresa (Figma plugin) and Murtaza (extension) copy it into their
+repos verbatim** — no submodule, no npm package (overkill for this project).
+Safety net: producers stamp `meta.version` from their copy, and the Webtool
+warns on mismatch (FR-4, `parseStyleSnapExport`). Rule: **any change to
+`types.ts` happens in this repo first** (with a version bump and a row in §3),
+then gets re-copied; never edit a downstream copy directly.
+
 ---
 
 ## 3. Token schema changes — v1.0 → v2.0 (`docs/types.ts`)
@@ -120,9 +152,9 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 ## 5. Open questions / deferred decisions
 
-- **Token naming convention.** Must survive a round-trip to both `design.md`
-  and Figma Variables (Figma uses `group/subgroup/name` slash nesting). Not yet
-  locked.
+- ~~**Token naming convention.**~~ **Decided 2026-07-04: slash-nested**
+  (`color/action/primary`) — Figma Variables' native format, so the round-trip
+  is free. Canonical role list = PRD Appendix B.
 - **Align JSON token output to the W3C Design Tokens spec?** Strongly worth it —
   Figma, Style Dictionary, and most tooling already speak it, which would make
   the export targets nearly free. Applies to the Webtool's *output* model, not
@@ -146,4 +178,10 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-06-29 | Filled DESIGN.md (bold & expressive direction): electric indigo `#5B2EFF` primary, hot-pink accent, hard offset shadow signature, Space Grotesk/Inter/JetBrains Mono, light-first (dark mode deferred) | — |
 | 2026-06-29 | PRD draft v2: integrated ideas from the earlier v0.1 PRD (North-Star <10min, Maya/Jonas personas + JTBD, paste-first ingest, rule-based dedup with duplicate-vs-"similar", suggestive-never-destructive + reversible merges + Create System gate, deterministic+provenance design.md, in-session MVP architecture, tech stack, risks). **Decision: human review + gap completion (manual core, AI as accelerator) is the product's core value — raw JSON without review is untrusted.** | — |
 | 2026-06-29 | Doc reorg: old v0.1 PRD deleted; root `PRD.md` v2 renamed and moved to **`docs/PRD_webtool_v2.md`** — now the canonical web-app PRD. | — |
+| 2026-07-04 | Added **`CLAUDE.md`** (agent instructions: doc map, fixtures/oracle, hard product rules, engine-first conventions) and **`docs/BUILD_PLAN.md`** (7 phases, one Claude Code session each, acceptance checks tied to the fixtures and the design.example.md oracle test). | — |
+| 2026-07-04 | Added **`docs/fixtures/`** (messy browser capture w/ 4-way blue cluster + 15-vs-16 spacing + lineHeight-variant typography; clean Figma capture w/ `authoredName`s; malformed file for FR-2) — all three verified against `schema.ts` (2 pass, 1 rejected with specific errors). Added **`docs/examples/design.example.md`** — hand-written oracle for the `design.md` export (semantic-first, provenance, gaps section, deterministic ordering); it is what the webtool must produce from the two good fixtures. | — |
+| 2026-07-04 | PRD v2.1 follow-ups: **localStorage draft promoted to MVP** (FR-29 — refresh must not kill a demo); **de-scope order locked in §13** (golden path paste→dedup→merge→name→export is untouchable); FR-8 scoped to *display* of `captureId` groups (reconstruction = V3); Appendix A tightened — opacity ε 0.01 in `colorDistance`, canonical sort key (type → role → name → value → id), sensitivity slider = 3 positions ×0.5/×1/×1.5. **§2.6: contract distribution = copy `types.ts` verbatim from this repo (canonical); `meta.version` + FR-4 warning catch drift.** | — |
+| 2026-07-04 | PRD v2 → v2.1: FR-9/A.4 typography dup key unified, **`lineHeight` added to the key** (differs-only-in-lineHeight ⇒ "similar", never silent merge); **Appendix B canonical role taxonomy** (lean core: 17 color roles, 6 type roles, foundation scale slots, context→role hint table, completeness = ✅ rows); **naming locked: slash-nested**; **project name: derived from `meta` + editable**; Figma-export ownership leaning plugin (V3). | — |
+| 2026-07-04 | DESIGN.md v1 → v1.1 (accessibility audit): `error` #F23030 → **#DC2626** (white-on-error was 4.0:1, failed AA on the destructive button); added `error-hover`, `success-text`/`warning-text`/`info-text` variants + **fills-only rule** (semantic fills & `brand-accent`/`brand-pop` never used as text on light; `text-primary` on fills); measured contrast table in §11; touch-target rule scoped (44px default, 36px `sm` only in dense desktop lists); §0 rule changed from "nearest Tailwind token" to "all values are custom tokens in tailwind.config"; skeleton shimmer tokenized (`state-disabled-bg`); z-index scale; per-variant button hover states; new **§5.1 token-workspace component specs** (swatches, badges, role chip, merge dialog, sensitivity slider). | — |
+| 2026-07-04 | Added `docs/schema.ts` — zod runtime twin of `types.ts` v2.0 for FR-2 paste validation (envelope-only rule, compile-time drift assertions, `parseStyleSnapExport()` helper). Documented in §2.5. | — |
 | 2026-06-29 | Added Appendix A (dedup algorithm) to `docs/PRD_webtool_v2.md`: occurrence-led leader clustering; color = OKLab ΔEOK (dup ≤0.02 / similar ≤0.05) via culori; numeric = 1-D gap clustering w/ hybrid tol + 4px grid snap; typography composite key + size-scale; shadow/gradient field epsilons. **Adopted value-based dedup** (survivor inherits all contexts). Removed remaining v0.1 references. | — |

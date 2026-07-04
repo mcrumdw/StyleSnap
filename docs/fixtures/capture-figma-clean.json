@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "source": "figma",
+    "exportedAt": "2026-07-03T16:05:00Z",
+    "figmaFile": "Lumen Design v3",
+    "version": "2.0"
+  },
+  "tokens": [
+    { "id": "fig_001", "captureId": "fig-btn-primary", "source": "Button/Primary", "name": null, "occurrences": 12, "merged": false, "type": "color", "value": "#2E6BFF", "opacity": 1,
+      "context": { "authoredName": "color/action/primary" } },
+    { "id": "fig_002", "captureId": "fig-text-styles", "source": "Text/Body", "name": null, "occurrences": 20, "merged": false, "type": "color", "value": "#101828", "opacity": 1,
+      "context": { "authoredName": "color/text/primary" } },
+    { "id": "fig_003", "captureId": "fig-page", "source": "Page/Background", "name": null, "occurrences": 6, "merged": false, "type": "color", "value": "#F9FAFB", "opacity": 1,
+      "context": { "authoredName": "color/surface/page" } },
+    { "id": "fig_004", "captureId": "fig-overlay", "source": "Modal/Scrim", "name": null, "occurrences": 2, "merged": false, "type": "color", "value": "#101828", "opacity": 0.5,
+      "context": { "authoredName": "color/surface/overlay" } },
+    { "id": "fig_005", "captureId": "fig-text-styles", "source": "Heading/H2", "name": null, "occurrences": 5, "merged": false, "type": "typography",
+      "value": { "fontFamily": "Inter", "fontSize": 30, "fontWeight": 600, "lineHeight": 1.2 },
+      "context": { "authoredName": "type/heading" } },
+    { "id": "fig_006", "captureId": "fig-text-styles", "source": "Text/Body", "name": null, "occurrences": 18, "merged": false, "type": "typography",
+      "value": { "fontFamily": "Inter", "fontSize": 16, "fontWeight": 400, "lineHeight": 1.5 },
+      "context": { "authoredName": "type/body" } },
+    { "id": "fig_007", "captureId": "fig-layout", "source": "Card/Default", "name": null, "occurrences": 18, "merged": false, "type": "spacing", "value": 16,
+      "context": { "authoredName": "space/md" } },
+    { "id": "fig_008", "captureId": "fig-layout", "source": "Card/Default", "name": null, "occurrences": 9, "merged": false, "type": "border-radius", "value": 12,
+      "context": { "authoredName": "radius/md" } },
+    { "id": "fig_009", "captureId": "fig-layout", "source": "Card/Default", "name": null, "occurrences": 7, "merged": false, "type": "shadow",
+      "value": [ { "inset": false, "offsetX": 0, "offsetY": 4, "blur": 8, "spread": -2, "color": "#101828", "opacity": 0.1 } ],
+      "context": { "authoredName": "shadow/md" } }
+  ]
+}
