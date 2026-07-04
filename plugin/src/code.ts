@@ -2,6 +2,7 @@
 // Talks to the panel UI (src/ui.html) via postMessage.
 
 import type { StyleSnapExport } from "../../docs/types";
+import { extractTokens } from "./extract";
 
 // Messages UI → sandbox
 type UiMessage =
@@ -30,25 +31,19 @@ function notifySelection() {
 figma.on("selectionchange", notifySelection);
 notifySelection();
 
-figma.ui.onmessage = (msg: UiMessage) => {
+figma.ui.onmessage = async (msg: UiMessage) => {
   switch (msg.type) {
     case "extract-tokens": {
-      // Task 2 (extraction engine) fills this in. For now the scaffold
-      // returns an empty, schema-valid export so the round-trip is testable.
       const selection = figma.currentPage.selection;
       if (selection.length === 0) {
         postToUi({ type: "extraction-empty" });
         return;
       }
-      const payload: StyleSnapExport = {
-        meta: {
-          source: "figma",
-          exportedAt: new Date().toISOString(),
-          figmaFile: figma.root.name,
-          version: "2.0",
-        },
-        tokens: [],
-      };
+      const payload: StyleSnapExport = await extractTokens(selection);
+      if (payload.tokens.length === 0) {
+        postToUi({ type: "extraction-empty" });
+        return;
+      }
       postToUi({ type: "extraction-result", payload });
       break;
     }

@@ -38,7 +38,21 @@
     color: inherit; background: var(--figma-color-bg-secondary, #f5f5f5);
     border: 1px solid var(--figma-color-border, #e5e5e5); border-radius: 6px; padding: 8px;
   }
-  ul#token-list { list-style: none; max-height: 240px; overflow-y: auto; }
+  ul#token-list { list-style: none; max-height: 240px; overflow-y: auto; margin-top: 8px; }
+  ul#token-list li {
+    display: flex; align-items: center; gap: 6px; padding: 3px 0;
+    border-bottom: 1px solid var(--figma-color-border, #eee);
+  }
+  .tk-type {
+    font-family: monospace; font-size: 9px; padding: 1px 4px; border-radius: 3px;
+    background: var(--figma-color-bg-secondary, #f0f0f0); flex-shrink: 0;
+  }
+  .tk-swatch {
+    width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0;
+    border: 1px solid var(--figma-color-border, #ddd);
+  }
+  .tk-value { font-family: monospace; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tk-source { margin-left: auto; color: var(--figma-color-text-secondary, #999); font-size: 9px; flex-shrink: 0; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -92,6 +106,7 @@
       case "extraction-result":
         lastExport = msg.payload;
         $("btn-copy").disabled = false;
+        renderTokenList(msg.payload.tokens);
         $("export-status").textContent =
           msg.payload.tokens.length + " tokens extracted";
         break;
@@ -100,6 +115,49 @@
         break;
     }
   };
+
+  function tokenValueLabel(t) {
+    switch (t.type) {
+      case "color": return t.value + (t.opacity < 1 ? " @ " + Math.round(t.opacity * 100) + "%" : "");
+      case "gradient": return t.value.kind + ", " + t.value.stops.length + " stops";
+      case "typography": return t.value.fontFamily + " " + t.value.fontSize + "/" + t.value.lineHeight + " w" + t.value.fontWeight;
+      case "shadow": return t.value.length + " layer" + (t.value.length > 1 ? "s" : "");
+      default: return t.value + "px";
+    }
+  }
+
+  function renderTokenList(tokens) {
+    const list = $("token-list");
+    list.textContent = "";
+    for (const t of tokens) {
+      const li = document.createElement("li");
+
+      const type = document.createElement("span");
+      type.className = "tk-type";
+      type.textContent = t.type;
+      li.appendChild(type);
+
+      if (t.type === "color") {
+        const swatch = document.createElement("span");
+        swatch.className = "tk-swatch";
+        swatch.style.background = t.value;
+        li.appendChild(swatch);
+      }
+
+      const value = document.createElement("span");
+      value.className = "tk-value";
+      value.textContent = tokenValueLabel(t) + (t.occurrences > 1 ? " ×" + t.occurrences : "");
+      li.appendChild(value);
+
+      const source = document.createElement("span");
+      source.className = "tk-source";
+      source.textContent = t.source;
+      source.title = t.source;
+      li.appendChild(source);
+
+      list.appendChild(li);
+    }
+  }
 
   // UI → sandbox
   const post = (msg) => parent.postMessage({ pluginMessage: msg }, "*");
