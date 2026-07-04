@@ -10,6 +10,7 @@
 
 import { styleSnapExportSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
+import type { MergeRecord } from "../engine/dedup";
 
 export interface PoolImport {
   /** Unique per import action (not per capture file — the same file can be imported twice). */
@@ -22,10 +23,12 @@ export interface PoolImport {
 
 export interface TokenPool {
   imports: PoolImport[];
+  /** User-confirmed merges (Phase 3) — applied as a view, reversible until Create System. */
+  merges: MergeRecord[];
 }
 
 export function emptyPool(): TokenPool {
-  return { imports: [] };
+  return { imports: [], merges: [] };
 }
 
 /** Append a validated export to the pool. Pure — returns a new pool. */
@@ -35,11 +38,22 @@ export function appendImport(
   stamp: { importId: string; importedAt: string },
 ): TokenPool {
   return {
+    ...pool,
     imports: [
       ...pool.imports,
       { importId: stamp.importId, importedAt: stamp.importedAt, meta: data.meta, tokens: data.tokens },
     ],
   };
+}
+
+/** Record a user-confirmed merge (FR-12). Pure — returns a new pool. */
+export function addMerge(pool: TokenPool, merge: MergeRecord): TokenPool {
+  return { ...pool, merges: [...pool.merges, merge] };
+}
+
+/** Un-merge (FR-13): drop the record; the view restores itself exactly. */
+export function removeMerge(pool: TokenPool, survivorId: string): TokenPool {
+  return { ...pool, merges: pool.merges.filter((m) => m.survivorId !== survivorId) };
 }
 
 export function poolTokens(pool: TokenPool): StyleSnapToken[] {
@@ -91,6 +105,24 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   if (typeof json !== "object" || json === null || !Array.isArray((json as TokenPool).imports)) {
     return null;
   }
+
+  // Merges were added in Phase 3 — older drafts simply have none.
+  const rawMerges = (json as Partial<TokenPool>).merges ?? [];
+  if (!Array.isArray(rawMerges)) return null;
+  const merges: MergeRecord[] = [];
+  for (const entry of rawMerges) {
+    const m = entry as MergeRecord;
+    if (
+      typeof m?.survivorId !== "string" ||
+      typeof m?.mergedAt !== "string" ||
+      !Array.isArray(m?.mergedIds) ||
+      m.mergedIds.some((id) => typeof id !== "string")
+    ) {
+      return null;
+    }
+    merges.push({ survivorId: m.survivorId, mergedIds: m.mergedIds, mergedAt: m.mergedAt });
+  }
+
   const imports: PoolImport[] = [];
   for (const entry of (json as { imports: unknown[] }).imports) {
     const imp = entry as PoolImport;
@@ -106,7 +138,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
       tokens: parsed.data.tokens,
     });
   }
-  return { imports };
+  return { imports, merges };
 }
 
 export function loadDraft(storage: Pick<Storage, "getItem">): TokenPool | null {

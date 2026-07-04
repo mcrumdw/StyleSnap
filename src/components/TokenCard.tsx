@@ -1,18 +1,23 @@
 import { Badge } from "./Badge";
+import { Button } from "./Button";
 import { TokenPreview } from "./TokenPreview";
 import type { PoolEntry } from "../state/workspace";
 
 interface TokenCardProps {
   entry: PoolEntry;
-  /** Dedup flags arrive with the Phase 3 engine; unflagged until then. */
+  /** Dedup flag from the Phase 3 engine (FR-6). */
   flag?: "dup" | "sim";
+  /** Opens the merge dialog for this token's cluster. */
+  onReviewCluster?: () => void;
+  /** Un-merge (FR-13) — only offered on merge survivors. */
+  onUnmerge?: () => void;
 }
 
 /**
  * DESIGN.md §5.1 token card: value preview · mono name (or "unnamed" muted
  * italic) · source + occurrences caption · badges top-right.
  */
-export function TokenCard({ entry, flag }: TokenCardProps) {
+export function TokenCard({ entry, flag, onReviewCluster, onUnmerge }: TokenCardProps) {
   const { token, meta } = entry;
   const sourceLabel = meta.source === "figma" ? "Figma" : "Web";
 
@@ -41,6 +46,21 @@ export function TokenCard({ entry, flag }: TokenCardProps) {
           </>
         )}
       </p>
+
+      {(flag || (token.merged && onUnmerge)) && (
+        <div className="flex gap-2">
+          {flag && onReviewCluster && (
+            <Button size="sm" variant="secondary" onClick={onReviewCluster}>
+              Review cluster
+            </Button>
+          )}
+          {token.merged && onUnmerge && (
+            <Button size="sm" variant="ghost" onClick={onUnmerge}>
+              Un-merge
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

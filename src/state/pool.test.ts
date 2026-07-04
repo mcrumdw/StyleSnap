@@ -103,6 +103,18 @@ describe("localStorage draft (FR-29)", () => {
     expect(restored).toEqual(pool);
   });
 
+  it("round-trips merges and accepts pre-Phase-3 drafts without them", () => {
+    const pool = {
+      ...poolWithBothFixtures(),
+      merges: [{ survivorId: "ext_001", mergedIds: ["ext_002"], mergedAt: "2026-07-04T12:00:00Z" }],
+    };
+    expect(deserializeDraft(serializeDraft(pool))).toEqual(pool);
+
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    delete legacy.merges;
+    expect(deserializeDraft(JSON.stringify(legacy))?.merges).toEqual([]);
+  });
+
   it("returns null for a missing, corrupt, or invalid draft — never throws", () => {
     expect(deserializeDraft(null)).toBeNull();
     expect(deserializeDraft("not json {")).toBeNull();

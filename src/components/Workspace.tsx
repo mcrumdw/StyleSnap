@@ -1,6 +1,13 @@
 import { useMemo, useState, type SelectHTMLAttributes } from "react";
 import type { TokenType } from "../contract/types";
 import {
+  applyMerges,
+  detectClusters,
+  flagLevels,
+  type MergeRecord,
+  type Sensitivity,
+} from "../engine/dedup";
+import {
   captureGroups,
   DEFAULT_FILTERS,
   filterEntries,
@@ -11,6 +18,8 @@ import {
   type WorkspaceFilters,
 } from "../state/workspace";
 import { Button } from "./Button";
+import { MergeDialog } from "./MergeDialog";
+import { Toast } from "./Toast";
 import { TokenCard } from "./TokenCard";
 
 const control =
@@ -28,16 +37,74 @@ function Select({
   );
 }
 
-/** PRD §7.2 — the read-only token workspace: groups, counts, search, filters. */
-export function Workspace({ entries }: { entries: PoolEntry[] }) {
+const SENSITIVITY_STEPS: Sensitivity[] = ["strict", "default", "loose"];
+
+// §9-style plural labels for the merge toast ("Nice — 4 blues just became 1.").
+const MERGE_NOUNS: Record<TokenType, string> = {
+  color: "colors",
+  gradient: "gradients",
+  typography: "type styles",
+  spacing: "spacing values",
+  "border-radius": "radii",
+  "border-width": "border widths",
+  shadow: "shadows",
+};
+
+interface WorkspaceProps {
+  entries: PoolEntry[];
+  merges: MergeRecord[];
+  onMergeCluster: (survivorId: string, mergedIds: string[]) => void;
+  onUnmerge: (survivorId: string) => void;
+}
+
+/** PRD §7.2–7.4 — the token workspace with live dedup flags and merge. */
+export function Workspace({ entries, merges, onMergeCluster, onUnmerge }: WorkspaceProps) {
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_FILTERS);
+  const [sensitivity, setSensitivity] = useState<Sensitivity>("default");
+  const [openClusterId, setOpenClusterId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
   const set = <K extends keyof WorkspaceFilters>(key: K, value: WorkspaceFilters[K]) =>
     setFilters((f) => ({ ...f, [key]: value }));
 
-  const elements = useMemo(() => captureGroups(entries), [entries]);
-  const visible = useMemo(() => filterEntries(entries, filters), [entries, filters]);
+  // Merges are a view over the raw pool — reversible until Create System.
+  const view = useMemo(() => applyMerges(entries, merges), [entries, merges]);
+
+  // Detection re-flags live on sensitivity change; it never merges by itself.
+  const clusters = useMemo(
+    () => detectClusters(view.map((e) => e.token), sensitivity),
+    [view, sensitivity],
+  );
+  const flags = useMemo(() => flagLevels(clusters), [clusters]);
+  const flaggedIds = useMemo(() => new Set(flags.keys()), [flags]);
+  const clusterIdByToken = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of clusters) {
+      map.set(c.canonical.id, c.id);
+      for (const m of c.members) map.set(m.token.id, c.id);
+    }
+    return map;
+  }, [clusters]);
+
+  const elements = useMemo(() => captureGroups(view), [view]);
+  const visible = useMemo(() => filterEntries(view, filters, flaggedIds), [view, filters, flaggedIds]);
   const groups = useMemo(() => groupByType(visible), [visible]);
   const isFiltered = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
+
+  const openCluster = clusters.find((c) => c.id === openClusterId) ?? null;
+
+  function handleMerge(survivorId: string, mergedIds: string[]) {
+    const cluster = openCluster!;
+    onMergeCluster(survivorId, mergedIds);
+    setOpenClusterId(null);
+    const count = mergedIds.length + 1;
+    setToast(`Nice — ${count} ${MERGE_NOUNS[cluster.canonical.type]} just became 1.`);
+  }
+
+  function handleUnmerge(survivorId: string) {
+    onUnmerge(survivorId);
+    setToast("Un-merged — the originals are back, untouched.");
+  }
 
   return (
     <section className="flex w-full flex-col gap-8">
@@ -105,6 +172,22 @@ export function Workspace({ entries }: { entries: PoolEntry[] }) {
             Clear filters
           </Button>
         )}
+
+        {/* DESIGN.md §5.1 sensitivity slider — re-flags live, never re-merges. */}
+        <label className="ml-auto flex items-center gap-3">
+          <span className="text-caption font-medium text-text-muted">strict</span>
+          <input
+            type="range"
+            className="sensitivity w-32"
+            min={0}
+            max={2}
+            step={1}
+            value={SENSITIVITY_STEPS.indexOf(sensitivity)}
+            onChange={(e) => setSensitivity(SENSITIVITY_STEPS[Number(e.target.value)])}
+            aria-label="Merge sensitivity"
+          />
+          <span className="text-caption font-medium text-text-muted">loose</span>
+        </label>
       </div>
 
       {groups.length === 0 ? (
@@ -127,13 +210,31 @@ export function Workspace({ entries }: { entries: PoolEntry[] }) {
               </span>
             </h2>
             <div className="grid grid-cols-3 gap-6">
-              {group.entries.map((entry) => (
-                <TokenCard key={entry.token.id} entry={entry} />
-              ))}
+              {group.entries.map((entry) => {
+                const clusterId = clusterIdByToken.get(entry.token.id);
+                return (
+                  <TokenCard
+                    key={entry.token.id}
+                    entry={entry}
+                    flag={flags.get(entry.token.id)}
+                    onReviewCluster={clusterId ? () => setOpenClusterId(clusterId) : undefined}
+                    onUnmerge={entry.token.merged ? () => handleUnmerge(entry.token.id) : undefined}
+                  />
+                );
+              })}
             </div>
           </section>
         ))
       )}
+
+      {openCluster && (
+        <MergeDialog
+          cluster={openCluster}
+          onMerge={handleMerge}
+          onClose={() => setOpenClusterId(null)}
+        />
+      )}
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
     </section>
   );
 }
