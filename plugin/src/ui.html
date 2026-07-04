@@ -38,7 +38,13 @@
     color: inherit; background: var(--figma-color-bg-secondary, #f5f5f5);
     border: 1px solid var(--figma-color-border, #e5e5e5); border-radius: 6px; padding: 8px;
   }
-  ul#token-list { list-style: none; max-height: 240px; overflow-y: auto; margin-top: 8px; }
+  ul#token-list, ul#import-preview { list-style: none; max-height: 240px; overflow-y: auto; margin-top: 8px; }
+  ul#import-preview li {
+    display: flex; align-items: center; gap: 6px; padding: 3px 0;
+    border-bottom: 1px solid var(--figma-color-border, #eee);
+  }
+  .status.error { color: var(--figma-color-text-danger, #DC2626); }
+  .status.warn { color: var(--figma-color-text-warning, #B45309); }
   ul#token-list li {
     display: flex; align-items: center; gap: 6px; padding: 3px 0;
     border-bottom: 1px solid var(--figma-color-border, #eee);
@@ -73,6 +79,7 @@
 
   <div id="panel-import" class="panel">
     <textarea id="import-json" placeholder="Paste cleaned JSON from the StyleSnap Webtool"></textarea>
+    <ul id="import-preview"></ul>
     <button class="primary" id="btn-import" disabled>Create Styles &amp; Variables</button>
     <div class="status" id="import-status"></div>
   </div>
@@ -113,6 +120,28 @@
       case "extraction-empty":
         $("export-status").textContent = "No tokens found in this selection";
         break;
+      case "import-preview": {
+        renderImportPreview(msg.entries);
+        $("btn-import").disabled = msg.entries.length === 0;
+        const status = $("import-status");
+        status.className = "status";
+        let text = msg.entries.length + " to create";
+        if (msg.skippedUnnamed > 0) text += " · " + msg.skippedUnnamed + " unnamed skipped";
+        if (msg.versionWarning) {
+          status.className = "status warn";
+          text += " · " + msg.versionWarning;
+        }
+        status.textContent = text;
+        break;
+      }
+      case "import-invalid": {
+        renderImportPreview([]);
+        $("btn-import").disabled = true;
+        const status = $("import-status");
+        status.className = "status error";
+        status.textContent = msg.error + (msg.details.length ? " — " + msg.details[0] : "");
+        break;
+      }
     }
   };
 
@@ -180,13 +209,50 @@
     $("export-status").textContent = "✓ Copied — paste into StyleSnap Webtool";
   });
 
+  function renderImportPreview(entries) {
+    const list = $("import-preview");
+    list.textContent = "";
+    for (const e of entries) {
+      const li = document.createElement("li");
+
+      const kind = document.createElement("span");
+      kind.className = "tk-type";
+      kind.textContent = e.kind;
+      li.appendChild(kind);
+
+      const name = document.createElement("span");
+      name.className = "tk-value";
+      name.textContent = e.name;
+      li.appendChild(name);
+
+      const value = document.createElement("span");
+      value.className = "tk-source";
+      value.textContent = e.valueLabel;
+      value.title = e.valueLabel;
+      li.appendChild(value);
+
+      list.appendChild(li);
+    }
+  }
+
+  let validateTimer = null;
   $("import-json").addEventListener("input", (e) => {
-    $("btn-import").disabled = e.target.value.trim().length === 0;
+    const text = e.target.value.trim();
+    clearTimeout(validateTimer);
+    if (text.length === 0) {
+      renderImportPreview([]);
+      $("btn-import").disabled = true;
+      $("import-status").textContent = "";
+      $("import-status").className = "status";
+      return;
+    }
+    // Debounce so we don't validate on every keystroke of a large paste.
+    validateTimer = setTimeout(() => post({ type: "validate-import", json: text }), 300);
   });
 
   $("btn-import").addEventListener("click", () => {
-    // Task 4/5 wire this up to validation + style creation.
-    $("import-status").textContent = "Import is not implemented yet (Task 4/5)";
+    // Task 5 wires this up to actual style/variable creation.
+    $("import-status").textContent = "Creation is not implemented yet (Task 5)";
   });
 </script>
 </body>
