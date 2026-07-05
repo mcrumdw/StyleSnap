@@ -85,6 +85,47 @@ Figma `radius/md`, 16×).
 | `shadow/sm` | 0 1px 2px 0 · `color/ink` @ 5% | `.card`, 10× |
 | `shadow/md` | 0 4px 8px −2px · `color/ink` @ 10% | dropdown + Figma `shadow/md`, 10× |
 
+## Components (derived from captures)
+
+Sketches reconstructed from same-element capture groups; anatomy beyond this
+was not captured.
+
+- **Button** (`.btn-primary` / Figma `Button/Primary`): bg
+  `color/action/primary` · radius `radius/sm` · hover →
+  `color/action/primary-hover` · inner gap `space/xs`.
+- **Card** (`.card` / Figma `Card/Default`): bg `color/surface/card` · radius
+  `radius/md` · shadow `shadow/sm` · padding `space/sm`.
+- **Input** (`.field`): border `border-width/default` `color/border/default`.
+- **Hero** (`.hero`): bg `gradient/hero` · padding `space/lg`/`space/xl` ·
+  title `type/display`.
+
+## Accessibility (computed)
+
+Measured WCAG contrast for the assigned text/surface pairs:
+
+| Pair | Ratio | AA (4.5:1) |
+|---|---|---|
+| `color/text/primary` on `color/surface/card` | 17.8:1 | ✅ |
+| `color/text/primary` on `color/surface/page` | 17.0:1 | ✅ |
+| `color/text/muted` on `color/surface/card` | 5.0:1 | ✅ |
+| `color/text/muted` on `color/surface/page` | 4.8:1 | ✅ |
+| white on `color/action/primary` | 4.5:1 | ✅ (no margin — avoid small text) |
+| white on `color/action/primary-hover` | 6.4:1 | ✅ |
+| white on `color/feedback/error` | 4.8:1 | ✅ |
+
+## Mood & voice (author notes)
+
+**Mood / vibe:** Fresh, trustworthy SaaS — generous whitespace, one saturated
+blue used with restraint, soft layered shadows. Not playful; calm and precise.
+
+**Component principles:** surfaces are white cards on a warm gray page;
+elevation via the two shadow steps, never borders alone; the gradient is
+reserved for the hero.
+
+**Motion:** *(not captured — see Gaps)*
+
+**Voice & microcopy:** *(not captured — see Gaps)*
+
 ## Gaps — undefined in this system
 
 The consumer must not guess these; they were not captured and not yet decided:
@@ -95,7 +136,9 @@ The consumer must not guess these; they were not captured and not yet decided:
 - `color/feedback/success`, `color/feedback/warning`, `color/feedback/info`.
 - `type/mono` — no monospace captured.
 - 12px spacing (9×) captured but unassigned to the scale.
-- Breakpoints, motion/easing, z-index — never capturable; define manually.
+- Breakpoints, z-index — never capturable; define manually.
+- **Motion** — no durations/easing specified (System notes field empty).
+- **Voice & microcopy** — no tone/wording rules specified (System notes field empty).
 
 ---
 

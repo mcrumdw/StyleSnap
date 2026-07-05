@@ -217,6 +217,21 @@ A single file to paste into Claude Code / Cursor as design-system context.
 - **Plain Markdown** — no tool-specific syntax; works in any AI coding context.
 - **Gaps flagged** explicitly so the consumer knows what's undefined.
 
+**Descriptive layers (added 2026-07-04)** — a usable design system is more
+than token tables. Each layer has a distinct source:
+
+- **Computed by the app:** an **Accessibility** section with measured WCAG
+  contrast ratios for every assigned text/surface role pair (pass/fail
+  annotated), and **component sketches** derived from `captureId` groups
+  ("Button = `action/primary` bg · `radius/sm` · hover → `-hover` shade").
+- **User-authored ("System notes" panel):** mood/vibe, component principles,
+  motion, voice/microcopy, layout notes — optional structured text fields
+  filled before export. Empty fields are reported in **Gaps**, never silently
+  omitted.
+- **AI-drafted (V2, FR-20):** propose descriptions *derived from* the tokens
+  (e.g. hard shadows + dark borders + saturated primary → "neobrutalist,
+  confident"); user edits before export.
+
 ## 12. Success metrics
 
 - Raw export → exported `design.md` in **< 10 minutes**.

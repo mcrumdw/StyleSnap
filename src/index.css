@@ -14,6 +14,39 @@
     outline-offset: 2px;
   }
 
+  /* DESIGN.md §5.1 sensitivity slider: 4px border-default track, 20px
+     brand-primary thumb with 2px border + hard shadow. Native range styling
+     needs vendor pseudo-elements, so it lives here rather than in Tailwind. */
+  input[type="range"].sensitivity {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: theme(colors.border-default);
+  }
+
+  input[type="range"].sensitivity::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background: theme(colors.brand-primary);
+    border: 2px solid theme(colors.border-default);
+    box-shadow: theme(boxShadow.card);
+    cursor: pointer;
+  }
+
+  input[type="range"].sensitivity::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background: theme(colors.brand-primary);
+    border: 2px solid theme(colors.border-default);
+    box-shadow: theme(boxShadow.card);
+    cursor: pointer;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
