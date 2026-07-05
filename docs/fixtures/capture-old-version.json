@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "source": "browser-extension",
+    "exportedAt": "2026-05-12T09:00:00Z",
+    "pageUrl": "https://verdantly.io/about",
+    "version": "1.0"
+  },
+  "tokens": [
+    { "id": "ext_ov_01", "captureId": "ov-btn", "source": "button.cta", "name": null, "occurrences": 6, "merged": false, "type": "color", "value": "#17A673", "opacity": 1,
+      "context": { "cssProperty": "background-color", "element": "button" } },
+    { "id": "ext_ov_02", "captureId": "ov-body", "source": "p", "name": null, "occurrences": 15, "merged": false, "type": "color", "value": "#1C1917", "opacity": 1,
+      "context": { "cssProperty": "color", "element": "p" } },
+    { "id": "ext_ov_03", "captureId": "ov-card", "source": "article.card", "name": null, "occurrences": 8, "merged": false, "type": "spacing", "value": 12,
+      "context": { "cssProperty": "padding" } }
+  ]
+}
