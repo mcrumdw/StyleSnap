@@ -353,6 +353,13 @@ dialogs, 8d's PrimitivePicker); only its navigation chrome is replaced.
 - Keep: Esc behavior, focus traps, toasts, collapsed "Import another
   capture", localStorage (persist current step too). Update `docs/DEMO.md`
   to the step flow.
+- **Export guardrail (UX_RESEARCH.md P2):** the copy/export CTA reflects
+  quality state; exporting with unmerged clusters / unassigned required roles
+  shows a one-time interstitial ("12 unnamed · 4 clusters · 5 gaps — export
+  anyway, or fix the big ones?"). Never blocks — informs once.
+- **Resume orientation (P9):** on draft restore, land on the furthest
+  incomplete step + toast ("Welcome back — 3 gaps left").
+- **Stepper a11y (P11):** roving tabindex + arrow keys on the step control.
 
 **Explicitly removed:** Edit ↔ System toggle · Roles/Captured/All sub-tabs ·
 GapDrawer and ExportDrawer as overlays (content reused inline) · "Copy
@@ -374,10 +381,34 @@ buttons.
 
 ---
 
+## Phase 11 — Friction fixes from the usability study (after 10 & 9)
+
+Source: `docs/UX_RESEARCH.md` §4 (validate with real users first — §6).
+
+- **P3 Batch suggestions:** "Accept N high-confidence suggestions" — one
+  review list, one confirm (human-in-the-loop preserved; nothing silent).
+- **P4 Commitment relief:** Create System reframed ("you can reopen until
+  export"); **Reopen for editing** action; **Undo** directly in merge toasts.
+- **P5 Scale builders:** deterministic quick actions — "generate spacing
+  scale from base step", "derive hover shade from base color" (proposals,
+  user confirms; AI variants stay V2).
+- **P6 Ignore token:** reversible dismiss on captured tokens; hidden behind
+  the show-everything filter; excluded from exports.
+- Quick fixes bundled: two-layer error copy + "get the extension/plugin"
+  link (P10); completeness-pill first-run hint (P13).
+
+**Accept:** S2 speed-run reaches a *decent* export in < 4 min via guardrail +
+batch accept; S5 thin-capture completion drops from ~70 to ~30 clicks; junk
+tokens excluded from export; all prior tests green.
+
+---
+
 ## Backlog (do NOT pull into MVP)
 
 AI assist (FR-20), Figma Variables export, W3C token output format, component
-reconstruction, accounts. De-scope order if behind: PRD §13.
+reconstruction, accounts, per-source cluster breakdown + persistent filters
+(P7), custom role names within standard categories (P8 — decide with team).
+De-scope order if behind: PRD §13.
 
 ## Definition of done (MVP)
 

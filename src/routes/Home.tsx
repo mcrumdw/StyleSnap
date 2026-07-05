@@ -1,18 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TokenType } from "../contract/types";
 import { Button } from "../components/Button";
+import { CleanupStep } from "../components/CleanupStep";
 import { CreateSystemDialog } from "../components/CreateSystemDialog";
 import { EmptyState } from "../components/EmptyState";
-import { ExportDrawer } from "../components/ExportDrawer";
-import { GapDrawer } from "../components/GapDrawer";
+import { ExportSection } from "../components/ExportSection";
+import { GapPanel } from "../components/GapPanel";
+import { GiveMeaningStep } from "../components/GiveMeaningStep";
 import { ImportZone } from "../components/ImportZone";
-import { SessionBar, type SessionView } from "../components/SessionBar";
+import { StepBar } from "../components/StepBar";
 import { SystemView } from "../components/SystemView";
 import { Toast } from "../components/Toast";
-import { Workspace, type EditSubTab } from "../components/Workspace";
 import { importLabel } from "../state/pool";
+import type { PipelineStep } from "../state/pipeline";
 import { usePool } from "../state/usePool";
 import { useSessionViewModel } from "../state/useSessionViewModel";
+import { furthestIncompleteStep, stepPageTitle, welcomeBackMessage } from "../state/pipeline";
 
 export function Home() {
   const {
@@ -28,81 +31,116 @@ export function Home() {
     removeManual,
     setProjectName,
     createSystem,
+    setStep,
     startOver,
   } = usePool();
 
   const vm = useSessionViewModel(pool);
   const hasTokens = pool.imports.length > 0;
+  const step = vm.step;
 
-  const [view, setView] = useState<SessionView>("edit");
-  const [editSubTab, setEditSubTab] = useState<EditSubTab>("captured");
   const [focusRoleId, setFocusRoleId] = useState<string | undefined>();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showGapDrawer, setShowGapDrawer] = useState(false);
-  const [showExportDrawer, setShowExportDrawer] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [addTokenPreset, setAddTokenPreset] = useState<
     { tokenType: TokenType; role?: string } | undefined
   >();
 
+  const goToStep = useCallback(
+    (next: PipelineStep) => {
+      setStep(next);
+      setFocusRoleId(undefined);
+    },
+    [setStep],
+  );
+
   const copyDesignMd = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(vm.designMd);
       setToast("design.md copied — paste it into your AI coding tool.");
     } catch {
-      setToast("Couldn't reach the clipboard — open Export… instead.");
+      setToast("Couldn't reach the clipboard — use Copy in the export section below.");
     }
   }, [vm.designMd]);
 
-  const handleAssignRoleFromGap = useCallback((role: string) => {
-    setShowGapDrawer(false);
-    setView("edit");
-    setEditSubTab("roles");
-    setFocusRoleId(role);
-    requestAnimationFrame(() => {
-      document.getElementById(`role-${role.replace(/\//g, "-")}`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
+  const handlePrimaryAction = useCallback(() => {
+    switch (step) {
+      case 1:
+        goToStep(2);
+        break;
+      case 2:
+        goToStep(3);
+        break;
+      case 3:
+        goToStep(4);
+        break;
+      case 4:
+        if (vm.created) {
+          void copyDesignMd();
+        } else {
+          setShowCreateDialog(true);
+        }
+        break;
+    }
+  }, [step, goToStep, vm.created, copyDesignMd]);
+
+  const handleAssignRoleFromGap = useCallback(
+    (role: string) => {
+      goToStep(2);
+      setFocusRoleId(role);
+      requestAnimationFrame(() => {
+        document.getElementById(`role-${role.replace(/\//g, "-")}`)?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
       });
-    });
-  }, []);
+    },
+    [goToStep],
+  );
 
   const handleAddTokenFromGap = useCallback(
     (preset: { tokenType: TokenType; role?: string }) => {
-      setShowGapDrawer(false);
-      setView("edit");
-      setEditSubTab("captured");
       setAddTokenPreset(preset);
+      goToStep(1);
     },
-    [],
+    [goToStep],
   );
 
-  // Keyboard: 1 = Edit, 2 = System (when session active)
+  // Keyboard: 1–4 = steps, Esc closes dialogs
   useEffect(() => {
     if (!hasTokens) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "1") setView("edit");
-      if (e.key === "2") setView("system");
-      if (e.key === "Escape") {
-        setShowGapDrawer(false);
-        setShowExportDrawer(false);
-        setShowCreateDialog(false);
-      }
+      if (e.key === "1") goToStep(1);
+      if (e.key === "2") goToStep(2);
+      if (e.key === "3") goToStep(3);
+      if (e.key === "4") goToStep(4);
+      if (e.key === "Escape") setShowCreateDialog(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hasTokens]);
+  }, [hasTokens, goToStep]);
 
-  const pageTitle =
-    view === "edit"
-      ? editSubTab === "roles"
-        ? "Edit — assign roles"
-        : editSubTab === "captured"
-          ? "Edit — captured primitives"
-          : "Edit — all tokens"
-      : "System — review your design system";
+  const progress = {
+    openClusters: vm.openClusterCount,
+    rolesMet: vm.checklist.requiredMet,
+    rolesTotal: vm.checklist.requiredTotal,
+    gaps: vm.gapCount,
+    created: vm.created,
+  };
+
+  // Resume orientation (UX_RESEARCH P9): tokens present on first render mean
+  // a restored draft — land on the furthest incomplete step, not wherever the
+  // tab was left, and say hello.
+  const resumeRef = useRef(hasTokens);
+  useEffect(() => {
+    if (!resumeRef.current) return;
+    resumeRef.current = false;
+    setStep(furthestIncompleteStep(progress));
+    setToast(welcomeBackMessage(progress));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on restore
+  }, []);
 
   return (
     <main id="main" className="mx-auto flex max-w-container flex-col gap-8 px-6 py-8">
@@ -114,39 +152,28 @@ export function Home() {
       ) : (
         <>
           <header className="flex w-full flex-col gap-1">
-            <h1 className="font-heading text-page-title font-bold">{pageTitle}</h1>
+            <h1 className="font-heading text-page-title font-bold">{stepPageTitle(step)}</h1>
             <p className="text-base text-text-muted">
               {vm.total} token{vm.total === 1 ? "" : "s"} from{" "}
               {pool.imports.map((imp) => importLabel(imp.meta)).join(" + ")}. Auto-saved.
             </p>
           </header>
 
-          <SessionBar
-            view={view}
-            onViewChange={setView}
+          <StepBar
+            step={step}
+            onStepChange={goToStep}
             projectName={vm.projectName}
             onProjectNameChange={setProjectName}
-            checklist={vm.checklist}
-            gapCount={vm.gapCount}
-            created={vm.created}
-            onOpenGaps={() => setShowGapDrawer(true)}
-            onCreateSystem={() => setShowCreateDialog(true)}
-            onCopyDesignMd={() => void copyDesignMd()}
-            onOpenExport={() => setShowExportDrawer(true)}
+            progress={progress}
+            onPrimaryAction={handlePrimaryAction}
           />
 
-          {view === "edit" ? (
-            <Workspace
+          {step === 1 && (
+            <CleanupStep
               entries={vm.entries}
               merges={pool.merges}
               decisions={pool.decisions}
               assignments={pool.assignments}
-              editSubTab={editSubTab}
-              onEditSubTabChange={(tab) => {
-                setEditSubTab(tab);
-                setFocusRoleId(undefined);
-              }}
-              focusRoleId={focusRoleId}
               addTokenPreset={addTokenPreset}
               onAddTokenPresetConsumed={() => setAddTokenPreset(undefined)}
               onMergeCluster={mergeCluster}
@@ -162,15 +189,55 @@ export function Home() {
               onRemoveManual={removeManual}
               locked={vm.created}
             />
-          ) : (
-            <SystemView
-              tokens={vm.systemTokens}
-              assignments={vm.resolvedAssignments}
-              onOpenGaps={() => setShowGapDrawer(true)}
+          )}
+
+          {step === 2 && (
+            <GiveMeaningStep
+              entries={vm.entries}
+              merges={pool.merges}
+              decisions={pool.decisions}
+              assignments={pool.assignments}
+              focusRoleId={focusRoleId}
+              onAssign={assign}
+              onUnassign={unassign}
             />
           )}
 
-          {/* Collapsed import — expand on demand */}
+          {step === 3 && (
+            <GapPanel
+              checklist={vm.checklist}
+              onAssignRole={handleAssignRoleFromGap}
+              onAddToken={handleAddTokenFromGap}
+            />
+          )}
+
+          {step === 4 && (
+            <div className="flex w-full flex-col gap-8">
+              <SystemView
+                tokens={vm.systemTokens}
+                assignments={vm.resolvedAssignments}
+                onGoToGaps={() => goToStep(3)}
+              />
+              {!vm.created && (
+                <section className="flex flex-col gap-4 rounded-md border-2 border-dashed border-border-default bg-surface-page p-6">
+                  <p className="text-caption text-text-muted">
+                    Happy with the review? Create your system to finalize — merges lock, exports
+                    below become official.
+                  </p>
+                  <Button variant="secondary" onClick={() => setShowCreateDialog(true)}>
+                    Create System
+                  </Button>
+                </section>
+              )}
+              <ExportSection
+                projectName={vm.projectName}
+                designMd={vm.designMd}
+                exportInput={vm.exportInput}
+                gapCount={vm.gapCount}
+              />
+            </div>
+          )}
+
           <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-8">
             <button
               type="button"
@@ -199,25 +266,6 @@ export function Home() {
             )}
           </section>
 
-          {showGapDrawer && (
-            <GapDrawer
-              checklist={vm.checklist}
-              onClose={() => setShowGapDrawer(false)}
-              onAssignRole={handleAssignRoleFromGap}
-              onAddToken={handleAddTokenFromGap}
-            />
-          )}
-
-          {showExportDrawer && (
-            <ExportDrawer
-              projectName={vm.projectName}
-              designMd={vm.designMd}
-              exportInput={vm.exportInput}
-              gapCount={vm.gapCount}
-              onClose={() => setShowExportDrawer(false)}
-            />
-          )}
-
           {showCreateDialog && (
             <CreateSystemDialog
               projectName={vm.projectName}
@@ -227,11 +275,12 @@ export function Home() {
               checklist={vm.checklist}
               onPreviewExport={() => {
                 setShowCreateDialog(false);
-                setShowExportDrawer(true);
+                goToStep(4);
               }}
               onConfirm={() => {
                 createSystem();
                 setShowCreateDialog(false);
+                goToStep(4);
                 if (vm.checklist.complete) void copyDesignMd();
               }}
               onClose={() => setShowCreateDialog(false)}

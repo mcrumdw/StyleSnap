@@ -12,9 +12,9 @@ http://localhost:5173) and have these two files ready to drag:
 
 Optional wow-closer: a Claude Code / Cursor window open on any small project.
 
-**Chrome you'll use:** the sticky **SessionBar** (Edit · System · completeness
-pill · Create System / Copy) stays visible while you scroll. Gaps live in a
-drawer — not a wall at the top.
+**Chrome you'll use:** a **4-step pipeline** at the top — Clean up → Give
+meaning → Fill gaps → Review & export. One primary button walks you forward;
+steps are never locked (keyboard `1`–`4` jumps anywhere).
 
 ---
 
@@ -31,66 +31,53 @@ one from Figma. Raw, unnamed, full of near-duplicates. This is the real input."*
 **Flex (10 s):** paste `capture-malformed.json` instead — a friendly error
 listing exactly what's wrong, nothing crashes, nothing gets added.
 
-## 2. The 4-blues problem (~2 min)
+## 2. Step 1 — Clean up (~2 min)
 
-1. Stay on **Edit · Captured** (default after import). Point at the DUP/SIM
-   badges in **Color**.
-2. The brand blue appears four ways: `#2E6BFF` · `#2E6CFF` · `#2F6BFE` ·
-   `#3067FF` — visually identical, all flagged into one cluster.
-3. Click **Review cluster** on the blue. The dialog ranks the canonical
-   (most-used) first, with per-token ΔE distances.
-4. Click **Merge into this.** → toast: *"Nice — 5 colors just became 1."*
-5. Point out what did **not** merge: the hover blue `#2456CC` (a real state,
-   not a duplicate), and in Typography the uppercase tracked label never
-   merges into the caption.
-6. Click **Un-merge** once, then re-merge — nothing is destructive until
-   Create System.
+1. You're on **1. Clean up** by default. Point at the DUP/SIM badges in
+   **Color**.
+2. The brand blue appears four ways — visually identical, all flagged into one
+   cluster.
+3. Click **Review cluster** on the blue. The dialog ranks the canonical first.
+4. Click **Merge into this.** → toast: *"Nice — 5 colors just became 1. Next:
+   give them meaning."*
+5. Point out what did **not** merge: the hover blue (a real state), and the
+   uppercase tracked label never merges into the caption.
+6. Click **Un-merge** once, then re-merge — nothing is destructive until Create
+   System on step 4.
+7. Click the primary CTA: **Next: give your colors meaning** (or press `2`).
 
 **Say:** *"Detection only flags. A human merges. And every merge is
 reversible."*
 
-## 3. Roles & names (~3 min)
+## 3. Step 2 — Give meaning (~3 min)
 
-1. Switch to **Edit · Roles**. Figma tokens show as dashed suggestions in gap
-   slots — authored names like `color/action/primary` are the strongest signal.
-   Click to confirm one; the row fills with swatch + primitive name.
-2. Switch back to **Captured** for browser tokens: confirm suggestions from
-   the role picker on cards — body background → `color/surface/page`, the button
-   blue → `color/action/primary`, the hover capture →
-   `color/action/primary-hover`.
-3. Rename a primitive inline: click "unnamed" on the merged blue, type
-   `color/brand-blue`. Note the **"3 roles"** badge when one primitive backs
-   several semantics.
-4. In **Roles**, assign spacing slots (`space/xs` … `space/2xl`) from the
-   dropdown — note the 15px capture was merged into 16 earlier, and 12px stays
-   deliberately unassigned.
+1. Figma tokens show as dashed suggestions in gap slots — confirm a few.
+2. Use the visual primitive picker (swatches in the dropdown) for browser
+   tokens — assign `color/surface/page`, `color/action/primary`, hover role.
+3. Rename the merged blue inline: `color/brand-blue`. Note the **"3 roles"**
+   badge when one value backs several semantics.
+4. Click **Next: fill the gaps** (or `3`).
 
-**Say:** *"Slash-nested names — Figma Variables' native format — so the
-round trip needs no mapping. One primitive, many roles."*
+**Say:** *"Slash-nested names — Figma Variables' native format. One value, many
+roles."*
 
-## 4. Completeness (~1 min)
+## 4. Step 3 — Fill gaps (~1 min)
 
-1. Click the **14/18 required · N gaps** pill in the SessionBar — the gap
-   drawer slides in: required gaps in red, optional under "Show optional."
-2. On `color/border/focus`, click **Add token** — the form opens pre-set.
-   Pick a color, save. Close the drawer; the pill count updates live.
-3. Or click **Assign role** on a gap — jumps to **Edit · Roles** and highlights
-   that slot.
+1. Required gaps listed inline — no drawer, no scroll wall.
+2. On `color/border/focus`, click **Add token** — form opens pre-set. Save.
+3. Or **Assign role** — jumps to step 2 and highlights that slot.
+4. Click **Review & export** (or `4`).
 
-**Say:** *"The checklist knows what a complete system needs — and what a
-capture can never contain (breakpoints, motion, z-index). Nothing is guessed
+**Say:** *"The checklist knows what a complete system needs. Nothing is guessed
 silently."*
 
-## 5. Create System & export (~2 min)
+## 5. Step 4 — Review & export (~2 min)
 
-1. Edit the project name in the SessionBar (prefilled from the Figma file).
-2. Click **Create System** in the bar → lightweight confirm: token accounting,
-   open-gap warning (no full markdown scroll). Optional: **Preview design.md**
-   opens the export drawer. Confirm. Merges lock.
-3. If all required items were met, design.md copies automatically — otherwise
-   click **Copy design.md** in the bar (one click, any scroll position).
-4. Click **Export…** for the full preview + cleaned JSON download.
-   Note: *"No backend — this file IS the save."*
+1. Scroll the **System** summary — one value, many uses, primitives strip.
+2. Click **Create System** → lightweight confirm (stats + gap warning).
+   Confirm. Merges lock.
+3. **Copy design.md** from the primary CTA or the export section below.
+4. Switch to **Cleaned JSON** tab → note: *"No backend — this file IS the save."*
 
 ## 6. The payoff (~1 min)
 
@@ -100,12 +87,8 @@ Paste the copied design.md into Claude Code / Cursor and prompt:
 > CTA button and a muted caption. Use only tokens from the file; if something
 > is missing, follow its §Gaps rule.
 
-Watch it use `color/action/primary` for the button, `space/md` padding,
-`radius/md`, `shadow/sm` — and flag the missing focus color instead of
-inventing one.
-
 **Close:** *"From messy capture to an AI-ready design system in under ten
-minutes."*
+minutes — four steps, one button."*
 
 ---
 
@@ -113,8 +96,8 @@ minutes."*
 
 | If… | Then… |
 |---|---|
-| The tab crashes or you refresh | Reload — the localStorage draft restores everything. |
-| An import goes weird | Expand **Import another capture** at the bottom → **Start over**. |
-| You merged the wrong thing | Un-merge on the survivor card (before Create System). |
-| Clipboard copy fails (permissions) | Open **Export…** and use Download instead. |
-| You want the read-only mirror | SessionBar → **System** (keyboard `2`). Back to editing: **Edit** (`1`). |
+| The tab crashes or you refresh | Reload — the localStorage draft restores everything including your step. |
+| An import goes weird | Expand **Import another capture** → **Start over**. |
+| You merged the wrong thing | Un-merge on step 1 (before Create System). |
+| Clipboard copy fails | Use Download in the export section on step 4. |
+| You need to jump back | Click any step number in the bar, or press `1`–`4`. |

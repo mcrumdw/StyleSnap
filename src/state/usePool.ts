@@ -13,12 +13,14 @@ import {
   removeManualToken,
   removeMerge,
   saveDraft,
+  setCurrentStep as setCurrentStepPure,
   setDecision,
   setProjectName as setProjectNamePure,
   unassignRole,
   updateManualToken,
   type TokenPool,
 } from "./pool";
+import type { PipelineStep } from "./pipeline";
 
 /**
  * The session token pool, backed by the localStorage draft (FR-29):
@@ -99,6 +101,10 @@ export function usePool() {
     setPool((current) => createSystemPure(current, new Date().toISOString()));
   }, []);
 
+  const setStep = useCallback((step: PipelineStep) => {
+    setPool((current) => setCurrentStepPure(current, step));
+  }, []);
+
   const startOver = useCallback(() => {
     clearDraft(localStorage);
     setPool(emptyPool());
@@ -117,6 +123,7 @@ export function usePool() {
     removeManual,
     setProjectName,
     createSystem,
+    setStep,
     startOver,
   };
 }

@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { computeChecklist } from "../engine/completeness";
-import { applyMerges } from "../engine/dedup";
+import { applyMerges, detectClusters } from "../engine/dedup";
 import { generateDesignMd, type ExportInput } from "../engine/export";
+import type { PipelineStep } from "./pipeline";
+import { clampStep } from "./pipeline";
 import {
   defaultProjectName,
   isSystemCreated,
@@ -12,7 +14,7 @@ import {
 } from "./pool";
 import { poolEntries } from "./workspace";
 
-/** Shared session state derived from the pool — one source for Home, SessionBar, Edit, System. */
+/** Shared session state derived from the pool — one source for Home, StepBar, and steps. */
 export function useSessionViewModel(pool: TokenPool) {
   const projectName = pool.projectName ?? defaultProjectName(pool);
   const created = isSystemCreated(pool);
@@ -65,6 +67,17 @@ export function useSessionViewModel(pool: TokenPool) {
     [exportInput, pool.decisions],
   );
 
+  const openClusterCount = useMemo(() => {
+    const view = applyMerges(entries, pool.merges);
+    const clusters = detectClusters(
+      view.map((e) => e.token),
+      "default",
+    );
+    return clusters.filter((c) => c.members.length > 1).length;
+  }, [entries, pool.merges]);
+
+  const step: PipelineStep = clampStep(pool.currentStep ?? 1);
+
   return {
     projectName,
     created,
@@ -76,5 +89,7 @@ export function useSessionViewModel(pool: TokenPool) {
     designMd,
     gapCount,
     systemTokens,
+    openClusterCount,
+    step,
   };
 }

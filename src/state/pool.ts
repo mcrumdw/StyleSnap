@@ -11,6 +11,8 @@
 import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
+import type { PipelineStep } from "./pipeline";
+import { clampStep } from "./pipeline";
 
 export interface PoolImport {
   /** Unique per import action (not per capture file — the same file can be imported twice). */
@@ -52,6 +54,8 @@ export interface TokenPool {
   projectName?: string;
   /** Set by Create System (FR-23) — locks merges and pins the export timestamp. */
   systemCreatedAt?: string;
+  /** Phase 10 — last active pipeline step (1–4). */
+  currentStep?: PipelineStep;
 }
 
 export function emptyPool(): TokenPool {
@@ -182,6 +186,10 @@ export function setProjectName(pool: TokenPool, name: string): TokenPool {
 }
 
 /** Finalize: merges lock, exports use this timestamp (re-exports stay byte-identical). */
+export function setCurrentStep(pool: TokenPool, step: PipelineStep): TokenPool {
+  return { ...pool, currentStep: step };
+}
+
 export function createSystem(pool: TokenPool, at: string): TokenPool {
   return { ...pool, systemCreatedAt: at };
 }
@@ -314,9 +322,10 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   }
 
   // Project name + Create System stamp were added in Phase 6 — optional strings.
-  const { projectName, systemCreatedAt } = json as Partial<TokenPool>;
+  const { projectName, systemCreatedAt, currentStep } = json as Partial<TokenPool>;
   if (projectName !== undefined && typeof projectName !== "string") return null;
   if (systemCreatedAt !== undefined && typeof systemCreatedAt !== "string") return null;
+  if (currentStep !== undefined && ![1, 2, 3, 4].includes(currentStep)) return null;
 
   const imports: PoolImport[] = [];
   for (const entry of (json as { imports: unknown[] }).imports) {
@@ -336,6 +345,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   const pool: TokenPool = { imports, merges, decisions, assignments, manual };
   if (projectName !== undefined) pool.projectName = projectName;
   if (systemCreatedAt !== undefined) pool.systemCreatedAt = systemCreatedAt;
+  if (currentStep !== undefined) pool.currentStep = clampStep(currentStep);
   return pool;
 }
 
