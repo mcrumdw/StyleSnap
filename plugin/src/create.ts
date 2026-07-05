@@ -19,6 +19,13 @@ export interface CreateResult {
 
 const VARIABLE_COLLECTION = "StyleSnap";
 
+// Figma rejects "." in variable names (reserved for path syntax). The Webtool
+// auto-names unreviewed primitives from their value ("space/5.59"), so
+// sanitize defensively instead of failing the import.
+function sanitizeVariableName(name: string): string {
+  return name.replace(/\./g, "-");
+}
+
 // ── helpers ──────────────────────────────────────────────
 
 function hexToRgb(hex: string): RGB {
@@ -194,13 +201,14 @@ export async function createAssets(data: StyleSnapExport): Promise<CreateResult>
         case "border-radius":
         case "border-width": {
           const coll = await ensureCollection();
-          if (existingVariableNames.has(name)) {
+          const variableName = sanitizeVariableName(name);
+          if (existingVariableNames.has(variableName)) {
             result.skipped++;
             break;
           }
-          const variable = figma.variables.createVariable(name, coll, "FLOAT");
+          const variable = figma.variables.createVariable(variableName, coll, "FLOAT");
           variable.setValueForMode(coll.defaultModeId, token.value);
-          existingVariableNames.add(name);
+          existingVariableNames.add(variableName);
           result.created++;
           break;
         }
