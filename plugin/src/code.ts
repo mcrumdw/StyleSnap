@@ -34,7 +34,7 @@ type PluginMessage =
   | { type: "import-invalid"; error: string; details: string[] }
   | { type: "create-done"; created: number; skipped: number; errors: string[] };
 
-figma.showUI(__html__, { width: 320, height: 480, themeColors: true });
+figma.showUI(__html__, { width: 340, height: 560 });
 
 function postToUi(msg: PluginMessage) {
   figma.ui.postMessage(msg);
