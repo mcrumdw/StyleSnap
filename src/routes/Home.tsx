@@ -1,26 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { TokenType } from "../contract/types";
 import { Button } from "../components/Button";
 import { CreateSystemDialog } from "../components/CreateSystemDialog";
 import { EmptyState } from "../components/EmptyState";
-import { ExportPanel } from "../components/ExportPanel";
+import { ExportDrawer } from "../components/ExportDrawer";
+import { GapDrawer } from "../components/GapDrawer";
 import { ImportZone } from "../components/ImportZone";
+import { SessionBar, type SessionView } from "../components/SessionBar";
 import { SystemView } from "../components/SystemView";
-import { Workspace } from "../components/Workspace";
-import { computeChecklist } from "../engine/completeness";
-import { applyMerges } from "../engine/dedup";
-import { generateCleanedJson, generateDesignMd, type ExportInput } from "../engine/export";
-import {
-  defaultProjectName,
-  importLabel,
-  isSystemCreated,
-  poolTokenCount,
-  poolTokens,
-  resolveAssignments,
-} from "../state/pool";
+import { Toast } from "../components/Toast";
+import { Workspace, type EditSubTab } from "../components/Workspace";
+import { importLabel } from "../state/pool";
 import { usePool } from "../state/usePool";
-import { poolEntries } from "../state/workspace";
-
-type Tab = "workspace" | "system";
+import { useSessionViewModel } from "../state/useSessionViewModel";
 
 export function Home() {
   const {
@@ -38,68 +30,82 @@ export function Home() {
     createSystem,
     startOver,
   } = usePool();
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [tab, setTab] = useState<Tab>("workspace");
 
-  const entries = useMemo(() => poolEntries(pool), [pool]);
-  const total = poolTokenCount(pool);
+  const vm = useSessionViewModel(pool);
   const hasTokens = pool.imports.length > 0;
-  const created = isSystemCreated(pool);
-  const projectName = pool.projectName ?? defaultProjectName(pool);
 
-  // Everything the export engine needs (FR-23/24/25), derived from the pool.
-  // generatedAt is pinned at Create System so re-exports are byte-identical;
-  // before that it only feeds the preview.
-  const exportInput = useMemo((): ExportInput => {
-    const raw = poolTokens(pool);
-    const view = applyMerges(raw.map((token) => ({ token })), pool.merges).map((e) => e.token);
-    const names = new Map<string, string>();
-    for (const [id, decision] of Object.entries(pool.decisions)) {
-      if (decision.name !== undefined) names.set(id, decision.name);
+  const [view, setView] = useState<SessionView>("edit");
+  const [editSubTab, setEditSubTab] = useState<EditSubTab>("captured");
+  const [focusRoleId, setFocusRoleId] = useState<string | undefined>();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showGapDrawer, setShowGapDrawer] = useState(false);
+  const [showExportDrawer, setShowExportDrawer] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [addTokenPreset, setAddTokenPreset] = useState<
+    { tokenType: TokenType; role?: string } | undefined
+  >();
+
+  const copyDesignMd = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(vm.designMd);
+      setToast("design.md copied — paste it into your AI coding tool.");
+    } catch {
+      setToast("Couldn't reach the clipboard — open Export… instead.");
     }
-    return {
-      projectName,
-      generatedAt: pool.systemCreatedAt ?? new Date().toISOString(),
-      captures: pool.imports.map((imp) => imp.meta),
-      rawTokenCount: raw.length,
-      mergeCount: pool.merges.length,
-      tokens: view,
-      rawById: new Map(raw.map((t) => [t.id, t])),
-      assignments: new Map(Object.entries(resolveAssignments(pool.assignments, pool.merges))),
-      names,
+  }, [vm.designMd]);
+
+  const handleAssignRoleFromGap = useCallback((role: string) => {
+    setShowGapDrawer(false);
+    setView("edit");
+    setEditSubTab("roles");
+    setFocusRoleId(role);
+    requestAnimationFrame(() => {
+      document.getElementById(`role-${role.replace(/\//g, "-")}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  }, []);
+
+  const handleAddTokenFromGap = useCallback(
+    (preset: { tokenType: TokenType; role?: string }) => {
+      setShowGapDrawer(false);
+      setView("edit");
+      setEditSubTab("captured");
+      setAddTokenPreset(preset);
+    },
+    [],
+  );
+
+  // Keyboard: 1 = Edit, 2 = System (when session active)
+  useEffect(() => {
+    if (!hasTokens) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "1") setView("edit");
+      if (e.key === "2") setView("system");
+      if (e.key === "Escape") {
+        setShowGapDrawer(false);
+        setShowExportDrawer(false);
+        setShowCreateDialog(false);
+      }
     };
-  }, [pool, projectName]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasTokens]);
 
-  const checklist = useMemo(
-    () => computeChecklist(exportInput.tokens, exportInput.assignments),
-    [exportInput],
-  );
-  const designMd = useMemo(() => generateDesignMd(exportInput), [exportInput]);
-  const cleanedJson = useMemo(
-    () => JSON.stringify(generateCleanedJson(exportInput), null, 2),
-    [exportInput],
-  );
-  const gapCount = useMemo(
-    () => checklist.items.filter((i) => i.status === "gap").length,
-    [checklist],
-  );
-
-  // The system view shows the reviewed tokens with user names overlaid.
-  const systemTokens = useMemo(
-    () =>
-      exportInput.tokens.map((token) => {
-        const name = pool.decisions[token.id]?.name;
-        return name !== undefined ? { ...token, name } : token;
-      }),
-    [exportInput, pool.decisions],
-  );
-  const resolvedAssignments = useMemo(
-    () => resolveAssignments(pool.assignments, pool.merges),
-    [pool.assignments, pool.merges],
-  );
+  const pageTitle =
+    view === "edit"
+      ? editSubTab === "roles"
+        ? "Edit — assign roles"
+        : editSubTab === "captured"
+          ? "Edit — captured primitives"
+          : "Edit — all tokens"
+      : "System — review your design system";
 
   return (
-    <main id="main" className="mx-auto flex max-w-container flex-col items-center gap-12 px-6 py-12">
+    <main id="main" className="mx-auto flex max-w-container flex-col gap-8 px-6 py-8">
       {!hasTokens ? (
         <>
           <EmptyState heading="Nothing snapped yet" message="Drop a capture to begin." />
@@ -107,126 +113,132 @@ export function Home() {
         </>
       ) : (
         <>
-          <header className="flex w-full flex-wrap items-end justify-between gap-4">
-            <div className="flex flex-col gap-2">
-              <h1 className="font-heading text-page-title font-bold">Token workspace</h1>
-              <p className="text-base text-text-muted">
-                {total} token{total === 1 ? "" : "s"} from{" "}
-                {pool.imports.map((imp) => importLabel(imp.meta)).join(" + ")}. Auto-saved — a
-                refresh won't lose anything.
-              </p>
-            </div>
-            <div className="flex items-end gap-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-caption font-medium text-text-muted">Project name</span>
-                <input
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  aria-label="Project name"
-                  className="h-btn-sm rounded-sm border-2 border-border-default bg-surface-card px-3 text-base text-text-primary"
-                />
-              </label>
-              {!created && (
-                <Button onClick={() => setShowCreateDialog(true)}>Create System</Button>
-              )}
-            </div>
+          <header className="flex w-full flex-col gap-1">
+            <h1 className="font-heading text-page-title font-bold">{pageTitle}</h1>
+            <p className="text-base text-text-muted">
+              {vm.total} token{vm.total === 1 ? "" : "s"} from{" "}
+              {pool.imports.map((imp) => importLabel(imp.meta)).join(" + ")}. Auto-saved.
+            </p>
           </header>
 
-          {created && (
-            <ExportPanel
-              projectName={projectName}
-              designMd={designMd}
-              cleanedJson={cleanedJson}
-              gapCount={gapCount}
-            />
-          )}
+          <SessionBar
+            view={view}
+            onViewChange={setView}
+            projectName={vm.projectName}
+            onProjectNameChange={setProjectName}
+            checklist={vm.checklist}
+            gapCount={vm.gapCount}
+            created={vm.created}
+            onOpenGaps={() => setShowGapDrawer(true)}
+            onCreateSystem={() => setShowCreateDialog(true)}
+            onCopyDesignMd={() => void copyDesignMd()}
+            onOpenExport={() => setShowExportDrawer(true)}
+          />
 
-          {/* Phase 8 — workspace ↔ system view tabs. */}
-          <nav
-            role="tablist"
-            aria-label="Views"
-            className="flex w-full gap-2 border-b-2 border-border-default"
-          >
-            {(
-              [
-                ["workspace", "Workspace"],
-                ["system", "System"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                role="tab"
-                aria-selected={tab === id}
-                onClick={() => setTab(id)}
-                className={`-mb-0.5 rounded-t-sm border-2 border-b-0 px-4 py-2 font-heading text-card-title font-bold ${
-                  tab === id
-                    ? "border-border-default bg-surface-card text-text-primary"
-                    : "border-transparent text-text-muted hover:text-text-primary"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-
-          {tab === "workspace" ? (
+          {view === "edit" ? (
             <Workspace
-              entries={entries}
+              entries={vm.entries}
               merges={pool.merges}
               decisions={pool.decisions}
               assignments={pool.assignments}
+              editSubTab={editSubTab}
+              onEditSubTabChange={(tab) => {
+                setEditSubTab(tab);
+                setFocusRoleId(undefined);
+              }}
+              focusRoleId={focusRoleId}
+              addTokenPreset={addTokenPreset}
+              onAddTokenPresetConsumed={() => setAddTokenPreset(undefined)}
               onMergeCluster={mergeCluster}
               onUnmerge={unmerge}
               onSetName={setName}
               onAssign={assign}
               onUnassign={unassign}
-              onAddManual={addManual}
+              onAddManual={(token, role) => {
+                addManual(token, role);
+                if (addTokenPreset) setAddTokenPreset(undefined);
+              }}
               onUpdateManual={updateManual}
               onRemoveManual={removeManual}
-              locked={created}
+              locked={vm.created}
             />
           ) : (
             <SystemView
-              tokens={systemTokens}
-              assignments={resolvedAssignments}
-              onGoToChecklist={() => setTab("workspace")}
+              tokens={vm.systemTokens}
+              assignments={vm.resolvedAssignments}
+              onOpenGaps={() => setShowGapDrawer(true)}
             />
           )}
 
-          <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-12">
-            <h2 className="font-heading text-section-header font-bold">
-              Import another capture
-            </h2>
-            <ImportZone onImport={addImport} />
-            <div>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (window.confirm("Start over? This clears every imported token.")) {
-                    startOver();
-                  }
-                }}
-              >
-                Start over
-              </Button>
-            </div>
+          {/* Collapsed import — expand on demand */}
+          <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-8">
+            <button
+              type="button"
+              onClick={() => setImportOpen((o) => !o)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <h2 className="font-heading text-card-title font-bold">Import another capture</h2>
+              <span className="font-mono text-caption text-text-muted">{importOpen ? "▲" : "▼"}</span>
+            </button>
+            {importOpen && (
+              <>
+                <ImportZone onImport={addImport} />
+                <div>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (window.confirm("Start over? This clears every imported token.")) {
+                        startOver();
+                      }
+                    }}
+                  >
+                    Start over
+                  </Button>
+                </div>
+              </>
+            )}
           </section>
+
+          {showGapDrawer && (
+            <GapDrawer
+              checklist={vm.checklist}
+              onClose={() => setShowGapDrawer(false)}
+              onAssignRole={handleAssignRoleFromGap}
+              onAddToken={handleAddTokenFromGap}
+            />
+          )}
+
+          {showExportDrawer && (
+            <ExportDrawer
+              projectName={vm.projectName}
+              designMd={vm.designMd}
+              exportInput={vm.exportInput}
+              gapCount={vm.gapCount}
+              onClose={() => setShowExportDrawer(false)}
+            />
+          )}
 
           {showCreateDialog && (
             <CreateSystemDialog
-              projectName={projectName}
-              reviewedCount={exportInput.tokens.length}
-              rawCount={exportInput.rawTokenCount}
-              mergeCount={exportInput.mergeCount}
-              checklist={checklist}
-              designMdPreview={designMd}
+              projectName={vm.projectName}
+              reviewedCount={vm.exportInput.tokens.length}
+              rawCount={vm.exportInput.rawTokenCount}
+              mergeCount={vm.exportInput.mergeCount}
+              checklist={vm.checklist}
+              onPreviewExport={() => {
+                setShowCreateDialog(false);
+                setShowExportDrawer(true);
+              }}
               onConfirm={() => {
                 createSystem();
                 setShowCreateDialog(false);
+                if (vm.checklist.complete) void copyDesignMd();
               }}
               onClose={() => setShowCreateDialog(false)}
             />
           )}
+
+          {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
         </>
       )}
     </main>

@@ -2,9 +2,13 @@
 
 **Owner:** makram · **Created:** 2026-07-04 · **Target:** MVP per PRD v2.1 §13
 
-Seven phases, each one Claude Code session. Every phase ends with a passing
-acceptance check and a git commit — never start a phase on top of uncommitted
-work.
+Phases 0–7 = the MVP (shipped). Phases 8+ are post-MVP fixes driven by user
+testing. One agent session per phase (Claude Code or Cursor — AGENTS.md rules
+apply to both). Every phase ends with a passing acceptance check and a git
+commit — never start a phase on top of uncommitted work.
+
+**Recommended order for open phases: 10 → 9** (Phase 10 restructures
+navigation; Phase 9's System-notes panel then lands in its final home, step 4).
 
 ## How to run each session
 
@@ -196,6 +200,177 @@ uses.
 - System view: every color subsection populated from fixtures; a role-less
   primitive is flagged; no console errors; export unchanged except now
   reflecting multi-role reality.
+
+---
+
+## Phase 8c — Edit/System UX restructure (post-Phase 8)
+
+**Why (user testing, 2026-07-05):** Phase 8 fixed the data model
+(`assignments: role → primitive`) but the Edit view still presented a flat
+token grid — primitives vs semantics were indistinguishable. The checklist
+rendered as a full-page scroll wall; Create System and Edit/System toggles
+scrolled away; export forced a full design.md preview before confirming.
+
+**Build:**
+
+- **`SessionBar`** — sticky chrome below the wordmark: Edit ↔ System toggle,
+  completeness pill (opens gap drawer), project name, Create System / Copy
+  design.md + Export drawer.
+- **`useSessionViewModel`** — shared derived state (checklist, exportInput,
+  designMd, gapCount) so Home/SessionBar/Edit/System don't duplicate memos.
+- **Edit sub-tabs:** Roles (semantic, `EditRolesPanel`) · Captured (primitive
+  grid, de-emphasized cards) · All (power grid). Gap drawer actions deep-link
+  to `#role-…` slots in Roles.
+- **`GapDrawer`** — gaps only; met items collapsed; no inline checklist in
+  main scroll.
+- **`ExportDrawer`** + lightweight **`CreateSystemDialog`** — summary confirm,
+  lazy JSON stringify; one-click Copy from SessionBar after create.
+- Collapsed "Import another capture" section; keyboard `1`/`2` (Edit/System),
+  `Esc` closes drawers.
+
+**Accept:** Edit visibly separates roles from primitives; SessionBar always
+visible; checklist never inline; Copy design.md works without scrolling;
+System tab read-only mirror unchanged; oracle tests green; `docs/DEMO.md`
+golden path updated.
+
+---
+
+## Phase 8d — Visual primitive picker (post-Phase 8c)
+
+**Why (user testing, 2026-07-05):** `EditRolesPanel`'s `PrimitivePicker` used
+a native `<select>` — browsers render options as text only, so gap rows like
+`color/text/muted` showed a wall of indistinguishable auto-names
+(`color/17a673 (#17A673)`) with no swatch. Users could not tell which color
+they were assigning.
+
+**Build (`src/components/EditRolesPanel.tsx`):**
+
+- Replace `<select>` with a **custom popover** (same pattern as
+  `RolePicker`): trigger button → anchored listbox, Esc / backdrop to close.
+- **Per-row preview:** 24×24 color swatch (checkerboard when opacity < 1);
+  type-aware thumbnails for spacing, radius, border-width, typography, shadow.
+- **Row metadata:** user or fallback name + `formatValue()`; "· N captures"
+  when duplicate values are collapsed to one list entry.
+- **Dedupe by value** for colors (hex + opacity); prefer user-named token as
+  the representative when picking.
+- **Search** at top of popover (filter by name or value).
+- **Suggested** section pinned at top when the engine has a top candidate.
+- One-click suggestion path also shows a swatch beside the confirm chip.
+
+**Accept:** Assigning a color role from a gap slot shows visible swatches for
+every candidate; duplicate hex rows collapse to one entry with capture count;
+non-color foundation roles show type-appropriate thumbnails; no engine or
+export changes.
+
+---
+
+## Phase 9 — Descriptive layers in design.md (post-MVP fix)
+
+**Why (user testing, 2026-07-04):** the export is token tables only. A real
+`design.md` (see this repo's own DESIGN.md) also describes the design — mood,
+component behavior, accessibility, voice. PRD §11 "Descriptive layers" is the
+spec. Depends on Phase 8 (assignments map).
+
+**9a — Computed sections (no user input needed):**
+
+- **Accessibility:** for every assigned text-role/surface-role pair (from
+  `assignments`), compute the WCAG contrast ratio (relative-luminance math —
+  reuse/extend the culori utilities). Emit a table: pair · ratio · AA
+  pass/fail (4.5:1 normal text). Failing pairs also appear in **Gaps** with a
+  warning. Pure function in `src/engine/export/accessibility.ts` + unit tests
+  (assert exact ratios for the fixture palette: ink/white 17.7:1, white on
+  brand-blue 4.5:1, gray-500/white 5.0:1).
+- **Component sketches:** for each `captureId` group containing ≥ 2 assigned
+  tokens, emit one line: element descriptor + its role references ("`button.cta`
+  → bg `color/action/primary` · radius `radius/sm` · hover →
+  `color/action/primary-hover`"). Groups with unassigned tokens list them as
+  raw values with a "(unassigned)" marker.
+
+**9b — "System notes" panel (user-authored):**
+
+- New collapsible panel with optional fields: **Mood / vibe** (textarea),
+  **Component principles** (textarea), **Motion** (duration/easing + notes),
+  **Voice & microcopy** (textarea), **Layout** (container/grid notes). Stored
+  in pool state + localStorage, covered by the draft migration. **Placement
+  (post-Phase 10): step 4 "Review & export", above the export actions.**
+- Export renders each filled field as a section (fixed order, after
+  Foundations, before Gaps). Every empty field adds a Gaps line ("No motion
+  spec — define durations/easing before build"). Deterministic output.
+- Cleaned-JSON export carries the notes under a `notes` key so re-import
+  round-trips them.
+
+**Accept:**
+
+- Fixture flow: accessibility table appears with the exact ratios above;
+  white-on-brand-blue shows "4.5:1 — passes AA with no margin".
+- `cap-btn-1` produces the button sketch line referencing its roles.
+- Filling only Mood: export contains the Mood section AND Gaps lines for the
+  four empty fields; export is deterministic across repeated runs.
+- Notes survive refresh (localStorage) and round-trip through cleaned JSON.
+- Oracle test updated and green against the extended
+  `docs/examples/design.example.md`.
+
+---
+
+## Phase 10 — From map to path: the 4-step flow (supersedes 8c chrome)
+
+**Why (user testing, 2026-07-05):** after 8c the UI has two stacked tab
+levels (Edit ↔ System, then Roles / Captured / All) plus two drawers and a
+6-control SessionBar — ~10 destinations with no indicated order. The product
+is a **pipeline** (PRD §6: import → merge → roles → gaps → export) but the UI
+presents a **map**. The Maya persona (student-level design-system knowledge)
+doesn't know where to go next; the vocabulary ("captured primitives") assumes
+expertise. **8c's plumbing survives** (useSessionViewModel, deep links,
+dialogs, 8d's PrimitivePicker); only its navigation chrome is replaced.
+
+**Build:**
+
+- **One stepper, four steps** — numbered, always visible, freely navigable
+  (never locked), keyboard `1`–`4`:
+  1. **Clean up** — the captured grid + merge flow (old Captured tab). The
+     "All" tab dies; add a "Show everything" filter toggle here (manual +
+     merged-away tokens).
+  2. **Give meaning** — `EditRolesPanel` (old Roles tab), 8d picker intact.
+  3. **Fill gaps** — `GapDrawer` content rendered **inline as the step body**
+     (met items collapsed), not an overlay. Gap actions deep-link to step 2
+     slots / Add-token dialog exactly as today.
+  4. **Review & export** — `SystemView` summary on top; `ExportDrawer`
+     content inline below (single export home); Create System gate + Copy
+     design.md as the step's actions. (Phase 9's System-notes panel lands
+     here.)
+- **StepBar replaces SessionBar:** step indicator with per-step progress
+  (1: open DUP/SIM clusters · 2: required roles assigned · 3: open gaps ·
+  4: created ✓), project name, and **one context-aware primary CTA**:
+  "Next: give your colors meaning" → "Next: fill the gaps" → "Review &
+  export" → "Copy design.md". The completeness pill folds into step 3's
+  indicator.
+- **Vocabulary pass (user-facing labels only):** steps named as above;
+  jargon ("primitive", "semantic role") moves to tooltips/captions that
+  *teach* ("a primitive is a raw value — roles say what it's for"). Engine
+  and export terminology unchanged.
+- **Celebrate transitions** per DESIGN.md §9 voice ("Nice — 4 blues just
+  became 1. Next: give them meaning.").
+- Keep: Esc behavior, focus traps, toasts, collapsed "Import another
+  capture", localStorage (persist current step too). Update `docs/DEMO.md`
+  to the step flow.
+
+**Explicitly removed:** Edit ↔ System toggle · Roles/Captured/All sub-tabs ·
+GapDrawer and ExportDrawer as overlays (content reused inline) · "Copy
+design.md" + "Export…" + "Create System" as three separate always-visible
+buttons.
+
+**Accept:**
+
+- A first-time tester (no instructions) goes paste → export touching only
+  steps 1→4; the only overlays they meet are merge/add-token dialogs.
+- Exactly one primary CTA visible at any time; pressing it repeatedly walks
+  the whole pipeline to a copied design.md.
+- Step indicators live-update (merging a cluster decrements step 1's count;
+  assigning a role updates step 2's).
+- Gap deep links land correctly in the new structure; 8d picker untouched.
+- No engine/state changes beyond view-model + persisted step; all tests and
+  the oracle stay green; keyboard-only run-through works with visible focus.
+- `docs/DEMO.md` rewritten for the step flow; golden path still < 10 min.
 
 ---
 

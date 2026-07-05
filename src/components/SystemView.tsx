@@ -16,8 +16,8 @@ interface SystemViewProps {
   tokens: StyleSnapToken[];
   /** Resolved role → token id (Phase 8). */
   assignments: Record<string, string>;
-  /** Gap slots link back to the workspace checklist. */
-  onGoToChecklist: () => void;
+  /** Gap slots open the gap drawer. */
+  onOpenGaps: () => void;
 }
 
 const COLOR_SUBSECTIONS = ["text", "surface", "action", "border", "feedback"] as const;
@@ -47,7 +47,7 @@ const nameOf = (token: StyleSnapToken) => token.name ?? fallbackName(token);
  * referenced by several roles shows the SAME name and swatch each time:
  * visibly "one primitive, many uses", never a suspected duplicate.
  */
-export function SystemView({ tokens, assignments, onGoToChecklist }: SystemViewProps) {
+export function SystemView({ tokens, assignments, onOpenGaps }: SystemViewProps) {
   const byId = useMemo(() => new Map(tokens.map((t) => [t.id, t])), [tokens]);
 
   /** role → the token it points at (dropping stale ids defensively). */
@@ -107,7 +107,7 @@ export function SystemView({ tokens, assignments, onGoToChecklist }: SystemViewP
     <button
       key={def.role}
       type="button"
-      onClick={onGoToChecklist}
+      onClick={onOpenGaps}
       title="Open the checklist to fill this gap"
       className="flex items-center gap-3 rounded-md border-2 border-dashed border-border-default bg-surface-page p-3 text-left hover:border-brand-primary"
     >
@@ -258,10 +258,10 @@ export function SystemView({ tokens, assignments, onGoToChecklist }: SystemViewP
           <div className="flex items-center gap-4 rounded-md border-2 border-dashed border-border-default bg-surface-page p-4">
             <p className="text-caption text-text-muted">
               {requiredGaps} required role{requiredGaps === 1 ? "" : "s"} still unfilled — the
-              checklist in the workspace walks through each one.
+              checklist in the gap drawer walks through each one.
             </p>
-            <Button size="sm" variant="secondary" onClick={onGoToChecklist}>
-              Open checklist
+            <Button size="sm" variant="secondary" onClick={onOpenGaps}>
+              Open gaps
             </Button>
           </div>
         ) : null;

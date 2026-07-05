@@ -1,4 +1,4 @@
-import { useMemo, useState, type SelectHTMLAttributes } from "react";
+import { useEffect, useMemo, useState, type SelectHTMLAttributes } from "react";
 import type { TokenType } from "../contract/types";
 import {
   applyMerges,
@@ -7,7 +7,6 @@ import {
   type MergeRecord,
   type Sensitivity,
 } from "../engine/dedup";
-import { computeChecklist } from "../engine/completeness";
 import {
   deriveRoleCandidates,
   fallbackName,
@@ -17,7 +16,6 @@ import {
 import type { StyleSnapToken } from "../contract/types";
 import { resolveAssignments, type TokenDecision } from "../state/pool";
 import {
-  captureGroups,
   DEFAULT_FILTERS,
   filterEntries,
   groupByType,
@@ -28,7 +26,7 @@ import {
 } from "../state/workspace";
 import { AddTokenDialog } from "./AddTokenDialog";
 import { Button } from "./Button";
-import { ChecklistPanel } from "./ChecklistPanel";
+import { EditRolesPanel } from "./EditRolesPanel";
 import { MergeDialog } from "./MergeDialog";
 import { Toast } from "./Toast";
 import { TokenCard } from "./TokenCard";
@@ -50,7 +48,6 @@ function Select({
 
 const SENSITIVITY_STEPS: Sensitivity[] = ["strict", "default", "loose"];
 
-// §9-style plural labels for the merge toast ("Nice — 4 blues just became 1.").
 const MERGE_NOUNS: Record<TokenType, string> = {
   color: "colors",
   gradient: "gradients",
@@ -61,13 +58,19 @@ const MERGE_NOUNS: Record<TokenType, string> = {
   shadow: "shadows",
 };
 
+export type EditSubTab = "roles" | "captured" | "all";
+
 interface WorkspaceProps {
   entries: PoolEntry[];
   merges: MergeRecord[];
-  /** Per-token name decisions. */
   decisions: Record<string, TokenDecision>;
-  /** Phase 8 — role → raw token id (resolved through merges here). */
   assignments: Record<string, string>;
+  editSubTab: EditSubTab;
+  onEditSubTabChange: (tab: EditSubTab) => void;
+  focusRoleId?: string;
+  /** Opens Add Token dialog with preset (e.g. from gap drawer). */
+  addTokenPreset?: { tokenType: TokenType; role?: string };
+  onAddTokenPresetConsumed?: () => void;
   onMergeCluster: (survivorId: string, mergedIds: string[]) => void;
   onUnmerge: (survivorId: string) => void;
   onSetName: (tokenId: string, name: string | undefined) => void;
@@ -76,7 +79,6 @@ interface WorkspaceProps {
   onAddManual: (token: StyleSnapToken, role?: string) => void;
   onUpdateManual: (token: StyleSnapToken, role?: string | null) => void;
   onRemoveManual: (tokenId: string) => void;
-  /** After Create System (FR-23): merges are locked — no merge/un-merge actions. */
   locked?: boolean;
 }
 
@@ -84,12 +86,17 @@ type TokenDialog =
   | { mode: "add"; presetType?: StyleSnapToken["type"]; presetRole?: string }
   | { mode: "edit"; token: StyleSnapToken; role?: string };
 
-/** PRD §7.2–7.7 — the token workspace: flags, merge, roles, naming, gaps. */
+/** Edit view — Roles (semantic) + Captured (primitives) + All (power grid). */
 export function Workspace({
   entries,
   merges,
   decisions,
   assignments,
+  editSubTab,
+  onEditSubTabChange,
+  focusRoleId,
+  addTokenPreset,
+  onAddTokenPresetConsumed,
   onMergeCluster,
   onUnmerge,
   onSetName,
@@ -101,16 +108,25 @@ export function Workspace({
   locked = false,
 }: WorkspaceProps) {
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_FILTERS);
+  const [capturedFilter, setCapturedFilter] = useState<"all" | "unused" | "flagged">("all");
   const [sensitivity, setSensitivity] = useState<Sensitivity>("default");
   const [openClusterId, setOpenClusterId] = useState<string | null>(null);
   const [tokenDialog, setTokenDialog] = useState<TokenDialog | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!addTokenPreset) return;
+    setTokenDialog({
+      mode: "add",
+      presetType: addTokenPreset.tokenType,
+      presetRole: addTokenPreset.role,
+    });
+    onAddTokenPresetConsumed?.();
+  }, [addTokenPreset, onAddTokenPresetConsumed]);
+
   const set = <K extends keyof WorkspaceFilters>(key: K, value: WorkspaceFilters[K]) =>
     setFilters((f) => ({ ...f, [key]: value }));
 
-  // Merges are a view over the raw pool — reversible until Create System.
-  // User-assigned names overlay the raw tokens the same way.
   const view = useMemo(() => {
     const merged = applyMerges(entries, merges);
     return merged.map((entry) => {
@@ -119,8 +135,6 @@ export function Workspace({
     });
   }, [entries, merges, decisions]);
 
-  // Role suggestions are always derived live (never persisted): the raw map
-  // lets merge survivors inherit their absorbed tokens' contexts (A.1).
   const rawById = useMemo(
     () => new Map(entries.map((e) => [e.token.id, e.token])),
     [entries],
@@ -131,8 +145,6 @@ export function Workspace({
   );
   const suggestionChips = useMemo(() => topSuggestionsByToken(candidates), [candidates]);
 
-  // Assignments resolve through the merge view: a role pointing at an
-  // absorbed token follows its survivor; un-merge restores it (Phase 8).
   const resolved = useMemo(() => resolveAssignments(assignments, merges), [assignments, merges]);
   const rolesByToken = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -145,12 +157,17 @@ export function Workspace({
     return map;
   }, [resolved]);
 
-  // Suggestions for roles someone already holds stay hidden — the picker's
-  // reassign flow is the only path that can move a confirmed role.
+  const suggestedByRole = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [role, list] of candidates) {
+      if (list[0] && !(role in resolved)) map.set(role, list[0].tokenId);
+    }
+    return map;
+  }, [candidates, resolved]);
+
   const suggestedFor = (tokenId: string): string[] =>
     (suggestionChips.get(tokenId) ?? []).filter((role) => !(role in resolved));
 
-  /** Name of the primitive currently holding a role — the reassign prompt. */
   const holderLabel = (role: string): string | undefined => {
     const holderId = resolved[role];
     if (holderId === undefined) return undefined;
@@ -161,13 +178,6 @@ export function Workspace({
   const effectiveRoleOf = (tokenId: string): string | undefined =>
     rolesByToken.get(tokenId)?.[0] ?? suggestedFor(tokenId)[0];
 
-  // FR-18 — completeness against CONFIRMED assignments only, recomputed live.
-  const checklist = useMemo(
-    () => computeChecklist(view.map((e) => e.token), new Map(Object.entries(resolved))),
-    [view, resolved],
-  );
-
-  // Detection re-flags live on sensitivity change; it never merges by itself.
   const clusters = useMemo(
     () => detectClusters(view.map((e) => e.token), sensitivity),
     [view, sensitivity],
@@ -183,11 +193,23 @@ export function Workspace({
     return map;
   }, [clusters]);
 
-  const elements = useMemo(() => captureGroups(view), [view]);
   const visible = useMemo(() => filterEntries(view, filters, flaggedIds), [view, filters, flaggedIds]);
-  const groups = groupByType(visible, effectiveRoleOf);
+
+  const capturedEntries = useMemo(() => {
+    let list = visible;
+    if (capturedFilter === "unused") {
+      list = list.filter((e) => (rolesByToken.get(e.token.id)?.length ?? 0) === 0);
+    } else if (capturedFilter === "flagged") {
+      list = list.filter((e) => flaggedIds.has(e.token.id));
+    }
+    return list;
+  }, [visible, capturedFilter, rolesByToken, flaggedIds]);
+
+  const groups = groupByType(capturedEntries, effectiveRoleOf);
+  const allGroups = groupByType(visible, effectiveRoleOf);
   const isFiltered = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
 
+  const systemTokens = view.map((e) => e.token);
   const openCluster = clusters.find((c) => c.id === openClusterId) ?? null;
 
   function handleMerge(survivorId: string, mergedIds: string[]) {
@@ -203,91 +225,64 @@ export function Workspace({
     setToast("Un-merged — the originals are back, untouched.");
   }
 
-  return (
-    <section className="flex w-full flex-col gap-8">
-      <ChecklistPanel
-        checklist={checklist}
-        onAddToken={({ tokenType, role }) =>
-          setTokenDialog({ mode: "add", presetType: tokenType, presetRole: role })
-        }
+  const filterToolbar = (
+    <div className="flex flex-wrap items-center gap-4">
+      <Button size="sm" onClick={() => setTokenDialog({ mode: "add" })}>
+        Add token
+      </Button>
+      <input
+        type="search"
+        value={filters.search}
+        onChange={(e) => set("search", e.target.value)}
+        placeholder="Search value, name, source…"
+        aria-label="Search tokens"
+        className={`${control} w-64 placeholder:text-text-muted`}
       />
-
-      <div className="flex flex-wrap items-center gap-4">
-        <Button size="sm" onClick={() => setTokenDialog({ mode: "add" })}>
-          Add token
-        </Button>
-        <input
-          type="search"
-          value={filters.search}
-          onChange={(e) => set("search", e.target.value)}
-          placeholder="Search value, name, source…"
-          aria-label="Search tokens"
-          className={`${control} w-64 placeholder:text-text-muted`}
-        />
+      <Select
+        label="Type"
+        value={filters.type}
+        onChange={(e) => set("type", e.target.value as TokenType | "all")}
+      >
+        <option value="all">All</option>
+        {TOKEN_TYPE_ORDER.map((type) => (
+          <option key={type} value={type}>
+            {TOKEN_TYPE_LABELS[type]}
+          </option>
+        ))}
+      </Select>
+      <Select
+        label="Source"
+        value={filters.source}
+        onChange={(e) => set("source", e.target.value as WorkspaceFilters["source"])}
+      >
+        <option value="all">All</option>
+        <option value="browser-extension">Web</option>
+        <option value="figma">Figma</option>
+        <option value="manual">Manual</option>
+      </Select>
+      {editSubTab === "captured" && (
         <Select
-          label="Type"
-          value={filters.type}
-          onChange={(e) => set("type", e.target.value as TokenType | "all")}
+          label="Show"
+          value={capturedFilter}
+          onChange={(e) => setCapturedFilter(e.target.value as typeof capturedFilter)}
         >
           <option value="all">All</option>
-          {TOKEN_TYPE_ORDER.map((type) => (
-            <option key={type} value={type}>
-              {TOKEN_TYPE_LABELS[type]}
-            </option>
-          ))}
-        </Select>
-        <Select
-          label="Source"
-          value={filters.source}
-          onChange={(e) => set("source", e.target.value as WorkspaceFilters["source"])}
-        >
-          <option value="all">All</option>
-          <option value="browser-extension">Web</option>
-          <option value="figma">Figma</option>
-          <option value="manual">Manual</option>
-        </Select>
-        <Select
-          label="Name"
-          value={filters.named}
-          onChange={(e) => set("named", e.target.value as WorkspaceFilters["named"])}
-        >
-          <option value="all">All</option>
-          <option value="named">Named</option>
-          <option value="unnamed">Unnamed</option>
-        </Select>
-        <Select
-          label="Flags"
-          value={filters.flagged}
-          onChange={(e) => set("flagged", e.target.value as WorkspaceFilters["flagged"])}
-        >
-          <option value="all">All</option>
+          <option value="unused">Unused only</option>
           <option value="flagged">Flagged only</option>
         </Select>
-        <Select
-          label="Same element"
-          value={filters.captureId}
-          onChange={(e) => set("captureId", e.target.value)}
-        >
-          <option value="all">All</option>
-          {elements.map((g) => (
-            <option key={g.captureId} value={g.captureId}>
-              {g.captureId} ({g.count})
-            </option>
-          ))}
-        </Select>
-        {isFiltered && (
-          <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULT_FILTERS)}>
-            Clear filters
-          </Button>
-        )}
-
-        {locked && (
-          <span className="ml-auto rounded-sm border-2 border-border-default bg-surface-page px-3 py-1 font-mono text-badge text-text-muted">
-            SYSTEM CREATED — merges locked
-          </span>
-        )}
-        {/* DESIGN.md §5.1 sensitivity slider — re-flags live, never re-merges. */}
-        <label className={`${locked ? "hidden " : ""}ml-auto flex items-center gap-3`}>
+      )}
+      {isFiltered && (
+        <Button variant="ghost" size="sm" onClick={() => setFilters(DEFAULT_FILTERS)}>
+          Clear filters
+        </Button>
+      )}
+      {locked && (
+        <span className="ml-auto rounded-sm border-2 border-border-default bg-surface-page px-3 py-1 font-mono text-badge text-text-muted">
+          SYSTEM CREATED — merges locked
+        </span>
+      )}
+      {!locked && editSubTab !== "roles" && (
+        <label className="ml-auto flex items-center gap-3">
           <span className="text-caption font-medium text-text-muted">strict</span>
           <input
             type="range"
@@ -301,67 +296,122 @@ export function Workspace({
           />
           <span className="text-caption font-medium text-text-muted">loose</span>
         </label>
-      </div>
+      )}
+    </div>
+  );
 
-      {groups.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <h2 className="font-heading text-section-header font-bold">No tokens match</h2>
-          <p className="text-base text-text-muted">
-            Try a different search — or clear the filters to see everything again.
-          </p>
-          <Button variant="secondary" onClick={() => setFilters(DEFAULT_FILTERS)}>
-            Clear filters
-          </Button>
-        </div>
+  const renderGrid = (groupList: ReturnType<typeof groupByType>, primitive = false) =>
+    groupList.length === 0 ? (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <h2 className="font-heading text-section-header font-bold">No tokens match</h2>
+        <p className="text-base text-text-muted">Try a different search — or clear the filters.</p>
+        <Button variant="secondary" onClick={() => setFilters(DEFAULT_FILTERS)}>
+          Clear filters
+        </Button>
+      </div>
+    ) : (
+      groupList.map((group) => (
+        <section key={group.type} className="flex flex-col gap-4">
+          <h2 className="font-heading text-section-header font-bold">
+            {group.label}{" "}
+            <span className="font-mono text-card-title text-text-muted">({group.entries.length})</span>
+          </h2>
+          <div className="grid grid-cols-3 gap-6">
+            {group.entries.map((entry) => {
+              const id = entry.token.id;
+              const clusterId = clusterIdByToken.get(id);
+              return (
+                <TokenCard
+                  key={id}
+                  entry={entry}
+                  variant={primitive ? "primitive" : "default"}
+                  roleCount={rolesByToken.get(id)?.length ?? 0}
+                  flag={flags.get(id)}
+                  assignedRoles={rolesByToken.get(id) ?? []}
+                  suggestedRoles={suggestedFor(id)}
+                  holderLabel={holderLabel}
+                  onAssignRole={(role) => onAssign(role, id)}
+                  onUnassignRole={onUnassign}
+                  onSetName={(name) => onSetName(id, name)}
+                  onReviewCluster={
+                    !locked && clusterId ? () => setOpenClusterId(clusterId) : undefined
+                  }
+                  onUnmerge={!locked && entry.token.merged ? () => handleUnmerge(id) : undefined}
+                  onEditManual={
+                    entry.origin === "manual"
+                      ? () =>
+                          setTokenDialog({
+                            mode: "edit",
+                            token: entry.token,
+                            role: rolesByToken.get(id)?.[0],
+                          })
+                      : undefined
+                  }
+                  onRemoveManual={
+                    entry.origin === "manual" ? () => onRemoveManual(id) : undefined
+                  }
+                />
+              );
+            })}
+          </div>
+        </section>
+      ))
+    );
+
+  return (
+    <section className="flex w-full flex-col gap-6">
+      {/* Edit sub-tabs */}
+      <nav
+        role="tablist"
+        aria-label="Edit layers"
+        className="sticky top-[calc(theme(height.btn-lg)+theme(spacing.12)+theme(spacing.3))] z-sticky -mx-6 flex gap-2 border-b-2 border-border-default bg-surface-page px-6"
+      >
+        {(
+          [
+            ["roles", "Roles"],
+            ["captured", "Captured"],
+            ["all", "All"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={editSubTab === id}
+            onClick={() => onEditSubTabChange(id)}
+            className={`-mb-0.5 rounded-t-sm border-2 border-b-0 px-4 py-2 font-heading text-caption font-bold ${
+              editSubTab === id
+                ? "border-border-default bg-surface-card text-text-primary"
+                : "border-transparent text-text-muted hover:text-text-primary"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {editSubTab === "roles" ? (
+        <EditRolesPanel
+          tokens={systemTokens}
+          assignments={resolved}
+          suggestedByRole={suggestedByRole}
+          holderLabel={holderLabel}
+          onAssign={onAssign}
+          onUnassign={onUnassign}
+          focusRoleId={focusRoleId}
+        />
       ) : (
-        groups.map((group) => (
-          <section key={group.type} className="flex flex-col gap-4">
-            <h2 className="font-heading text-section-header font-bold">
-              {group.label}{" "}
-              <span className="font-mono text-card-title text-text-muted">
-                ({group.entries.length})
-              </span>
-            </h2>
-            <div className="grid grid-cols-3 gap-6">
-              {group.entries.map((entry) => {
-                const id = entry.token.id;
-                const clusterId = clusterIdByToken.get(id);
-                return (
-                  <TokenCard
-                    key={id}
-                    entry={entry}
-                    flag={flags.get(id)}
-                    assignedRoles={rolesByToken.get(id) ?? []}
-                    suggestedRoles={suggestedFor(id)}
-                    holderLabel={holderLabel}
-                    onAssignRole={(role) => onAssign(role, id)}
-                    onUnassignRole={onUnassign}
-                    onSetName={(name) => onSetName(id, name)}
-                    onReviewCluster={
-                      !locked && clusterId ? () => setOpenClusterId(clusterId) : undefined
-                    }
-                    onUnmerge={
-                      !locked && entry.token.merged ? () => handleUnmerge(id) : undefined
-                    }
-                    onEditManual={
-                      entry.origin === "manual"
-                        ? () =>
-                            setTokenDialog({
-                              mode: "edit",
-                              token: entry.token,
-                              role: rolesByToken.get(id)?.[0],
-                            })
-                        : undefined
-                    }
-                    onRemoveManual={
-                      entry.origin === "manual" ? () => onRemoveManual(id) : undefined
-                    }
-                  />
-                );
-              })}
-            </div>
-          </section>
-        ))
+        <>
+          {editSubTab === "captured" && (
+            <p className="text-caption text-text-muted">
+              Raw tokens from your captures — merge duplicates and name primitives here. Assign
+              semantic roles in the Roles tab.
+            </p>
+          )}
+          {filterToolbar}
+          <div className="flex flex-col gap-8">
+            {renderGrid(editSubTab === "captured" ? groups : allGroups, editSubTab === "captured")}
+          </div>
+        </>
       )}
 
       {openCluster && (

@@ -9,6 +9,10 @@ interface TokenCardProps {
   entry: PoolEntry;
   /** Dedup flag from the Phase 3 engine (FR-6). */
   flag?: "dup" | "sim";
+  /** Visual layer: primitive cards are de-emphasized in Captured view. */
+  variant?: "default" | "primitive";
+  /** Count of roles pointing at this token (Phase 8). */
+  roleCount?: number;
   /** ALL confirmed roles pointing at this token (Phase 8 — multi-role). */
   assignedRoles?: string[];
   /** Live engine suggestions for this token. */
@@ -36,6 +40,8 @@ const ORIGIN_LABELS = { figma: "Figma", "browser-extension": "Web", manual: "Man
 export function TokenCard({
   entry,
   flag,
+  variant = "default",
+  roleCount = 0,
   assignedRoles = [],
   suggestedRoles = [],
   holderLabel = () => undefined,
@@ -51,7 +57,13 @@ export function TokenCard({
   const sourceLabel = ORIGIN_LABELS[entry.origin];
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
+    <div
+      className={`flex flex-col gap-3 rounded-md border-2 p-4 ${
+        variant === "primitive"
+          ? "border-border-default bg-surface-page"
+          : "border-border-default bg-surface-card shadow-card"
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         {onSetName ? (
           <InlineName name={token.name} onSetName={onSetName} />
@@ -60,9 +72,20 @@ export function TokenCard({
         ) : (
           <span className="text-caption italic text-text-muted">unnamed</span>
         )}
-        <div className="flex gap-1">
-          {flag && <Badge variant={flag} />}
-          {token.merged && <Badge variant="merged" />}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex gap-1">
+            {flag && <Badge variant={flag} />}
+            {token.merged && <Badge variant="merged" />}
+          </div>
+          {variant === "primitive" && (
+            <span
+              className={`font-mono text-badge ${
+                roleCount > 0 ? "text-brand-primary" : "text-warning-text"
+              }`}
+            >
+              {roleCount > 0 ? `${roleCount} role${roleCount === 1 ? "" : "s"}` : "unused"}
+            </span>
+          )}
         </div>
       </div>
 
