@@ -312,32 +312,87 @@ spec. Depends on Phase 8 (assignments map).
 
 ---
 
-## Phase 10 — From map to path: the 4-step flow (supersedes 8c chrome)
+## Phase 10 — The simple flow: auto-completed draft + stepper (supersedes 8c chrome)
 
-**Why (user testing, 2026-07-05):** after 8c the UI has two stacked tab
-levels (Edit ↔ System, then Roles / Captured / All) plus two drawers and a
-6-control SessionBar — ~10 destinations with no indicated order. The product
-is a **pipeline** (PRD §6: import → merge → roles → gaps → export) but the UI
-presents a **map**. The Maya persona (student-level design-system knowledge)
-doesn't know where to go next; the vocabulary ("captured primitives") assumes
-expertise. **8c's plumbing survives** (useSessionViewModel, deep links,
-dialogs, 8d's PrimitivePicker); only its navigation chrome is replaced.
+**Why (user testing, 2026-07-05 + team feedback):** two problems, one
+rebuild. (1) After 8c the UI is a ~10-destination **map** with no indicated
+order, though the product is a **pipeline** (PRD §6). (2) Completion is a
+form-filling chore: the app hands the user a long gap list instead of
+completing the system itself. **Decision (2026-07-05, PRD §7.6 + Appendix
+C): derivation-first completion** — the app auto-drafts every derivable gap
+like solving a puzzle from its corner pieces (anchors); the user reviews a
+*complete* draft and changes only what they disagree with. **8c's plumbing
+survives** (useSessionViewModel, deep links, dialogs, 8d's PrimitivePicker);
+its navigation chrome is replaced.
 
-**Build:**
+**10a — Derivation engine first (`src/engine/derive-system/`, pure + tested):**
 
-- **One stepper, four steps** — numbered, always visible, freely navigable
-  (never locked), keyboard `1`–`4`:
-  1. **Clean up** — the captured grid + merge flow (old Captured tab). The
-     "All" tab dies; add a "Show everything" filter toggle here (manual +
-     merged-away tokens).
-  2. **Give meaning** — `EditRolesPanel` (old Roles tab), 8d picker intact.
-  3. **Fill gaps** — `GapDrawer` content rendered **inline as the step body**
-     (met items collapsed), not an overlay. Gap actions deep-link to step 2
-     slots / Add-token dialog exactly as today.
-  4. **Review & export** — `SystemView` summary on top; `ExportDrawer`
-     content inline below (single export home); Create System gate + Copy
-     design.md as the step's actions. (Phase 9's System-notes panel lands
-     here.)
+- **Anchor detection:** primary color (occurrences × context weight; button/
+  action context boosts), body typography (most frequent), base spacing
+  (most frequent 4px-grid value). Anchors are *proposals* the user can swap
+  in step 2.
+- **Palette derivation (OKLCH via culori, rules in PRD Appendix C):**
+  states (ΔL −0.06 hover / −0.12 active; disabled desaturate+lighten),
+  tinted neutrals (brand hue, chroma ≤ 0.02), feedback colors (conventional
+  hues 25°/70°/150°/250° + brand chroma, lightness tuned until AA ≥ 4.5),
+  accent **suggestion** only when no second hue was captured — all three
+  harmony candidates computed (complementary / split-complementary /
+  analogous), default picked by the Appendix C suitability rule.
+- **Type scale:** modular ratio from body anchor (default 1.25; 1.2/1.333
+  selectable) → caption/body/subheading/heading/display, rounded to 0.5px.
+- **Spacing/radius/shadow ramps:** geometric 4px-grid ramp from base
+  spacing; radius sm/md/lg = base ×0.5/×1/×2; shadow sm/md/lg ramp reusing
+  the captured shadow color.
+- **Cascade with dirty flags:** every derived token stores `derivedFrom` +
+  method params. Changing an anchor regenerates its derivatives — **except**
+  values the user edited (`userEdited: true`), which are never touched.
+  Unit tests: exact expected OKLCH/px values from the fixtures; AA
+  enforcement; cascade respects dirty flags both ways.
+- Captured values always win over derived ones for the same role.
+
+**10b — Flow UI: review by exception (home = the result, steps = repair
+shops).** Derivation runs on import using **cluster canonicals** (proposed
+merge survivors) so the draft exists immediately and refines live as merges
+are confirmed/rejected — a proposal built on proposals, consistent with §8.
+
+- **Landing after import = "Your system"** (the complete draft), never a
+  work queue. On top, the **summary strip** — the app's honest confession
+  and the only to-do list: "Built from your capture: **4 proposed merges** ·
+  **3 anchors picked** · **14 values derived**." Each item links to its
+  repair shop. Nothing forces the user through steps in order.
+- **Steps (orientation + repair, keyboard `1`–`4`, freely navigable):**
+  1. **Merges** — proposed merges as a **queue** ("1 of 4", accept/reject/
+     skip, progress shown), not a badge hunt in a grid. "Show everything"
+     filter lives here.
+  2. **Anchors & meaning** — the three anchors presented plainly ("your main
+     color / your text style / your base unit"), swap cascades live (never
+     over user edits); `EditRolesPanel` below for role corrections (8d
+     picker intact).
+  3. **Your system** (home) — every value present. **Progressive
+     disclosure:** three visual states only (captured = solid border ·
+     derived = dashed · edited = corner dot), one-line legend; provenance +
+     derivation formula on click, never inline; sections show final values,
+     details collapsed. Accent suggestion card with harmony-wheel switcher
+     (complementary / split-comp / analogous) + dismiss. Only true gaps
+     (motion, voice — Phase 9 notes fields) appear as open items.
+  4. **Review & export** — `ExportDrawer` inline (single export home);
+     Create System gate + Copy design.md; guardrail reports unconfirmed
+     merges + derived share ("4 merges unreviewed · 14 of 29 values derived
+     — export anyway?"). Export provenance marks derived values
+     ("derived from color/brand-primary, split-complementary").
+
+**10c — Cognitive-load rules (hard constraints for the build):**
+
+- First screen after import: **≤ 3 interactive decisions** visible above the
+  fold (summary-strip items); time-to-first-complete-draft < 5 s.
+- Exactly **one primary CTA** per screen at all times; it always names the
+  next most valuable action.
+- **No jargon in flow copy:** "we created hover colors from your main color"
+  — not "derived interaction-state tokens." Taxonomy terms live in tooltips.
+- Every automated act is **confessed in place** (strip counts, badges,
+  provenance on click) — automation without visibility is how trust dies.
+- Every screen answers "what did the app do, what can I change, what's
+  next?" within one viewport — if a section can't, it collapses.
 - **StepBar replaces SessionBar:** step indicator with per-step progress
   (1: open DUP/SIM clusters · 2: required roles assigned · 3: open gaps ·
   4: created ✓), project name, and **one context-aware primary CTA**:
@@ -368,16 +423,29 @@ buttons.
 
 **Accept:**
 
-- A first-time tester (no instructions) goes paste → export touching only
-  steps 1→4; the only overlays they meet are merge/add-token dialogs.
-- Exactly one primary CTA visible at any time; pressing it repeatedly walks
-  the whole pipeline to a copied design.md.
-- Step indicators live-update (merging a cluster decrements step 1's count;
-  assigning a role updates step 2's).
-- Gap deep links land correctly in the new structure; 8d picker untouched.
-- No engine/state changes beyond view-model + persisted step; all tests and
-  the oracle stay green; keyboard-only run-through works with visible focus.
-- `docs/DEMO.md` rewritten for the step flow; golden path still < 10 min.
+- **Thin-capture test (the point of it all):** import the 6-token limited
+  capture → step 3 shows a *complete* system (states, feedback, neutrals,
+  type scale, spacing ramp all derived + badged) with zero forms filled.
+  UX_RESEARCH S5 drops from ~70 clicks to < 15.
+- Derivation engine tests green: exact expected values from fixtures; every
+  derived text/surface pair passes AA; changing the primary anchor
+  regenerates derived colors but never a user-edited one.
+- Feedback colors visibly share the brand's character (chroma) while sitting
+  at conventional hues; accent card offers all three harmonies and can be
+  dismissed; no accent invented when the capture already has a second hue.
+- A first-time tester (no instructions) lands on a complete draft, uses the
+  summary strip to review merges/anchors, and exports — without ever seeing
+  an empty form. Exactly one primary CTA visible at any time (10c).
+- **Sequencing test:** draft renders from cluster canonicals immediately;
+  rejecting a proposed merge in the queue visibly updates the draft and any
+  affected anchor within one interaction.
+- **Speed-run test (UX_RESEARCH S2):** paste → Copy design.md with zero
+  review now yields a complete, AA-passing system (flagged as unreviewed in
+  provenance) — the 2-click path is no longer the worst outcome.
+- Step indicators live-update; 8d picker untouched; keyboard-only run works.
+- Export provenance distinguishes captured/derived/edited; guardrail reports
+  derived share; oracle updated (derived values in the example) and green.
+- `docs/DEMO.md` rewritten; golden path now targets **< 5 min**.
 
 ---
 
@@ -389,9 +457,8 @@ Source: `docs/UX_RESEARCH.md` §4 (validate with real users first — §6).
   review list, one confirm (human-in-the-loop preserved; nothing silent).
 - **P4 Commitment relief:** Create System reframed ("you can reopen until
   export"); **Reopen for editing** action; **Undo** directly in merge toasts.
-- **P5 Scale builders:** deterministic quick actions — "generate spacing
-  scale from base step", "derive hover shade from base color" (proposals,
-  user confirms; AI variants stay V2).
+- ~~P5 Scale builders~~ — **absorbed into Phase 10's derivation engine**
+  (2026-07-05): auto-draft generalizes and replaces per-section builders.
 - **P6 Ignore token:** reversible dismiss on captured tokens; hidden behind
   the show-everything filter; excluded from exports.
 - Quick fixes bundled: two-layer error copy + "get the extension/plugin"

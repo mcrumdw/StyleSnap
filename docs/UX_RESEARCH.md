@@ -212,3 +212,29 @@ Before building Phase 11: 5 users, 30 min each, think-aloud, tasks S1/S2/S5
 verbatim (they cover the two failures and the chore). Measure: time to export,
 stalls > 10 s, and the S2 trap (does anyone ship the 2-click export?). Rerun
 S1 after Phase 10 ships — target: zero orientation stalls, < 10 min.
+
+## 7. Addendum (2026-07-05) — walkthrough of the derivation-first flow
+
+After adopting derivation-first completion (DECISIONS §2.7), the key
+scenarios were re-walked against the *new* Phase 10 flow (review-by-exception:
+land on the complete draft + summary strip; steps as repair shops):
+
+- **S1 Maya:** paste → sees a finished system + strip "4 proposed merges · 3
+  anchors · 14 derived." Orientation stalls F1–F4 structurally removed — the
+  first screen answers "what happened & what do I do." New risk: **badge
+  wall** in the draft → mitigated by 10c progressive-disclosure rules (3
+  visual states, provenance on click, collapsed sections).
+- **S2 Jonas:** the 2-click export now produces a complete AA-passing system
+  (flagged unreviewed) — the study's worst failure (F6) becomes acceptable
+  output. Guardrail still nudges the 2-minute review.
+- **S5 thin capture:** ~70 clicks → < 15; the "form chore" (F12/F13)
+  eliminated; user reviews derived values instead of inventing them.
+- **New risks introduced (tracked in Phase 10 acceptance):** (R1) draft
+  computed pre-merge could anchor on the wrong value → derive from cluster
+  canonicals, refine live, test explicitly; (R2) over-trust — users shipping
+  derived values unseen → derived share in guardrail + provenance in export;
+  (R3) automation opacity → 10c "confess in place" rule.
+
+Real-user validation (§6) should now test the *new* flow; add a task probing
+R2: "which of these colors were on the original site?" — users should be
+able to answer from the UI.
