@@ -9,6 +9,7 @@ import { GapPanel } from "../components/GapPanel";
 import { GiveMeaningStep } from "../components/GiveMeaningStep";
 import { ImportZone } from "../components/ImportZone";
 import { StepBar } from "../components/StepBar";
+import { SystemNotesPanel } from "../components/SystemNotesPanel";
 import { SystemView } from "../components/SystemView";
 import { Toast } from "../components/Toast";
 import { importLabel } from "../state/pool";
@@ -30,6 +31,7 @@ export function Home() {
     updateManual,
     removeManual,
     setProjectName,
+    setNote,
     createSystem,
     setStep,
     startOver,
@@ -218,6 +220,7 @@ export function Home() {
                 assignments={vm.resolvedAssignments}
                 onGoToGaps={() => goToStep(3)}
               />
+              <SystemNotesPanel notes={pool.systemNotes ?? {}} onChange={setNote} />
               {!vm.created && (
                 <section className="flex flex-col gap-4 rounded-md border-2 border-dashed border-border-default bg-surface-page p-6">
                   <p className="text-caption text-text-muted">

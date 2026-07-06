@@ -75,6 +75,13 @@ export const ORACLE_NAMES = new Map<string, string>([
   ["ext_018", "type/label-uppercase"],
 ]);
 
+/** Phase 9b — the oracle's filled System notes (design.example.md §Mood & voice). */
+export const ORACLE_NOTES = {
+  mood: "Fresh, trustworthy SaaS — generous whitespace, one saturated blue used with restraint, soft layered shadows. Not playful; calm and precise.",
+  componentPrinciples:
+    "surfaces are white cards on a warm gray page; elevation via the two shadow steps, never borders alone; the gradient is reserved for the hero.",
+};
+
 /** The reviewed view: raw tokens with the oracle's merges applied. */
 export function oracleViewTokens(): StyleSnapToken[] {
   return applyMerges(

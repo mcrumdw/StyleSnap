@@ -38,6 +38,7 @@ export function useSessionViewModel(pool: TokenPool) {
       rawById: new Map(raw.map((t) => [t.id, t])),
       assignments: new Map(Object.entries(resolveAssignments(pool.assignments, pool.merges))),
       names,
+      notes: pool.systemNotes ?? {},
     };
   }, [pool, projectName]);
 

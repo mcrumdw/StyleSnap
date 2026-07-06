@@ -1,11 +1,12 @@
 import { useRef, useState, type DragEvent } from "react";
 import { parseStyleSnapExport } from "../contract/schema";
 import type { StyleSnapExport } from "../contract/types";
+import { sanitizeNotes, type SystemNotes } from "../engine/export";
 import { importLabel } from "../state/pool";
 import { Button } from "./Button";
 
 interface ImportZoneProps {
-  onImport: (data: StyleSnapExport) => void;
+  onImport: (data: StyleSnapExport, notes?: SystemNotes) => void;
 }
 
 interface ImportError {
@@ -34,7 +35,15 @@ export function ImportZone({ onImport }: ImportZoneProps) {
       setLastImport(null);
       return;
     }
-    onImport(result.data);
+    // Phase 9b round-trip: cleaned JSON carries System notes in an extra
+    // `notes` key the envelope ignores — lift it separately, defensively.
+    let notes: SystemNotes | undefined;
+    try {
+      notes = sanitizeNotes((JSON.parse(raw) as { notes?: unknown }).notes);
+    } catch {
+      notes = undefined; // unreachable after a successful parse; belt & braces
+    }
+    onImport(result.data, notes);
     setLastImport(
       `Imported ${result.data.tokens.length} token${result.data.tokens.length === 1 ? "" : "s"} from ${importLabel(result.data.meta)}.`,
     );

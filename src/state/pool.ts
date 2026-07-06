@@ -11,6 +11,7 @@
 import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
+import { sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
 import type { PipelineStep } from "./pipeline";
 import { clampStep } from "./pipeline";
 
@@ -56,25 +57,45 @@ export interface TokenPool {
   systemCreatedAt?: string;
   /** Phase 10 — last active pipeline step (1–4). */
   currentStep?: PipelineStep;
+  /** Phase 9b — user-authored System notes (mood, principles, motion, voice, layout). */
+  systemNotes?: SystemNotes;
 }
 
 export function emptyPool(): TokenPool {
   return { imports: [], merges: [], decisions: {}, assignments: {}, manual: [] };
 }
 
-/** Append a validated export to the pool. Pure — returns a new pool. */
+/**
+ * Append a validated export to the pool. Pure — returns a new pool. A `notes`
+ * object lifted from pasted cleaned JSON (Phase 9b round-trip) restores the
+ * System notes; imported fields overwrite same-named ones.
+ */
 export function appendImport(
   pool: TokenPool,
   data: StyleSnapExport,
   stamp: { importId: string; importedAt: string },
+  notes?: SystemNotes,
 ): TokenPool {
-  return {
+  const next: TokenPool = {
     ...pool,
     imports: [
       ...pool.imports,
       { importId: stamp.importId, importedAt: stamp.importedAt, meta: data.meta, tokens: data.tokens },
     ],
   };
+  if (notes) next.systemNotes = { ...pool.systemNotes, ...notes };
+  return next;
+}
+
+/** Phase 9b — set or clear one System-notes field. Pure — returns a new pool. */
+export function setSystemNote(
+  pool: TokenPool,
+  field: SystemNotesField,
+  value: string,
+): TokenPool {
+  const systemNotes: SystemNotes = { ...pool.systemNotes, [field]: value };
+  if (!value) delete systemNotes[field];
+  return { ...pool, systemNotes };
 }
 
 /** Record a user-confirmed merge (FR-12). Pure — returns a new pool. */
@@ -346,6 +367,9 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   if (projectName !== undefined) pool.projectName = projectName;
   if (systemCreatedAt !== undefined) pool.systemCreatedAt = systemCreatedAt;
   if (currentStep !== undefined) pool.currentStep = clampStep(currentStep);
+  // System notes were added in Phase 9 — older drafts simply have none.
+  const notes = sanitizeNotes((json as Partial<TokenPool>).systemNotes);
+  if (notes) pool.systemNotes = notes;
   return pool;
 }
 

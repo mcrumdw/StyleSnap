@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { StyleSnapExport, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
+import type { SystemNotes, SystemNotesField } from "../engine/export";
 import {
   addManualToken,
   addMerge,
@@ -16,6 +17,7 @@ import {
   setCurrentStep as setCurrentStepPure,
   setDecision,
   setProjectName as setProjectNamePure,
+  setSystemNote,
   unassignRole,
   updateManualToken,
   type TokenPool,
@@ -33,13 +35,23 @@ export function usePool() {
     saveDraft(localStorage, pool);
   }, [pool]);
 
-  const addImport = useCallback((data: StyleSnapExport) => {
+  const addImport = useCallback((data: StyleSnapExport, notes?: SystemNotes) => {
     setPool((current) =>
-      appendImport(current, data, {
-        importId: crypto.randomUUID(),
-        importedAt: new Date().toISOString(),
-      }),
+      appendImport(
+        current,
+        data,
+        {
+          importId: crypto.randomUUID(),
+          importedAt: new Date().toISOString(),
+        },
+        notes,
+      ),
     );
+  }, []);
+
+  /** Phase 9b — set or clear one System-notes field. */
+  const setNote = useCallback((field: SystemNotesField, value: string) => {
+    setPool((current) => setSystemNote(current, field, value));
   }, []);
 
   const mergeCluster = useCallback((survivorId: string, mergedIds: string[]) => {
@@ -122,6 +134,7 @@ export function usePool() {
     updateManual,
     removeManual,
     setProjectName,
+    setNote,
     createSystem,
     setStep,
     startOver,

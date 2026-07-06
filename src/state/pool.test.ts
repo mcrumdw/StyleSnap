@@ -19,6 +19,7 @@ import {
   serializeDraft,
   setDecision,
   setProjectName,
+  setSystemNote,
   unassignRole,
 } from "./pool";
 
@@ -181,6 +182,46 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.merges;
     expect(deserializeDraft(JSON.stringify(legacy))?.merges).toEqual([]);
+  });
+
+  it("round-trips System notes; pre-Phase-9 drafts load without them (Phase 9b)", () => {
+    let pool = poolWithBothFixtures();
+    pool = setSystemNote(pool, "mood", "Calm and precise.");
+    pool = setSystemNote(pool, "motion", "150ms ease-out.");
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.systemNotes).toEqual({ mood: "Calm and precise.", motion: "150ms ease-out." });
+
+    // Clearing a field drops it; clearing the last one drops nothing else.
+    pool = setSystemNote(pool, "motion", "");
+    expect(pool.systemNotes).toEqual({ mood: "Calm and precise." });
+
+    // Pre-Phase-9 draft: no systemNotes key — loads losslessly without them.
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    delete legacy.systemNotes;
+    const migrated = deserializeDraft(JSON.stringify(legacy));
+    expect(migrated).not.toBeNull();
+    expect(migrated?.systemNotes).toBeUndefined();
+
+    // A corrupt notes value is dropped defensively, not fatal.
+    legacy.systemNotes = { mood: 42, bogus: "x" };
+    expect(deserializeDraft(JSON.stringify(legacy))?.systemNotes).toBeUndefined();
+  });
+
+  it("appendImport restores notes lifted from cleaned JSON (Phase 9b)", () => {
+    const base = poolWithBothFixtures();
+    const data = parsedFixture("capture-figma-clean.json");
+    const stamped = appendImport(base, data, { importId: "i3", importedAt: "t" }, {
+      mood: "Fresh SaaS.",
+    });
+    expect(stamped.systemNotes).toEqual({ mood: "Fresh SaaS." });
+    // Imported fields overwrite; untouched fields survive.
+    const merged = appendImport(
+      setSystemNote(base, "voice", "Playful."),
+      data,
+      { importId: "i4", importedAt: "t" },
+      { mood: "Fresh SaaS." },
+    );
+    expect(merged.systemNotes).toEqual({ voice: "Playful.", mood: "Fresh SaaS." });
   });
 
   it("round-trips projectName + systemCreatedAt; derives a default name", () => {
