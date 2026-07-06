@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TokenType } from "../contract/types";
+import { AnchorsStep } from "../components/AnchorsStep";
 import { Button } from "../components/Button";
 import { CleanupStep } from "../components/CleanupStep";
 import { CreateSystemDialog } from "../components/CreateSystemDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ExportSection } from "../components/ExportSection";
-import { GapPanel } from "../components/GapPanel";
 import { GiveMeaningStep } from "../components/GiveMeaningStep";
 import { ImportZone } from "../components/ImportZone";
+import { MergeQueueStep } from "../components/MergeQueueStep";
 import { StepBar } from "../components/StepBar";
+import { SummaryStrip } from "../components/SummaryStrip";
 import { SystemNotesPanel } from "../components/SystemNotesPanel";
-import { SystemView } from "../components/SystemView";
+import { SystemView, type FillInfo } from "../components/SystemView";
 import { Toast } from "../components/Toast";
 import { importLabel } from "../state/pool";
 import type { PipelineStep } from "../state/pipeline";
@@ -32,6 +34,11 @@ export function Home() {
     removeManual,
     setProjectName,
     setNote,
+    setAnchor,
+    editDerivedValue,
+    resetDerivedValue,
+    setAccent,
+    rejectCluster,
     createSystem,
     setStep,
     startOver,
@@ -43,6 +50,8 @@ export function Home() {
 
   const [focusRoleId, setFocusRoleId] = useState<string | undefined>();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showGuardrail, setShowGuardrail] = useState(false);
+  const guardrailSeenRef = useRef(false);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [addTokenPreset, setAddTokenPreset] = useState<
@@ -66,6 +75,19 @@ export function Home() {
     }
   }, [vm.designMd]);
 
+  const totalValues = Object.keys(vm.resolvedAssignments).length;
+
+  // Export guardrail (10b): informs ONCE about unreviewed automation, never blocks.
+  const copyWithGuardrail = useCallback(() => {
+    const unreviewed = vm.summary.proposedMerges;
+    if (!guardrailSeenRef.current && (unreviewed > 0 || vm.summary.derivedCount > 0)) {
+      guardrailSeenRef.current = true;
+      setShowGuardrail(true);
+      return;
+    }
+    void copyDesignMd();
+  }, [vm.summary, copyDesignMd]);
+
   const handlePrimaryAction = useCallback(() => {
     switch (step) {
       case 1:
@@ -79,13 +101,13 @@ export function Home() {
         break;
       case 4:
         if (vm.created) {
-          void copyDesignMd();
+          copyWithGuardrail();
         } else {
           setShowCreateDialog(true);
         }
         break;
     }
-  }, [step, goToStep, vm.created, copyDesignMd]);
+  }, [step, goToStep, vm.created, copyWithGuardrail]);
 
   const handleAssignRoleFromGap = useCallback(
     (role: string) => {
@@ -101,14 +123,6 @@ export function Home() {
     [goToStep],
   );
 
-  const handleAddTokenFromGap = useCallback(
-    (preset: { tokenType: TokenType; role?: string }) => {
-      setAddTokenPreset(preset);
-      goToStep(1);
-    },
-    [goToStep],
-  );
-
   // Keyboard: 1–4 = steps, Esc closes dialogs
   useEffect(() => {
     if (!hasTokens) return;
@@ -118,23 +132,26 @@ export function Home() {
       if (e.key === "2") goToStep(2);
       if (e.key === "3") goToStep(3);
       if (e.key === "4") goToStep(4);
-      if (e.key === "Escape") setShowCreateDialog(false);
+      if (e.key === "Escape") {
+        setShowCreateDialog(false);
+        setShowGuardrail(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [hasTokens, goToStep]);
 
   const progress = {
-    openClusters: vm.openClusterCount,
+    openClusters: vm.summary.proposedMerges,
     rolesMet: vm.checklist.requiredMet,
     rolesTotal: vm.checklist.requiredTotal,
     gaps: vm.gapCount,
+    derivedCount: vm.summary.derivedCount,
     created: vm.created,
   };
 
-  // Resume orientation (UX_RESEARCH P9): tokens present on first render mean
-  // a restored draft — land on the furthest incomplete step, not wherever the
-  // tab was left, and say hello.
+  // Resume orientation (P9, derivation-first): a restored draft lands on the
+  // complete system, never a work queue; the toast carries the counts.
   const resumeRef = useRef(hasTokens);
   useEffect(() => {
     if (!resumeRef.current) return;
@@ -143,6 +160,13 @@ export function Home() {
     setToast(welcomeBackMessage(progress));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on restore
   }, []);
+
+  const fills: Record<string, FillInfo> = Object.fromEntries(
+    vm.draftFills.map((f) => [
+      f.role,
+      { origin: f.origin, method: f.method, derivedFrom: f.derivedFrom },
+    ]),
+  );
 
   return (
     <main id="main" className="mx-auto flex max-w-container flex-col gap-8 px-6 py-8">
@@ -170,61 +194,84 @@ export function Home() {
             onPrimaryAction={handlePrimaryAction}
           />
 
+          <SummaryStrip
+            proposedMerges={vm.summary.proposedMerges}
+            anchorsPicked={vm.summary.anchorsPicked}
+            derivedCount={vm.summary.derivedCount}
+            onGoToStep={goToStep}
+          />
+
           {step === 1 && (
-            <CleanupStep
-              entries={vm.entries}
-              merges={pool.merges}
-              decisions={pool.decisions}
-              assignments={pool.assignments}
-              addTokenPreset={addTokenPreset}
-              onAddTokenPresetConsumed={() => setAddTokenPreset(undefined)}
-              onMergeCluster={mergeCluster}
-              onUnmerge={unmerge}
-              onSetName={setName}
-              onAssign={assign}
-              onUnassign={unassign}
-              onAddManual={(token, role) => {
-                addManual(token, role);
-                if (addTokenPreset) setAddTokenPreset(undefined);
-              }}
-              onUpdateManual={updateManual}
-              onRemoveManual={removeManual}
-              locked={vm.created}
+            <MergeQueueStep
+              queue={vm.mergeQueue}
+              onAccept={mergeCluster}
+              onReject={rejectCluster}
+              onCelebrate={setToast}
+              everything={
+                <CleanupStep
+                  entries={vm.entries}
+                  merges={pool.merges}
+                  decisions={pool.decisions}
+                  assignments={pool.assignments}
+                  addTokenPreset={addTokenPreset}
+                  onAddTokenPresetConsumed={() => setAddTokenPreset(undefined)}
+                  onMergeCluster={mergeCluster}
+                  onUnmerge={unmerge}
+                  onSetName={setName}
+                  onAssign={assign}
+                  onUnassign={unassign}
+                  onAddManual={(token, role) => {
+                    addManual(token, role);
+                    if (addTokenPreset) setAddTokenPreset(undefined);
+                  }}
+                  onUpdateManual={updateManual}
+                  onRemoveManual={removeManual}
+                  locked={vm.created}
+                />
+              }
             />
           )}
 
           {step === 2 && (
-            <GiveMeaningStep
-              entries={vm.entries}
-              merges={pool.merges}
-              decisions={pool.decisions}
-              assignments={pool.assignments}
-              focusRoleId={focusRoleId}
-              onAssign={assign}
-              onUnassign={unassign}
-            />
+            <AnchorsStep
+              anchors={vm.anchors}
+              tokens={vm.exportInput.tokens}
+              onSetAnchor={setAnchor}
+            >
+              <GiveMeaningStep
+                entries={vm.entries}
+                merges={pool.merges}
+                decisions={pool.decisions}
+                assignments={pool.assignments}
+                focusRoleId={focusRoleId}
+                onAssign={assign}
+                onUnassign={unassign}
+              />
+            </AnchorsStep>
           )}
 
           {step === 3 && (
-            <GapPanel
-              checklist={vm.checklist}
-              onAssignRole={handleAssignRoleFromGap}
-              onAddToken={handleAddTokenFromGap}
+            <SystemView
+              tokens={vm.systemTokens}
+              assignments={vm.resolvedAssignments}
+              fills={fills}
+              accent={vm.accent}
+              accentHarmony={pool.accentChoice?.harmony}
+              onAccentHarmony={(harmony) => setAccent({ harmony })}
+              onAccentDismiss={() => setAccent({ dismissed: true })}
+              onEditDerived={editDerivedValue}
+              onResetDerived={resetDerivedValue}
+              onGoToGaps={() => handleAssignRoleFromGap("color/text/primary")}
             />
           )}
 
           {step === 4 && (
             <div className="flex w-full flex-col gap-8">
-              <SystemView
-                tokens={vm.systemTokens}
-                assignments={vm.resolvedAssignments}
-                onGoToGaps={() => goToStep(3)}
-              />
               <SystemNotesPanel notes={pool.systemNotes ?? {}} onChange={setNote} />
               {!vm.created && (
                 <section className="flex flex-col gap-4 rounded-md border-2 border-dashed border-border-default bg-surface-page p-6">
                   <p className="text-caption text-text-muted">
-                    Happy with the review? Create your system to finalize — merges lock, exports
+                    Happy with the draft? Create your system to finalize — merges lock, exports
                     below become official.
                   </p>
                   <Button variant="secondary" onClick={() => setShowCreateDialog(true)}>
@@ -237,6 +284,7 @@ export function Home() {
                 designMd={vm.designMd}
                 exportInput={vm.exportInput}
                 gapCount={vm.gapCount}
+                onCopyDesignMd={copyWithGuardrail}
               />
             </div>
           )}
@@ -276,6 +324,9 @@ export function Home() {
               rawCount={vm.exportInput.rawTokenCount}
               mergeCount={vm.exportInput.mergeCount}
               checklist={vm.checklist}
+              unreviewedMerges={vm.summary.proposedMerges}
+              derivedCount={vm.summary.derivedCount}
+              totalValues={totalValues}
               onPreviewExport={() => {
                 setShowCreateDialog(false);
                 goToStep(4);
@@ -288,6 +339,49 @@ export function Home() {
               }}
               onClose={() => setShowCreateDialog(false)}
             />
+          )}
+
+          {showGuardrail && (
+            <div
+              className="fixed inset-0 z-modal flex items-center justify-center bg-text-primary/50 p-6"
+              onClick={() => setShowGuardrail(false)}
+            >
+              <div
+                role="alertdialog"
+                aria-modal="true"
+                aria-label="Export check"
+                className="w-full max-w-md rounded-lg border-2 border-border-default bg-surface-card p-6 shadow-modal"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 className="font-heading text-card-title font-medium">Quick check before you ship</h2>
+                <p className="mt-2 text-caption text-text-primary">
+                  {vm.summary.proposedMerges > 0 &&
+                    `${vm.summary.proposedMerges} merge${vm.summary.proposedMerges === 1 ? "" : "s"} unreviewed · `}
+                  {vm.summary.derivedCount} of {totalValues} values were made for you and not
+                  hand-reviewed. They're all flagged in the export — ship anyway, or take the
+                  two-minute tour?
+                </p>
+                <div className="mt-4 flex items-center gap-3">
+                  <Button
+                    onClick={() => {
+                      setShowGuardrail(false);
+                      void copyDesignMd();
+                    }}
+                  >
+                    Export anyway
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowGuardrail(false);
+                      goToStep(vm.summary.proposedMerges > 0 ? 1 : 3);
+                    }}
+                  >
+                    Review first
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
 
           {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}

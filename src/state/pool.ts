@@ -11,6 +11,7 @@
 import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
+import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import { sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
 import type { PipelineStep } from "./pipeline";
 import { clampStep } from "./pipeline";
@@ -59,6 +60,19 @@ export interface TokenPool {
   currentStep?: PipelineStep;
   /** Phase 9b — user-authored System notes (mood, principles, motion, voice, layout). */
   systemNotes?: SystemNotes;
+  /** Phase 10 — user-swapped anchors (C.1); detection fills whatever is unset. */
+  anchorOverrides?: AnchorOverrides;
+  /**
+   * Phase 10 — user edits of DERIVED values, keyed by role (C.8 dirty flags).
+   * The full edited token is stored; re-derivation never touches these.
+   */
+  derivedEdits?: Record<string, { token: StyleSnapToken; editedAt: string }>;
+  /** Phase 10 — accent suggestion decisions (C.5): harmony pick and/or dismissal. */
+  accentChoice?: { harmony?: Harmony; dismissed?: boolean };
+  /** Phase 10 — modular type-scale ratio (C.6). Default 1.25. */
+  typeRatio?: TypeRatio;
+  /** Phase 10 — merge-queue rejections ("keep separate"), by cluster id. */
+  rejectedClusters?: string[];
 }
 
 export function emptyPool(): TokenPool {
@@ -164,6 +178,63 @@ export function resolveAssignments(
   return Object.fromEntries(
     Object.entries(assignments).map(([role, id]) => [role, resolve(id)]),
   );
+}
+
+// ─────────────────────────────────────────
+// Derivation decisions (Phase 10, FR-19 revised)
+// ─────────────────────────────────────────
+
+/** Swap one anchor (undefined value clears the override back to detection). */
+export function setAnchorOverride(
+  pool: TokenPool,
+  patch: Partial<AnchorOverrides>,
+): TokenPool {
+  const anchorOverrides: AnchorOverrides = { ...pool.anchorOverrides };
+  for (const key of ["primaryColorId", "bodyTypographyId", "baseSpacing"] as const) {
+    if (!(key in patch)) continue;
+    const value = patch[key];
+    if (value === undefined) delete anchorOverrides[key];
+    else (anchorOverrides as Record<string, unknown>)[key] = value;
+  }
+  return { ...pool, anchorOverrides };
+}
+
+/** C.8 dirty flag: the user edited a derived value — re-derivation never touches it. */
+export function editDerived(
+  pool: TokenPool,
+  role: string,
+  token: StyleSnapToken,
+  editedAt: string,
+): TokenPool {
+  return {
+    ...pool,
+    derivedEdits: { ...pool.derivedEdits, [role]: { token, editedAt } },
+  };
+}
+
+/** "Reset to derived" — drop the edit; the live derivation shows through again. */
+export function resetDerived(pool: TokenPool, role: string): TokenPool {
+  const derivedEdits = { ...pool.derivedEdits };
+  delete derivedEdits[role];
+  return { ...pool, derivedEdits };
+}
+
+export function setAccentChoice(
+  pool: TokenPool,
+  choice: { harmony?: Harmony; dismissed?: boolean },
+): TokenPool {
+  return { ...pool, accentChoice: { ...pool.accentChoice, ...choice } };
+}
+
+export function setTypeRatio(pool: TokenPool, typeRatio: TypeRatio): TokenPool {
+  return { ...pool, typeRatio };
+}
+
+/** Merge queue "keep separate" — the cluster stops being proposed. */
+export function rejectCluster(pool: TokenPool, clusterId: string): TokenPool {
+  const rejected = pool.rejectedClusters ?? [];
+  if (rejected.includes(clusterId)) return pool;
+  return { ...pool, rejectedClusters: [...rejected, clusterId] };
 }
 
 // ─────────────────────────────────────────
@@ -370,6 +441,45 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   // System notes were added in Phase 9 — older drafts simply have none.
   const notes = sanitizeNotes((json as Partial<TokenPool>).systemNotes);
   if (notes) pool.systemNotes = notes;
+
+  // Phase 10 derivation decisions — all optional; invalid entries are dropped
+  // defensively (a corrupt decision must never cost the whole draft).
+  const draft = json as Partial<TokenPool>;
+  if (typeof draft.anchorOverrides === "object" && draft.anchorOverrides !== null) {
+    const src = draft.anchorOverrides as Record<string, unknown>;
+    const anchorOverrides: AnchorOverrides = {};
+    if (typeof src.primaryColorId === "string") anchorOverrides.primaryColorId = src.primaryColorId;
+    if (typeof src.bodyTypographyId === "string") anchorOverrides.bodyTypographyId = src.bodyTypographyId;
+    if (typeof src.baseSpacing === "number") anchorOverrides.baseSpacing = src.baseSpacing;
+    if (Object.keys(anchorOverrides).length > 0) pool.anchorOverrides = anchorOverrides;
+  }
+  if (typeof draft.derivedEdits === "object" && draft.derivedEdits !== null) {
+    const derivedEdits: Record<string, { token: StyleSnapToken; editedAt: string }> = {};
+    for (const [role, entry] of Object.entries(draft.derivedEdits)) {
+      const e = entry as { token?: unknown; editedAt?: unknown };
+      const parsed = styleSnapTokenSchema.safeParse(e?.token);
+      if (parsed.success && typeof e.editedAt === "string") {
+        derivedEdits[role] = { token: parsed.data, editedAt: e.editedAt };
+      }
+    }
+    if (Object.keys(derivedEdits).length > 0) pool.derivedEdits = derivedEdits;
+  }
+  if (typeof draft.accentChoice === "object" && draft.accentChoice !== null) {
+    const src = draft.accentChoice as Record<string, unknown>;
+    const accentChoice: NonNullable<TokenPool["accentChoice"]> = {};
+    if (src.harmony === "complementary" || src.harmony === "split-complementary" || src.harmony === "analogous") {
+      accentChoice.harmony = src.harmony;
+    }
+    if (typeof src.dismissed === "boolean") accentChoice.dismissed = src.dismissed;
+    if (Object.keys(accentChoice).length > 0) pool.accentChoice = accentChoice;
+  }
+  if (draft.typeRatio === 1.2 || draft.typeRatio === 1.25 || draft.typeRatio === 1.333) {
+    pool.typeRatio = draft.typeRatio;
+  }
+  if (Array.isArray(draft.rejectedClusters)) {
+    const rejected = draft.rejectedClusters.filter((id): id is string => typeof id === "string");
+    if (rejected.length > 0) pool.rejectedClusters = rejected;
+  }
   return pool;
 }
 

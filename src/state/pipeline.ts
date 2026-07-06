@@ -1,4 +1,8 @@
-/** Phase 10 — the four-step review pipeline (never locked, freely navigable). */
+/**
+ * Phase 10 — the four-step review pipeline, derivation-first (never locked,
+ * freely navigable). Step 3 "Your system" is HOME: the user lands on the
+ * complete draft, and steps are repair shops, not a work queue.
+ */
 export type PipelineStep = 1 | 2 | 3 | 4;
 
 export const PIPELINE_STEPS: ReadonlyArray<{
@@ -6,24 +10,26 @@ export const PIPELINE_STEPS: ReadonlyArray<{
   label: string;
   short: string;
 }> = [
-  { step: 1, label: "Clean up", short: "Merge duplicates" },
-  { step: 2, label: "Give meaning", short: "Assign roles" },
-  { step: 3, label: "Fill gaps", short: "Complete system" },
+  { step: 1, label: "Merges", short: "Review proposals" },
+  { step: 2, label: "Anchors & meaning", short: "Swap the corners" },
+  { step: 3, label: "Your system", short: "The complete draft" },
   { step: 4, label: "Review & export", short: "Ship it" },
 ] as const;
 
+export const HOME_STEP: PipelineStep = 3;
+
 export function clampStep(value: unknown): PipelineStep {
   const n = typeof value === "number" ? value : Number(value);
-  if (n === 2 || n === 3 || n === 4) return n;
-  return 1;
+  if (n === 1 || n === 2 || n === 4) return n;
+  return HOME_STEP;
 }
 
 export function primaryCtaLabel(step: PipelineStep, created: boolean): string {
   switch (step) {
     case 1:
-      return "Next: give your colors meaning";
+      return "Next: check your anchors";
     case 2:
-      return "Next: fill the gaps";
+      return "Next: see your system";
     case 3:
       return "Review & export";
     case 4:
@@ -34,11 +40,11 @@ export function primaryCtaLabel(step: PipelineStep, created: boolean): string {
 export function stepPageTitle(step: PipelineStep): string {
   switch (step) {
     case 1:
-      return "Clean up — merge duplicates";
+      return "Merges — review what we grouped";
     case 2:
-      return "Give meaning — assign roles";
+      return "Anchors & meaning — the corners of your system";
     case 3:
-      return "Fill gaps — complete your system";
+      return "Your system — a complete draft, yours to change";
     case 4:
       return "Review & export — ship your design system";
   }
@@ -49,36 +55,26 @@ export interface PipelineProgress {
   rolesMet: number;
   rolesTotal: number;
   gaps: number;
+  derivedCount: number;
   created: boolean;
 }
 
 /**
- * Resume orientation (UX_RESEARCH P9): a restored draft lands on the furthest
- * incomplete step, measured along the pipeline — gaps outrank roles outrank
- * clusters. Everything done (or created) lands on Review & export.
+ * Resume orientation (UX_RESEARCH P9, derivation-first): a restored draft
+ * lands on HOME — the complete system — unless it's already created (then
+ * the export step). The summary strip carries the to-do counts.
  */
 export function furthestIncompleteStep(p: PipelineProgress): PipelineStep {
-  if (p.created) return 4;
-  if (p.gaps > 0) return 3;
-  if (p.rolesMet < p.rolesTotal) return 2;
-  if (p.openClusters > 0) return 1;
-  return 4;
+  return p.created ? 4 : HOME_STEP;
 }
 
 /** The welcome-back toast shown alongside the resume orientation. */
 export function welcomeBackMessage(p: PipelineProgress): string {
-  switch (furthestIncompleteStep(p)) {
-    case 1:
-      return `Welcome back — ${p.openClusters} cluster${p.openClusters === 1 ? "" : "s"} to review.`;
-    case 2:
-      return `Welcome back — ${p.rolesTotal - p.rolesMet} role${
-        p.rolesTotal - p.rolesMet === 1 ? "" : "s"
-      } to assign.`;
-    case 3:
-      return `Welcome back — ${p.gaps} gap${p.gaps === 1 ? "" : "s"} left.`;
-    case 4:
-      return p.created
-        ? "Welcome back — your system's ready. Ship it."
-        : "Welcome back — review & export when you're ready.";
+  if (p.created) return "Welcome back — your system's ready. Ship it.";
+  if (p.openClusters > 0) {
+    return `Welcome back — your draft is ready; ${p.openClusters} merge${
+      p.openClusters === 1 ? "" : "s"
+    } to review.`;
   }
+  return "Welcome back — your draft is ready to review.";
 }

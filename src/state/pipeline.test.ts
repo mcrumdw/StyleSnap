@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampStep,
   furthestIncompleteStep,
+  HOME_STEP,
   welcomeBackMessage,
   type PipelineProgress,
 } from "./pipeline";
@@ -11,43 +12,44 @@ const base: PipelineProgress = {
   rolesMet: 18,
   rolesTotal: 18,
   gaps: 0,
+  derivedCount: 14,
   created: false,
 };
 
 describe("clampStep", () => {
-  it("clamps garbage to step 1 and passes valid steps through", () => {
-    expect(clampStep(undefined)).toBe(1);
-    expect(clampStep("7")).toBe(1);
-    expect(clampStep(3)).toBe(3);
+  it("clamps garbage to HOME (the complete draft) and passes valid steps through", () => {
+    expect(clampStep(undefined)).toBe(HOME_STEP);
+    expect(clampStep("7")).toBe(HOME_STEP);
+    expect(clampStep(1)).toBe(1);
     expect(clampStep("4")).toBe(4);
   });
 });
 
-describe("furthestIncompleteStep", () => {
-  it("lands on gaps before roles before clusters", () => {
-    expect(furthestIncompleteStep({ ...base, openClusters: 2, rolesMet: 3, gaps: 5 })).toBe(3);
-    expect(furthestIncompleteStep({ ...base, openClusters: 2, rolesMet: 3 })).toBe(2);
-    expect(furthestIncompleteStep({ ...base, openClusters: 2 })).toBe(1);
+describe("furthestIncompleteStep (derivation-first)", () => {
+  it("a restored draft always lands on HOME — never a work queue", () => {
+    expect(furthestIncompleteStep(base)).toBe(HOME_STEP);
+    expect(furthestIncompleteStep({ ...base, openClusters: 4, gaps: 9 })).toBe(HOME_STEP);
   });
 
-  it("lands on review & export when everything is done or created", () => {
-    expect(furthestIncompleteStep(base)).toBe(4);
-    expect(furthestIncompleteStep({ ...base, gaps: 9, created: true })).toBe(4);
+  it("a created system lands on review & export", () => {
+    expect(furthestIncompleteStep({ ...base, created: true })).toBe(4);
   });
 });
 
 describe("welcomeBackMessage", () => {
-  it("counts the work at the landing step", () => {
-    expect(welcomeBackMessage({ ...base, gaps: 3 })).toBe("Welcome back — 3 gaps left.");
-    expect(welcomeBackMessage({ ...base, gaps: 1 })).toBe("Welcome back — 1 gap left.");
-    expect(welcomeBackMessage({ ...base, rolesMet: 17 })).toBe(
-      "Welcome back — 1 role to assign.",
-    );
+  it("mentions the merge queue when proposals wait", () => {
     expect(welcomeBackMessage({ ...base, openClusters: 4 })).toBe(
-      "Welcome back — 4 clusters to review.",
+      "Welcome back — your draft is ready; 4 merges to review.",
     );
+    expect(welcomeBackMessage({ ...base, openClusters: 1 })).toBe(
+      "Welcome back — your draft is ready; 1 merge to review.",
+    );
+  });
+
+  it("celebrates a created system, else points at the draft", () => {
     expect(welcomeBackMessage({ ...base, created: true })).toBe(
       "Welcome back — your system's ready. Ship it.",
     );
+    expect(welcomeBackMessage(base)).toBe("Welcome back — your draft is ready to review.");
   });
 });

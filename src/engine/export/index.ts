@@ -51,6 +51,22 @@ export interface ExportInput {
   names: ReadonlyMap<string, string>;
   /** Phase 9b — the user-authored System notes; empty fields become Gaps lines. */
   notes: SystemNotes;
+  /**
+   * Phase 10 — provenance for derived/edited values by token id (FR-19).
+   * Absent for fully hand-reviewed sessions.
+   */
+  derived?: ReadonlyMap<string, DerivedProvenance>;
+  /** Phase 10 — open merge proposals not yet reviewed (export guardrail + gaps note). */
+  unreviewedMerges?: number;
+}
+
+export interface DerivedProvenance {
+  /** Anchor token id or "convention". */
+  derivedFrom: string;
+  /** Human-readable formula, e.g. "hover (ΔL −0.06)". */
+  method: string;
+  /** The user hand-edited this derived value. */
+  edited: boolean;
 }
 
 // ─────────────────────────────────────────
@@ -67,10 +83,19 @@ function nameOf(token: StyleSnapToken, names: ReadonlyMap<string, string>): stri
 const byString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Provenance: where the value was captured — the survivor's source plus the
- * sources it absorbed, in merge order, with total occurrences.
+ * Provenance: where the value came from. Captured tokens list their sources
+ * (plus absorbed ones, with total occurrences); derived tokens confess their
+ * derivation — anchor and formula — and whether the user edited them (FR-19).
  */
 function provenance(token: StyleSnapToken, input: ExportInput): string {
+  const derivation = input.derived?.get(token.id);
+  if (derivation && token.id.startsWith("derived_")) {
+    const anchor = input.rawById.get(derivation.derivedFrom);
+    const from = anchor ? ` from \`${nameOf(anchor, input.names)}\`` : "";
+    return derivation.edited
+      ? `edited by you (was derived${from}: ${derivation.method})`
+      : `derived${from} — ${derivation.method}`;
+  }
   const sources: string[] = [token.source];
   for (const id of token.mergedFrom ?? []) {
     const raw = input.rawById.get(id);
@@ -213,7 +238,10 @@ function colorSection(input: ExportInput): string {
   for (const token of primitives) {
     if (token.type !== "color") continue;
     const value = token.opacity < 1 ? `\`${token.value}\` / ${token.opacity}` : `\`${token.value}\``;
-    lines.push(`| \`${nameOf(token, input.names)}\` | ${value} | ${mergeNote(token, input)} |`);
+    const note = token.id.startsWith("derived_")
+      ? "derived — provenance in the roles table"
+      : mergeNote(token, input);
+    lines.push(`| \`${nameOf(token, input.names)}\` | ${value} | ${note} |`);
   }
 
   const gradients = input.tokens
@@ -377,6 +405,14 @@ export function gapBullets(input: ExportInput): string[] {
   const bullets = checklist.items
     .filter((item) => item.status === "gap")
     .map((item) => gapBullet(item));
+  // Phase 10 guardrail trail: automation the user hasn't reviewed yet.
+  if (input.unreviewedMerges && input.unreviewedMerges > 0) {
+    bullets.push(
+      `${input.unreviewedMerges} proposed merge${
+        input.unreviewedMerges === 1 ? "" : "s"
+      } not yet reviewed — values use the suggested survivors.`,
+    );
+  }
   bullets.push(...contrastGapBullets(input));
   for (const field of NOTE_FIELDS) {
     if (noteText(input.notes, field.key) === undefined) {
@@ -456,6 +492,8 @@ export type CleanedExport = StyleSnapExport & {
   gaps: string[];
   /** Phase 9b — filled System notes, so re-import round-trips them. Envelope validation ignores it. */
   notes?: SystemNotes;
+  /** Phase 10 — derivation provenance by token id (FR-19). Envelope validation ignores it. */
+  derivation?: Record<string, DerivedProvenance>;
 };
 
 export function generateCleanedJson(input: ExportInput): CleanedExport {
@@ -493,5 +531,12 @@ export function generateCleanedJson(input: ExportInput): CleanedExport {
   const cleaned: CleanedExport = { meta, tokens, gaps: gapBullets(input) };
   const notes = filledNotes(input.notes);
   if (notes) cleaned.notes = notes;
+  if (input.derived && input.derived.size > 0) {
+    const derivation: Record<string, DerivedProvenance> = {};
+    for (const id of [...input.derived.keys()].sort(byString)) {
+      if (id.startsWith("derived_")) derivation[id] = input.derived.get(id)!;
+    }
+    if (Object.keys(derivation).length > 0) cleaned.derivation = derivation;
+  }
   return cleaned;
 }

@@ -7,6 +7,7 @@ export interface StepProgress {
   rolesMet: number;
   rolesTotal: number;
   gaps: number;
+  derivedCount: number;
   created: boolean;
 }
 
@@ -23,14 +24,14 @@ function stepHint(step: PipelineStep, progress: StepProgress): string {
   switch (step) {
     case 1:
       return progress.openClusters > 0
-        ? `${progress.openClusters} cluster${progress.openClusters === 1 ? "" : "s"} to review`
-        : "No duplicate clusters";
+        ? `${progress.openClusters} merge${progress.openClusters === 1 ? "" : "s"} proposed`
+        : "Merges reviewed ✓";
     case 2:
       return `${progress.rolesMet}/${progress.rolesTotal} required roles`;
     case 3:
-      return progress.gaps > 0
-        ? `${progress.gaps} gap${progress.gaps === 1 ? "" : "s"} open`
-        : "All required items met";
+      return progress.derivedCount > 0
+        ? `${progress.derivedCount} value${progress.derivedCount === 1 ? "" : "s"} made for you`
+        : "All values captured";
     case 4:
       return progress.created ? "Created ✓" : "Not finalized yet";
   }

@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import type { StyleSnapExport, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
+import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import type { SystemNotes, SystemNotesField } from "../engine/export";
+import {
+  editDerived,
+  rejectCluster as rejectClusterPure,
+  resetDerived,
+  setAccentChoice as setAccentChoicePure,
+  setAnchorOverride as setAnchorOverridePure,
+  setTypeRatio as setTypeRatioPure,
+} from "./pool";
 import {
   addManualToken,
   addMerge,
@@ -52,6 +61,26 @@ export function usePool() {
   /** Phase 9b — set or clear one System-notes field. */
   const setNote = useCallback((field: SystemNotesField, value: string) => {
     setPool((current) => setSystemNote(current, field, value));
+  }, []);
+
+  // ── Phase 10 derivation decisions ──
+  const setAnchor = useCallback((patch: Partial<AnchorOverrides>) => {
+    setPool((current) => setAnchorOverridePure(current, patch));
+  }, []);
+  const editDerivedValue = useCallback((role: string, token: StyleSnapToken) => {
+    setPool((current) => editDerived(current, role, token, new Date().toISOString()));
+  }, []);
+  const resetDerivedValue = useCallback((role: string) => {
+    setPool((current) => resetDerived(current, role));
+  }, []);
+  const setAccent = useCallback((choice: { harmony?: Harmony; dismissed?: boolean }) => {
+    setPool((current) => setAccentChoicePure(current, choice));
+  }, []);
+  const setRatio = useCallback((ratio: TypeRatio) => {
+    setPool((current) => setTypeRatioPure(current, ratio));
+  }, []);
+  const rejectCluster = useCallback((clusterId: string) => {
+    setPool((current) => rejectClusterPure(current, clusterId));
   }, []);
 
   const mergeCluster = useCallback((survivorId: string, mergedIds: string[]) => {
@@ -135,6 +164,12 @@ export function usePool() {
     removeManual,
     setProjectName,
     setNote,
+    setAnchor,
+    editDerivedValue,
+    resetDerivedValue,
+    setAccent,
+    setRatio,
+    rejectCluster,
     createSystem,
     setStep,
     startOver,

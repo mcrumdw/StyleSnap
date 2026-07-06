@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 import { parseStyleSnapExport } from "../../contract/schema";
 import type { StyleSnapMeta, StyleSnapToken } from "../../contract/types";
 import { applyMerges, type MergeRecord } from "../dedup";
+import { deriveSystem } from "../derive-system";
+import type { DerivedProvenance } from "../export";
 
 export function loadFixture(name: string) {
   const text = readFileSync(new URL(`../../../docs/fixtures/${name}`, import.meta.url), "utf-8");
@@ -88,4 +90,38 @@ export function oracleViewTokens(): StyleSnapToken[] {
     oracleRawTokens().map((token) => ({ token })),
     ORACLE_MERGES,
   ).map((e) => e.token);
+}
+
+/**
+ * Phase 10 — the EFFECTIVE view the app exports: the oracle's confirmed
+ * assignments plus the derivation fills for every open slot (FR-19), exactly
+ * as useSessionViewModel assembles it.
+ */
+export function oracleEffective(): {
+  tokens: StyleSnapToken[];
+  assignments: Map<string, string>;
+  derived: Map<string, DerivedProvenance>;
+} {
+  const view = oracleViewTokens();
+  const raw = oracleRawTokens();
+  const draft = deriveSystem({
+    tokens: view,
+    rawById: new Map(raw.map((t) => [t.id, t])),
+    assignments: ORACLE_ASSIGNMENTS,
+  });
+  const assignments = new Map(ORACLE_ASSIGNMENTS);
+  const derived = new Map<string, DerivedProvenance>();
+  const synthetic: StyleSnapToken[] = [];
+  for (const fill of draft.fills) {
+    assignments.set(fill.role, fill.token.id);
+    if (fill.token.id.startsWith("derived_")) {
+      synthetic.push(fill.token);
+      derived.set(fill.token.id, {
+        derivedFrom: fill.derivedFrom,
+        method: fill.method,
+        edited: false,
+      });
+    }
+  }
+  return { tokens: [...view, ...synthetic], assignments, derived };
 }

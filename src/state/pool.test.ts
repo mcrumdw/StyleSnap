@@ -7,6 +7,12 @@ import {
   appendImport,
   assignRole,
   createSystem,
+  editDerived,
+  rejectCluster,
+  resetDerived,
+  setAccentChoice,
+  setAnchorOverride,
+  setTypeRatio,
   defaultProjectName,
   deserializeDraft,
   emptyPool,
@@ -222,6 +228,42 @@ describe("localStorage draft (FR-29)", () => {
       { mood: "Fresh SaaS." },
     );
     expect(merged.systemNotes).toEqual({ voice: "Playful.", mood: "Fresh SaaS." });
+  });
+
+  it("round-trips Phase 10 derivation decisions; pre-Phase-10 drafts load without them", () => {
+    let pool = poolWithBothFixtures();
+    pool = setAnchorOverride(pool, { primaryColorId: "ext_005", baseSpacing: 20 });
+    pool = editDerived(
+      pool,
+      "color/feedback/info",
+      { id: "derived_color_feedback_info", captureId: "derived", source: "derived", name: null, occurrences: 1, merged: false, type: "color", value: "#1D6FD8", opacity: 1 },
+      "2026-07-05T12:00:00Z",
+    );
+    pool = setAccentChoice(pool, { harmony: "analogous" });
+    pool = setTypeRatio(pool, 1.333);
+    pool = rejectCluster(pool, "ext_001");
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.anchorOverrides).toEqual({ primaryColorId: "ext_005", baseSpacing: 20 });
+    expect(restored?.derivedEdits?.["color/feedback/info"]?.token.value).toBe("#1D6FD8");
+    expect(restored?.accentChoice).toEqual({ harmony: "analogous" });
+    expect(restored?.typeRatio).toBe(1.333);
+    expect(restored?.rejectedClusters).toEqual(["ext_001"]);
+
+    // Clearing an override / resetting an edit drops the key.
+    pool = setAnchorOverride(pool, { primaryColorId: undefined });
+    expect(pool.anchorOverrides).toEqual({ baseSpacing: 20 });
+    pool = resetDerived(pool, "color/feedback/info");
+    expect(pool.derivedEdits).toEqual({});
+
+    // Pre-Phase-10 drafts (no fields) load losslessly; corrupt entries drop.
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    expect(deserializeDraft(JSON.stringify(legacy))?.anchorOverrides).toBeUndefined();
+    legacy.derivedEdits = { "color/x": { token: { bogus: true }, editedAt: 7 } };
+    legacy.typeRatio = 9;
+    const migrated = deserializeDraft(JSON.stringify(legacy));
+    expect(migrated).not.toBeNull();
+    expect(migrated?.derivedEdits).toBeUndefined();
+    expect(migrated?.typeRatio).toBeUndefined();
   });
 
   it("round-trips projectName + systemCreatedAt; derives a default name", () => {

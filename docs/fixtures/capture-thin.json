@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "source": "browser-extension",
+    "exportedAt": "2026-07-05T09:15:00Z",
+    "pageUrl": "https://plum.club",
+    "version": "2.0"
+  },
+  "tokens": [
+    { "id": "ext_th_01", "captureId": "cap-cta-1", "source": "button.join", "name": null, "occurrences": 7, "merged": false,
+      "type": "color", "value": "#7C3AED", "opacity": 1,
+      "context": { "cssProperty": "background-color", "element": "button", "state": "default", "selector": ".join" } },
+    { "id": "ext_th_02", "captureId": "cap-copy-1", "source": "p.copy", "name": null, "occurrences": 21, "merged": false,
+      "type": "color", "value": "#1F2933", "opacity": 1,
+      "context": { "cssProperty": "color", "element": "p", "selector": ".copy" } },
+    { "id": "ext_th_03", "captureId": "cap-panel-1", "source": "div.panel", "name": null, "occurrences": 9, "merged": false,
+      "type": "color", "value": "#FFFFFF", "opacity": 1,
+      "context": { "cssProperty": "background-color", "element": "div", "selector": ".panel" } },
+    { "id": "ext_th_04", "captureId": "cap-copy-1", "source": "p.copy", "name": null, "occurrences": 18, "merged": false,
+      "type": "typography",
+      "value": { "fontFamily": "DM Sans", "fontStack": ["DM Sans", "system-ui", "sans-serif"], "fontSize": 16, "fontWeight": 400, "lineHeight": 1.5 },
+      "context": { "element": "p", "selector": ".copy" } },
+    { "id": "ext_th_05", "captureId": "cap-panel-1", "source": "div.panel", "name": null, "occurrences": 11, "merged": false,
+      "type": "spacing", "value": 16,
+      "context": { "cssProperty": "padding" } },
+    { "id": "ext_th_06", "captureId": "cap-cta-1", "source": "button.join", "name": null, "occurrences": 5, "merged": false,
+      "type": "border-radius", "value": 8 }
+  ]
+}
