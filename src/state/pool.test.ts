@@ -6,9 +6,11 @@ import {
   addManualToken,
   appendImport,
   assignRole,
+  autoMergeClusters,
   createSystem,
   editDerived,
   rejectCluster,
+  removeMerge,
   resetDerived,
   setAccentChoice,
   setAnchorOverride,
@@ -228,6 +230,30 @@ describe("localStorage draft (FR-29)", () => {
       { mood: "Fresh SaaS." },
     );
     expect(merged.systemNotes).toEqual({ voice: "Playful.", mood: "Fresh SaaS." });
+  });
+
+  it("auto-merges detected clusters at import; un-merge sticks (2026-07-06 fix-up)", () => {
+    let pool = emptyPool();
+    pool = appendImport(pool, parsedFixture("capture-browser-messy.json"), {
+      importId: "imp-1",
+      importedAt: "2026-07-06T10:00:00Z",
+    });
+    pool = autoMergeClusters(pool, "2026-07-06T10:00:00Z");
+
+    // The four near-identical blues collapse into the canonical automatically.
+    const blueMerge = pool.merges.find((m) => m.survivorId === "ext_001");
+    expect(blueMerge?.mergedIds.sort()).toEqual(["ext_002", "ext_003", "ext_004"]);
+    // The identical #101828 pair too.
+    expect(pool.merges.some((m) => m.survivorId === "ext_006" && m.mergedIds.includes("ext_007"))).toBe(true);
+    // The hover blue is a real state — never swallowed by the blues.
+    expect(blueMerge?.mergedIds).not.toContain("ext_005");
+
+    // Un-merge sticks: auto-merge only runs at import time.
+    const unmerged = removeMerge(pool, "ext_001");
+    expect(unmerged.merges.some((m) => m.survivorId === "ext_001")).toBe(false);
+
+    // Idempotent right after: everything already merged, nothing new to add.
+    expect(autoMergeClusters(pool, "t2").merges).toHaveLength(pool.merges.length);
   });
 
   it("round-trips Phase 10 derivation decisions; pre-Phase-10 drafts load without them", () => {

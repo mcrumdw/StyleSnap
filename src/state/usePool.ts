@@ -4,8 +4,8 @@ import type { MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import type { SystemNotes, SystemNotesField } from "../engine/export";
 import {
+  autoMergeClusters,
   editDerived,
-  rejectCluster as rejectClusterPure,
   resetDerived,
   setAccentChoice as setAccentChoicePure,
   setAnchorOverride as setAnchorOverridePure,
@@ -45,17 +45,18 @@ export function usePool() {
   }, [pool]);
 
   const addImport = useCallback((data: StyleSnapExport, notes?: SystemNotes) => {
-    setPool((current) =>
-      appendImport(
+    setPool((current) => {
+      const importedAt = new Date().toISOString();
+      const next = appendImport(
         current,
         data,
-        {
-          importId: crypto.randomUUID(),
-          importedAt: new Date().toISOString(),
-        },
+        { importId: crypto.randomUUID(), importedAt },
         notes,
-      ),
-    );
+      );
+      // Merges are automatic since the 2026-07-06 fix-up — reversible in the
+      // captured grid, never re-applied after an un-merge (import-time only).
+      return autoMergeClusters(next, importedAt);
+    });
   }, []);
 
   /** Phase 9b — set or clear one System-notes field. */
@@ -78,9 +79,6 @@ export function usePool() {
   }, []);
   const setRatio = useCallback((ratio: TypeRatio) => {
     setPool((current) => setTypeRatioPure(current, ratio));
-  }, []);
-  const rejectCluster = useCallback((clusterId: string) => {
-    setPool((current) => rejectClusterPure(current, clusterId));
   }, []);
 
   const mergeCluster = useCallback((survivorId: string, mergedIds: string[]) => {
@@ -169,7 +167,6 @@ export function usePool() {
     resetDerivedValue,
     setAccent,
     setRatio,
-    rejectCluster,
     createSystem,
     setStep,
     startOver,

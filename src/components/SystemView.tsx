@@ -128,14 +128,31 @@ export function SystemView({
   const rowBorder = (role: string) =>
     originOf(role) === "derived" ? "border-dashed border-border-default" : "border-border-default";
 
-  const cornerDot = (role: string) =>
-    originOf(role) === "edited" ? (
-      <span
-        className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-primary"
-        title="You edited this value"
-        aria-label="edited by you"
-      />
-    ) : null;
+  // Explicit marking (user testing 2026-07-06): an "auto" chip on every
+  // automatically filled value, a dot on hand-edited ones.
+  const originMark = (role: string) => {
+    const origin = originOf(role);
+    if (origin === "derived") {
+      return (
+        <span
+          className="absolute -right-1.5 -top-2.5 rounded-sm border-2 border-border-default bg-brand-pop px-1 font-mono text-badge font-medium text-text-primary"
+          title="Filled in automatically — click for the story"
+        >
+          auto
+        </span>
+      );
+    }
+    if (origin === "edited") {
+      return (
+        <span
+          className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-primary"
+          title="You edited this value"
+          aria-label="edited by you"
+        />
+      );
+    }
+    return null;
+  };
 
   const openPopover = (role: string, token: StyleSnapToken) => {
     if (openRole === role) {
@@ -164,12 +181,42 @@ export function SystemView({
         </p>
         {editable && (
           <div className="mt-2 flex items-center gap-2">
+            {/* Visual picker + hex input + screen eyedropper (2026-07-06 fix-up). */}
+            <input
+              type="color"
+              value={HEX_RE.test(editHex) ? editHex : "#000000"}
+              onChange={(e) => setEditHex(e.target.value.toUpperCase())}
+              aria-label={`Pick ${role} color`}
+              className="h-btn-sm w-10 cursor-pointer rounded-sm border-2 border-border-default bg-surface-card p-0.5"
+            />
             <input
               value={editHex}
               onChange={(e) => setEditHex(e.target.value)}
               aria-label={`Edit ${role} value`}
-              className="h-btn-sm w-28 rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption"
+              className="h-btn-sm w-24 rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption"
             />
+            {"EyeDropper" in window && (
+              <Button
+                size="sm"
+                variant="secondary"
+                title="Pick a color from anywhere on screen"
+                onClick={async () => {
+                  try {
+                    const picker = new (
+                      window as unknown as {
+                        EyeDropper: new () => { open: () => Promise<{ sRGBHex: string }> };
+                      }
+                    ).EyeDropper();
+                    const result = await picker.open();
+                    setEditHex(result.sRGBHex.toUpperCase());
+                  } catch {
+                    // user cancelled the eyedropper — nothing to do
+                  }
+                }}
+              >
+                💧
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={!HEX_RE.test(editHex)}
@@ -206,7 +253,7 @@ export function SystemView({
         onClick={() => openPopover(role, token)}
         className={`relative flex w-full items-center gap-3 rounded-md border-2 bg-surface-card p-3 text-left shadow-card ${rowBorder(role)}`}
       >
-        {cornerDot(role)}
+        {originMark(role)}
         <Swatch token={token} />
         <div className="flex min-w-0 flex-col">
           <span className="truncate font-mono text-caption font-medium text-text-primary">
@@ -264,7 +311,7 @@ export function SystemView({
                 onClick={() => openPopover(role, token)}
                 className={`relative flex items-center gap-2 rounded-md border-2 bg-surface-card px-3 py-2 ${rowBorder(role)}`}
               >
-                {cornerDot(role)}
+                {originMark(role)}
                 <span className="font-mono text-badge text-brand-primary">{role}</span>
                 <span className="font-mono text-badge text-text-muted">{formatValue(token)}</span>
               </button>
@@ -293,10 +340,12 @@ export function SystemView({
       <p className="text-caption text-text-muted">
         <span className="mr-1 inline-block h-3 w-3 rounded-sm border-2 border-border-default align-middle" />{" "}
         from your capture ·{" "}
-        <span className="mr-1 inline-block h-3 w-3 rounded-sm border-2 border-dashed border-border-default align-middle" />{" "}
-        we made it for you ·{" "}
+        <span className="mr-1 rounded-sm border-2 border-border-default bg-brand-pop px-1 font-mono text-badge font-medium text-text-primary">
+          auto
+        </span>{" "}
+        filled in for you ·{" "}
         <span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand-primary align-middle" />{" "}
-        you changed it — click any value for the story.
+        you changed it — click any value for the story or to change it.
       </p>
 
       {/* Accent suggestion (C.5) — a card, never an assignment. */}
@@ -419,7 +468,7 @@ export function SystemView({
                   onClick={() => openPopover(def.role, token)}
                   className={`relative flex w-full items-baseline gap-3 rounded-md border-2 bg-surface-card px-3 py-2 text-left ${rowBorder(def.role)}`}
                 >
-                  {cornerDot(def.role)}
+                  {originMark(def.role)}
                   <span className="font-mono text-badge text-brand-primary">{def.role}</span>
                   <span className="text-caption text-text-primary">
                     {v.fontFamily} {v.fontSize}px / {v.fontWeight} / {v.lineHeight}

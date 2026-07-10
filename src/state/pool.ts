@@ -10,7 +10,7 @@
 
 import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
-import type { MergeRecord } from "../engine/dedup";
+import { applyMerges, detectClusters, type MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import { sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
 import type { PipelineStep } from "./pipeline";
@@ -120,6 +120,39 @@ export function addMerge(pool: TokenPool, merge: MergeRecord): TokenPool {
 /** Un-merge (FR-13): drop the record; the view restores itself exactly. */
 export function removeMerge(pool: TokenPool, survivorId: string): TokenPool {
   return { ...pool, merges: pool.merges.filter((m) => m.survivorId !== survivorId) };
+}
+
+/**
+ * Phase 10 fix-up (user testing 2026-07-06): merges apply AUTOMATICALLY at
+ * import time — no queue, no review step. Policy:
+ *
+ * - EXACT duplicates (distance 0 — identical value + opacity) always merge:
+ *   they are objectively the same token captured twice.
+ * - Near-duplicates merge only in clusters of 3+ tokens — the accidental-
+ *   drift pattern (four hand-typed blues). A lone near-PAIR stays separate:
+ *   white vs. gray-50 page/card surfaces are perceptually close but
+ *   intentionally distinct.
+ *
+ * Still reversible: un-merge in the captured grid drops the record, and
+ * auto-merge only runs at import time, so an un-merge sticks.
+ */
+export function autoMergeClusters(pool: TokenPool, mergedAt: string): TokenPool {
+  const view = applyMerges(
+    poolTokens(pool).map((token) => ({ token })),
+    pool.merges,
+  ).map((e) => e.token);
+  const merges = [...pool.merges];
+  for (const cluster of detectClusters(view, "default")) {
+    const exact = cluster.members.filter((m) => m.distance === 0).map((m) => m.token.id);
+    const near = cluster.members.filter((m) => m.distance !== 0).map((m) => m.token.id);
+    const mergedIds = [
+      ...new Set([...exact, ...(near.length >= 2 ? near : [])]),
+    ].filter((id) => id !== cluster.canonical.id);
+    if (mergedIds.length > 0) {
+      merges.push({ survivorId: cluster.canonical.id, mergedIds, mergedAt });
+    }
+  }
+  return merges.length === pool.merges.length ? pool : { ...pool, merges };
 }
 
 /** Set or clear a token's name (FR-21). `undefined` clears back to unnamed. */

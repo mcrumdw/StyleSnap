@@ -1,94 +1,75 @@
 # StyleSnap — Demo script (the golden path)
 
 **Target: under 5 minutes, runnable by anyone.** No accounts, no backend;
-work auto-saves to localStorage, so a mid-demo refresh is harmless (recover
-point: just reload — you land back on your complete draft).
+work auto-saves to localStorage — reload anytime and your draft is back.
 
-**Prep (before the demo):** open the app (deployed URL or `npm run dev`) and
-have these files ready to drag:
+**Prep:** open the app (`npm run dev` → http://localhost:5173) and have:
 
-- `docs/fixtures/capture-thin.json` (the 6-token opener)
-- `docs/fixtures/capture-browser-messy.json` + `capture-figma-clean.json`
-  (the full story)
+- `docs/fixtures/capture-thin.json` (6-token wow opener)
+- `docs/fixtures/capture-browser-messy.json` + `capture-figma-clean.json` (full story)
 
-Optional wow-closer: a Claude Code / Cursor window open on any small project.
+Optional closer: Claude Code / Cursor on any small project.
 
-**The mental model to narrate:** StyleSnap solves the system like a puzzle
-from its corner pieces — it finds three anchors (your main color, your text
-style, your base unit) and derives everything else deterministically. You
-review a *complete* draft and change only what you disagree with. Every
-automated act is confessed: the summary strip counts it, dashed borders mark
-it, and clicking any value tells its story.
+**Mental model:** import → **complete draft instantly**. StyleSnap picks three
+anchors (main color, body type, base spacing) and fills everything else
+deterministically. Solid borders = from capture; dashed + **auto** badge =
+filled for you. Change only what you disagree with.
 
 ---
 
 ## 1. The 30-second wow (~1 min)
 
-1. Drag `capture-thin.json` onto the paste zone — **6 tokens** from a tiny
-   landing page.
-2. You land on **"Your system"**: a complete draft. Point at the summary
-   strip: *"merges reviewed ✓ · 3 anchors picked · 26 values derived."*
-3. Scroll: hover/active states, tinted neutrals, four feedback colors (all
-   AA-checked), a full type scale, spacing/radius/shadow ramps — from six
-   tokens and zero forms.
+1. Drag `capture-thin.json` — **6 tokens** from a tiny landing page.
+2. You land on **"Your system"** — a full draft: hover/active states, feedback
+   colors, neutrals, type scale, spacing/radius/shadow ramps. Zero forms.
+3. Point at dashed rows with **auto** badges. Click one → provenance popover:
+   *"derived from your main color — hover (ΔL −0.06)"*.
+4. If a second hue isn't captured, an **accent card** offers harmony options.
+   Switch or dismiss.
 
-**Say:** *"Six tokens in, a complete design system out. Solid borders are
-from the capture; dashed means we made it — click one."* (Click a feedback
-color → the popover confesses: "conventional hue, brand chroma, AA-tuned".)
+**Say:** *"Six tokens in, a complete design system out. We only show what's
+automated — click any value for its story."*
 
-4. Notice the **accent card** — the capture has one hue, so StyleSnap offers
-   three color-wheel companions (complementary / split / analogous). Switch,
-   or dismiss. It never assigns itself.
+Start over for the real dataset (Import another capture → Start over).
 
-Start over (Import another capture → Start over) for the real dataset.
+## 2. The real mess (~1 min)
 
-**Flex (10 s):** paste `capture-malformed.json` — a friendly error listing
-exactly what's wrong; nothing crashes, nothing gets added.
+1. Drag `capture-browser-messy.json`, then `capture-figma-clean.json` — 40
+   tokens from two teammates.
+2. Near-duplicates **merge automatically at import** (reversible in Captured
+   tokens below). Header notes how many values were filled automatically.
+3. Scroll the draft — same complete system, now grounded in a messy real
+   capture.
 
-## 2. The real mess + the merge queue (~1.5 min)
+**Say:** *"Detection proposes, we draft — you review by exception, not by
+form."*
 
-1. Drag `capture-browser-messy.json`, then `capture-figma-clean.json` —
-   40 raw tokens from two teammates (live site + Figma). You land on the
-   complete draft again.
-2. The strip confesses **proposed merges**. Click it → the **merge queue**
-   ("1 of N"): the four near-identical blues, our survivor preselected, per-
-   token ΔE distances shown. **Merge them** → *"Nice — 5 values just became
-   1."* Work the queue; **Keep separate** when the app is wrong — it never
-   merges on its own. (The full grid with filters lives behind "Show
-   everything".)
+## 3. Change one thing (~1 min)
 
-**Say:** *"Detection only proposes. A human decides. Reversible until Create
-System."*
+1. Click a derived feedback color → edit hex with the color picker (or
+   eyedropper). Corner dot marks your edit; export flags it.
+2. Expand **Fine-tune — anchors & roles** → swap the main color anchor.
+   Watch derived values cascade (your edits stay put).
+3. If **Still needs your input** appears, use it for motion/voice notes or
+   optional roles — links jump to the right section.
 
-## 3. Anchors, if you disagree (~30 s)
+## 4. Ship it (~1 min)
 
-Press `2`. Three plain cards: your main color, your text style, your base
-unit. **Swap** the main color → every derived value re-cascades live; swap
-back. To show the dirty flag: hand-edit a derived color in step 3 first
-(click → type a hex → Save) — the corner dot appears, and no anchor swap
-ever touches it. "Reset to derived" undoes the edit.
+1. Edit project name in the header.
+2. **Create System** → lightweight confirm (stats + how much was automated).
+3. **Copy design.md** — one-time guardrail if you haven't reviewed auto-filled
+   values (*export anyway* is fine — they're flagged in §Gaps).
+4. Show **Cleaned JSON** in the export section: *"This file IS the save."*
 
-Below the anchors: the full role-correction panel with visual pickers, for
-surgical changes.
+## 5. Payoff (~1 min)
 
-## 4. Ship it (~1.5 min)
+Paste design.md into Claude Code:
 
-1. Press `4`. Fill **Mood / vibe** in System notes (one sentence) — the other
-   fields stay honest gaps in the export.
-2. **Create System** → the dialog confesses the automation ("N of M values
-   were made for you") → confirm.
-3. **Copy design.md.** The first copy shows a one-time guardrail if anything
-   is unreviewed — "Export anyway" never blocks.
-4. Paste into Claude Code / Cursor and prompt:
+> Using the design system below, build a small pricing card with a primary CTA
+> and muted caption. Use only tokens from the file.
 
-> Using the design system below, build a small pricing card with a primary
-> CTA button and a muted caption. Use only tokens from the file; if something
-> is missing, follow its §Gaps rule.
-
-**Close:** *"Nothing was invented silently. Captured beats edited beats
-derived; the export marks all three — 'derived from `color/brand-blue` —
-hover (ΔL −0.06)' — and §Gaps lists exactly what no tool can know: motion,
-voice, breakpoints. Capture to AI-ready system, under five minutes."*
+**Close:** *"Messy capture → AI-ready design system in under five minutes —
+one page, one draft, ship when happy."*
 
 ---
 
@@ -96,9 +77,7 @@ voice, breakpoints. Capture to AI-ready system, under five minutes."*
 
 | If… | Then… |
 |---|---|
-| The tab crashes or you refresh | Reload — the draft restores; you land on "Your system" with a welcome-back toast. |
-| An import goes weird | Expand **Import another capture** → **Start over**. |
-| You accepted the wrong merge | Step 1 → Show everything → **Un-merge** on the survivor (before Create System). |
-| You edited a derived value badly | Click the value → **Reset to derived**. |
-| Clipboard copy fails | Use Copy/Download in the export section on step 4. |
-| You need to jump around | Click any step, or press `1`–`4`. |
+| Refresh mid-demo | Reload — draft restores. |
+| Wrong merge | **Captured tokens** → Un-merge (before Create System). |
+| Clipboard fails | Download from export section. |
+| Want the raw grid | **Captured tokens** accordion. |

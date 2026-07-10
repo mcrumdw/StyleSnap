@@ -1,11 +1,9 @@
 import { useMemo } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import { computeChecklist } from "../engine/completeness";
-import { applyMerges, detectClusters, type DedupCluster, type MergeRecord } from "../engine/dedup";
+import { applyMerges } from "../engine/dedup";
 import { deriveSystem, type Anchors, type AccentSuggestion } from "../engine/derive-system";
 import { generateDesignMd, type DerivedProvenance, type ExportInput } from "../engine/export";
-import type { PipelineStep } from "./pipeline";
-import { clampStep } from "./pipeline";
 import {
   defaultProjectName,
   isSystemCreated,
@@ -16,7 +14,7 @@ import {
 } from "./pool";
 import { poolEntries } from "./workspace";
 
-/** How a value got into the draft — drives the three visual states (10b). */
+/** How a value got into the draft — drives the visual states. */
 export type FillOrigin = "captured" | "derived" | "edited";
 
 export interface DraftFill {
@@ -27,54 +25,33 @@ export interface DraftFill {
   method: string;
 }
 
-/** Shared session state derived from the pool — one source for Home, StepBar, and steps. */
+/** Shared session state derived from the pool — one source for the whole page. */
 export function useSessionViewModel(pool: TokenPool) {
   const projectName = pool.projectName ?? defaultProjectName(pool);
   const created = isSystemCreated(pool);
   const total = poolTokenCount(pool);
   const entries = useMemo(() => poolEntries(pool), [pool]);
 
-  // ── The dedup pipeline: confirmed merges → open cluster proposals ──
-  const mergedEntries = useMemo(() => applyMerges(entries, pool.merges), [entries, pool.merges]);
-
-  const mergeQueue = useMemo((): DedupCluster[] => {
-    const rejected = new Set(pool.rejectedClusters ?? []);
-    return detectClusters(
-      mergedEntries.map((e) => e.token),
-      "default",
-    ).filter((c) => c.members.length > 1 && !rejected.has(c.id));
-  }, [mergedEntries, pool.rejectedClusters]);
-
-  // ── Cluster-canonical view (10b): open proposals collapse to canonicals so
-  // the draft exists before review and refines live as merges are decided. ──
-  const canonical = useMemo(() => {
-    const proposed: MergeRecord[] = mergeQueue.map((c) => ({
-      survivorId: c.canonical.id,
-      mergedIds: c.members.map((m) => m.token.id).filter((id) => id !== c.canonical.id),
-      mergedAt: "proposed",
-    }));
-    const merges = [...pool.merges, ...proposed];
-    const tokens = applyMerges(entries, merges).map((e) => e.token);
-    const assignments = resolveAssignments(pool.assignments, merges);
+  // Merges are automatic (applied at import) — the merged view IS the draft input.
+  const view = useMemo(() => {
+    const tokens = applyMerges(entries, pool.merges).map((e) => e.token);
+    const assignments = resolveAssignments(pool.assignments, pool.merges);
     return { tokens, assignments };
-  }, [entries, pool.merges, pool.assignments, mergeQueue]);
+  }, [entries, pool.merges, pool.assignments]);
 
-  const rawById = useMemo(
-    () => new Map(poolTokens(pool).map((t) => [t.id, t])),
-    [pool],
-  );
+  const rawById = useMemo(() => new Map(poolTokens(pool).map((t) => [t.id, t])), [pool]);
 
   // ── Derivation (10a): the auto-completed draft, edits overlaid (C.8) ──
   const draft = useMemo(
     () =>
       deriveSystem({
-        tokens: canonical.tokens,
+        tokens: view.tokens,
         rawById,
-        assignments: new Map(Object.entries(canonical.assignments)),
+        assignments: new Map(Object.entries(view.assignments)),
         overrides: pool.anchorOverrides,
         typeRatio: pool.typeRatio,
       }),
-    [canonical, rawById, pool.anchorOverrides, pool.typeRatio],
+    [view, rawById, pool.anchorOverrides, pool.typeRatio],
   );
 
   const draftFills = useMemo((): DraftFill[] => {
@@ -93,7 +70,7 @@ export function useSessionViewModel(pool: TokenPool) {
 
   // ── Effective view: captured assignments + draft fills ──
   const effective = useMemo(() => {
-    const assignments = new Map(Object.entries(canonical.assignments));
+    const assignments = new Map(Object.entries(view.assignments));
     const derived = new Map<string, DerivedProvenance>();
     const syntheticTokens: StyleSnapToken[] = [];
     for (const fill of draftFills) {
@@ -105,16 +82,10 @@ export function useSessionViewModel(pool: TokenPool) {
           method: fill.method,
           edited: fill.origin === "edited",
         });
-      } else if (fill.origin === "captured" && fill.method.startsWith("anchor")) {
-        derived.set(fill.token.id, {
-          derivedFrom: fill.derivedFrom,
-          method: fill.method,
-          edited: false,
-        });
       }
     }
-    return { assignments, derived, tokens: [...canonical.tokens, ...syntheticTokens] };
-  }, [canonical, draftFills]);
+    return { assignments, derived, tokens: [...view.tokens, ...syntheticTokens] };
+  }, [view, draftFills]);
 
   const exportInput = useMemo((): ExportInput => {
     const raw = poolTokens(pool);
@@ -134,9 +105,8 @@ export function useSessionViewModel(pool: TokenPool) {
       names,
       notes: pool.systemNotes ?? {},
       derived: effective.derived,
-      unreviewedMerges: mergeQueue.length,
     };
-  }, [pool, projectName, effective, rawById, mergeQueue.length]);
+  }, [pool, projectName, effective, rawById]);
 
   const resolvedAssignments = useMemo(
     () => Object.fromEntries(effective.assignments),
@@ -164,21 +134,15 @@ export function useSessionViewModel(pool: TokenPool) {
     [exportInput, pool.decisions],
   );
 
-  // The confession strip (10b): what the app did, in three counts.
+  // What the app did on its own — confessed in the header.
   const summary = useMemo(() => {
     const anchorsPicked = [
       anchors.primaryColorId,
       anchors.bodyTypographyId,
       anchors.baseSpacing,
     ].filter((a) => a !== undefined).length;
-    return {
-      proposedMerges: mergeQueue.length,
-      anchorsPicked,
-      derivedCount: draft.derivedCount,
-    };
-  }, [anchors, mergeQueue.length, draft.derivedCount]);
-
-  const step: PipelineStep = clampStep(pool.currentStep ?? 3);
+    return { anchorsPicked, derivedCount: draft.derivedCount };
+  }, [anchors, draft.derivedCount]);
 
   return {
     projectName,
@@ -191,12 +155,9 @@ export function useSessionViewModel(pool: TokenPool) {
     designMd,
     gapCount,
     systemTokens,
-    openClusterCount: mergeQueue.length,
-    mergeQueue,
     draftFills,
     anchors,
     accent,
     summary,
-    step,
   };
 }

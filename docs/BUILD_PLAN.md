@@ -449,6 +449,70 @@ buttons.
 
 ---
 
+## Phase 10d — One page (2026-07-06 fix-up, supersedes 10b stepper)
+
+**Why (user testing, 2026-07-06):** the stepper + merge queue re-introduced
+navigation the derivation engine was meant to eliminate. Goal: **easy design
+system creation** — import → complete draft on one screen; repair shops in
+collapsible sections below.
+
+**Build:**
+
+- **Landing = `SystemView`** — the draft IS the app; header confession +
+  one CTA (Create System / Copy design.md).
+- **Auto-merge at import** (`autoMergeClusters` in `usePool`) — reversible in
+  **Captured tokens** accordion; never re-applied after un-merge.
+- **Removed:** `StepBar`, `MergeQueueStep`, `SummaryStrip`, step keyboard
+  shortcuts, `currentStep` navigation chrome.
+- **Below the fold (collapsed):** Fine-tune (anchors + `EditRolesPanel`) ·
+  Captured tokens (`CleanupStep`) · System notes · Export · Import another.
+- **`GapPanel` inline** — only true gaps (notes, optional roles, unassigned
+  captures); links to fine-tune / captured / notes.
+- **Export guardrail** — one-time interstitial before copy when derived values
+  exist; never blocks.
+
+**Accept:** thin capture → complete draft with zero forms; one primary CTA;
+no step chrome; DEMO.md < 5 min; all tests green.
+
+---
+
+## Phase 12 — AI assistance (FR-20, next)
+
+**Why:** derivation handles *values*; users still write mood, voice, and
+component principles by hand. AI proposes **reviewable** text and naming —
+never silent, layered on the one-page draft.
+
+**12a — Infrastructure:**
+
+- `src/engine/ai/` — pure prompt builders + response parsers (testable with
+  fixtures/mocks); API call in a thin `src/services/anthropic.ts` hook.
+- Env: `VITE_ANTHROPIC_API_KEY` (client-side for course project; document
+  production proxy pattern in DECISIONS).
+- Graceful offline: AI buttons hidden when no key; manual path unchanged.
+
+**12b — First surfaces (highest leverage):**
+
+- **System notes:** "Draft with AI" per field (mood, component principles,
+  motion, voice, layout) — proposes from token palette + capture context;
+  user edits before save.
+- **Naming assist:** suggest slash-names for unnamed captured values (chip
+  on `TokenCard` / inline name).
+- **Gap narration:** one-click "Explain this gap" → short actionable hint
+  (not auto-fill — complements derivation).
+
+**12c — Guardrails (PRD §10):**
+
+- Every output is a proposal chip or pre-filled textarea — confirm to apply.
+- Prompts include assigned tokens + derivation provenance; no inventing hexes
+  outside captured/derived set unless user confirms.
+- Export marks AI-drafted notes in provenance (`source: ai-assisted`).
+
+**Accept:** with API key, thin capture → AI-drafted mood + component notes in
+< 2 clicks each; without key, app identical to 10d; no silent mutations;
+tests mock the API boundary.
+
+---
+
 ## Phase 11 — Friction fixes from the usability study (after 10 & 9)
 
 Source: `docs/UX_RESEARCH.md` §4 (validate with real users first — §6).
@@ -472,10 +536,10 @@ tokens excluded from export; all prior tests green.
 
 ## Backlog (do NOT pull into MVP)
 
-AI assist (FR-20), Figma Variables export, W3C token output format, component
-reconstruction, accounts, per-source cluster breakdown + persistent filters
-(P7), custom role names within standard categories (P8 — decide with team).
-De-scope order if behind: PRD §13.
+Figma Variables export, W3C token output format, component reconstruction,
+accounts, per-source cluster breakdown + persistent filters (P7), custom role
+names within standard categories (P8 — decide with team). **AI assist moved
+to Phase 12.** De-scope order if behind: PRD §13.
 
 ## Definition of done (MVP)
 

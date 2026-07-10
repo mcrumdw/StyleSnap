@@ -6,20 +6,21 @@ import { CleanupStep } from "../components/CleanupStep";
 import { CreateSystemDialog } from "../components/CreateSystemDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ExportSection } from "../components/ExportSection";
+import { GapPanel } from "../components/GapPanel";
 import { GiveMeaningStep } from "../components/GiveMeaningStep";
 import { ImportZone } from "../components/ImportZone";
-import { MergeQueueStep } from "../components/MergeQueueStep";
-import { StepBar } from "../components/StepBar";
-import { SummaryStrip } from "../components/SummaryStrip";
 import { SystemNotesPanel } from "../components/SystemNotesPanel";
 import { SystemView, type FillInfo } from "../components/SystemView";
 import { Toast } from "../components/Toast";
 import { importLabel } from "../state/pool";
-import type { PipelineStep } from "../state/pipeline";
 import { usePool } from "../state/usePool";
 import { useSessionViewModel } from "../state/useSessionViewModel";
-import { furthestIncompleteStep, stepPageTitle, welcomeBackMessage } from "../state/pipeline";
 
+/**
+ * One page, no steps (user testing 2026-07-06): the auto-completed system IS
+ * the app. Merges happen silently at import; fine-tuning (anchors, roles,
+ * captured grid) lives in collapsible sections below the draft.
+ */
 export function Home() {
   const {
     pool,
@@ -38,17 +39,17 @@ export function Home() {
     editDerivedValue,
     resetDerivedValue,
     setAccent,
-    rejectCluster,
     createSystem,
-    setStep,
     startOver,
   } = usePool();
 
   const vm = useSessionViewModel(pool);
   const hasTokens = pool.imports.length > 0;
-  const step = vm.step;
 
   const [focusRoleId, setFocusRoleId] = useState<string | undefined>();
+  const [tuneOpen, setTuneOpen] = useState(false);
+  const [capturedOpen, setCapturedOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showGuardrail, setShowGuardrail] = useState(false);
   const guardrailSeenRef = useRef(false);
@@ -57,14 +58,6 @@ export function Home() {
   const [addTokenPreset, setAddTokenPreset] = useState<
     { tokenType: TokenType; role?: string } | undefined
   >();
-
-  const goToStep = useCallback(
-    (next: PipelineStep) => {
-      setStep(next);
-      setFocusRoleId(undefined);
-    },
-    [setStep],
-  );
 
   const copyDesignMd = useCallback(async () => {
     try {
@@ -77,61 +70,42 @@ export function Home() {
 
   const totalValues = Object.keys(vm.resolvedAssignments).length;
 
-  // Export guardrail (10b): informs ONCE about unreviewed automation, never blocks.
+  // Export guardrail: informs ONCE about unreviewed automation, never blocks.
   const copyWithGuardrail = useCallback(() => {
-    const unreviewed = vm.summary.proposedMerges;
-    if (!guardrailSeenRef.current && (unreviewed > 0 || vm.summary.derivedCount > 0)) {
+    if (!guardrailSeenRef.current && vm.summary.derivedCount > 0) {
       guardrailSeenRef.current = true;
       setShowGuardrail(true);
       return;
     }
     void copyDesignMd();
-  }, [vm.summary, copyDesignMd]);
+  }, [vm.summary.derivedCount, copyDesignMd]);
 
-  const handlePrimaryAction = useCallback(() => {
-    switch (step) {
-      case 1:
-        goToStep(2);
-        break;
-      case 2:
-        goToStep(3);
-        break;
-      case 3:
-        goToStep(4);
-        break;
-      case 4:
-        if (vm.created) {
-          copyWithGuardrail();
-        } else {
-          setShowCreateDialog(true);
-        }
-        break;
-    }
-  }, [step, goToStep, vm.created, copyWithGuardrail]);
-
-  const handleAssignRoleFromGap = useCallback(
-    (role: string) => {
-      goToStep(2);
-      setFocusRoleId(role);
-      requestAnimationFrame(() => {
-        document.getElementById(`role-${role.replace(/\//g, "-")}`)?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+  /** Open the fine-tune section and scroll a role slot into view. */
+  const goToRole = useCallback((role: string) => {
+    setTuneOpen(true);
+    setFocusRoleId(role);
+    requestAnimationFrame(() => {
+      document.getElementById(`role-${role.replace(/\//g, "-")}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
       });
-    },
-    [goToStep],
-  );
+    });
+  }, []);
 
-  // Keyboard: 1–4 = steps, Esc closes dialogs
+  const goToGaps = useCallback(() => {
+    const firstGap = vm.checklist.items.find((i) => i.status === "gap");
+    if (firstGap?.action?.role) {
+      goToRole(firstGap.action.role);
+      return;
+    }
+    document.getElementById("gaps-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (firstGap?.id === "manual-foundations") setNotesOpen(true);
+  }, [vm.checklist.items, goToRole]);
+
+  // Esc closes dialogs.
   useEffect(() => {
     if (!hasTokens) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "1") goToStep(1);
-      if (e.key === "2") goToStep(2);
-      if (e.key === "3") goToStep(3);
-      if (e.key === "4") goToStep(4);
       if (e.key === "Escape") {
         setShowCreateDialog(false);
         setShowGuardrail(false);
@@ -139,25 +113,18 @@ export function Home() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hasTokens, goToStep]);
+  }, [hasTokens]);
 
-  const progress = {
-    openClusters: vm.summary.proposedMerges,
-    rolesMet: vm.checklist.requiredMet,
-    rolesTotal: vm.checklist.requiredTotal,
-    gaps: vm.gapCount,
-    derivedCount: vm.summary.derivedCount,
-    created: vm.created,
-  };
-
-  // Resume orientation (P9, derivation-first): a restored draft lands on the
-  // complete system, never a work queue; the toast carries the counts.
+  // Resume orientation: a restored draft says hello with the state of things.
   const resumeRef = useRef(hasTokens);
   useEffect(() => {
     if (!resumeRef.current) return;
     resumeRef.current = false;
-    setStep(furthestIncompleteStep(progress));
-    setToast(welcomeBackMessage(progress));
+    setToast(
+      vm.created
+        ? "Welcome back — your system's ready. Ship it."
+        : "Welcome back — your system is drafted and auto-saved.",
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on restore
   }, []);
 
@@ -177,117 +144,182 @@ export function Home() {
         </>
       ) : (
         <>
-          <header className="flex w-full flex-col gap-1">
-            <h1 className="font-heading text-page-title font-bold">{stepPageTitle(step)}</h1>
+          <header className="flex w-full flex-col gap-2">
+            <h1 className="font-heading text-page-title font-bold">Your system</h1>
             <p className="text-base text-text-muted">
               {vm.total} token{vm.total === 1 ? "" : "s"} from{" "}
-              {pool.imports.map((imp) => importLabel(imp.meta)).join(" + ")}. Auto-saved.
+              {pool.imports.map((imp) => importLabel(imp.meta)).join(" + ")} —{" "}
+              {vm.summary.derivedCount > 0
+                ? `${vm.summary.derivedCount} value${vm.summary.derivedCount === 1 ? "" : "s"} filled in automatically. `
+                : ""}
+              Auto-saved.
             </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2">
+                <span className="sr-only">Project name</span>
+                <input
+                  value={vm.projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  aria-label="Project name"
+                  className="h-btn-sm w-48 rounded-sm border-2 border-border-default bg-surface-card px-2 text-caption text-text-primary"
+                />
+              </label>
+              <Button
+                size="sm"
+                className="ml-auto"
+                onClick={() => {
+                  if (vm.created) copyWithGuardrail();
+                  else setShowCreateDialog(true);
+                }}
+              >
+                {vm.created ? "Copy design.md" : "Create System"}
+              </Button>
+            </div>
           </header>
 
-          <StepBar
-            step={step}
-            onStepChange={goToStep}
-            projectName={vm.projectName}
-            onProjectNameChange={setProjectName}
-            progress={progress}
-            onPrimaryAction={handlePrimaryAction}
+          <SystemView
+            tokens={vm.systemTokens}
+            assignments={vm.resolvedAssignments}
+            fills={fills}
+            accent={vm.accent}
+            accentHarmony={pool.accentChoice?.harmony}
+            onAccentHarmony={(harmony) => setAccent({ harmony })}
+            onAccentDismiss={() => setAccent({ dismissed: true })}
+            onEditDerived={editDerivedValue}
+            onResetDerived={resetDerivedValue}
+            onGoToGaps={goToGaps}
           />
 
-          <SummaryStrip
-            proposedMerges={vm.summary.proposedMerges}
-            anchorsPicked={vm.summary.anchorsPicked}
-            derivedCount={vm.summary.derivedCount}
-            onGoToStep={goToStep}
-          />
+          {vm.gapCount > 0 && (
+            <GapPanel
+              checklist={vm.checklist}
+              onAssignRole={goToRole}
+              onAddToken={(preset) => {
+                setAddTokenPreset(preset);
+                setCapturedOpen(true);
+              }}
+              onOpenNotes={() => {
+                setNotesOpen(true);
+                requestAnimationFrame(() => {
+                  document.getElementById("system-notes")?.scrollIntoView({ behavior: "smooth" });
+                });
+              }}
+            />
+          )}
 
-          {step === 1 && (
-            <MergeQueueStep
-              queue={vm.mergeQueue}
-              onAccept={mergeCluster}
-              onReject={rejectCluster}
-              onCelebrate={setToast}
-              everything={
-                <CleanupStep
+          {/* Fine-tuning lives BELOW the finished draft — edit by intent. */}
+          <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-8">
+            <button
+              type="button"
+              onClick={() => setTuneOpen((o) => !o)}
+              aria-expanded={tuneOpen}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <span className="flex flex-col">
+                <h2 className="font-heading text-card-title font-bold">
+                  Fine-tune — anchors & roles
+                </h2>
+                <span className="text-caption text-text-muted">
+                  Swap the {vm.summary.anchorsPicked} anchors everything was built from, or
+                  re-point any role.
+                </span>
+              </span>
+              <span className="font-mono text-caption text-text-muted">{tuneOpen ? "▲" : "▼"}</span>
+            </button>
+            {tuneOpen && (
+              <AnchorsStep anchors={vm.anchors} tokens={vm.exportInput.tokens} onSetAnchor={setAnchor}>
+                <GiveMeaningStep
                   entries={vm.entries}
                   merges={pool.merges}
                   decisions={pool.decisions}
                   assignments={pool.assignments}
-                  addTokenPreset={addTokenPreset}
-                  onAddTokenPresetConsumed={() => setAddTokenPreset(undefined)}
-                  onMergeCluster={mergeCluster}
-                  onUnmerge={unmerge}
-                  onSetName={setName}
+                  focusRoleId={focusRoleId}
                   onAssign={assign}
                   onUnassign={unassign}
-                  onAddManual={(token, role) => {
-                    addManual(token, role);
-                    if (addTokenPreset) setAddTokenPreset(undefined);
-                  }}
-                  onUpdateManual={updateManual}
-                  onRemoveManual={removeManual}
-                  locked={vm.created}
                 />
-              }
-            />
-          )}
+              </AnchorsStep>
+            )}
+          </section>
 
-          {step === 2 && (
-            <AnchorsStep
-              anchors={vm.anchors}
-              tokens={vm.exportInput.tokens}
-              onSetAnchor={setAnchor}
+          <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-8">
+            <button
+              type="button"
+              onClick={() => setCapturedOpen((o) => !o)}
+              aria-expanded={capturedOpen}
+              className="flex w-full items-center justify-between text-left"
             >
-              <GiveMeaningStep
+              <span className="flex flex-col">
+                <h2 className="font-heading text-card-title font-bold">Captured tokens</h2>
+                <span className="text-caption text-text-muted">
+                  Everything from your capture — rename, un-merge, add or remove tokens.
+                </span>
+              </span>
+              <span className="font-mono text-caption text-text-muted">
+                {capturedOpen ? "▲" : "▼"}
+              </span>
+            </button>
+            {capturedOpen && (
+              <CleanupStep
                 entries={vm.entries}
                 merges={pool.merges}
                 decisions={pool.decisions}
                 assignments={pool.assignments}
-                focusRoleId={focusRoleId}
+                addTokenPreset={addTokenPreset}
+                onAddTokenPresetConsumed={() => setAddTokenPreset(undefined)}
+                onMergeCluster={mergeCluster}
+                onUnmerge={unmerge}
+                onSetName={setName}
                 onAssign={assign}
                 onUnassign={unassign}
+                onAddManual={(token, role) => {
+                  addManual(token, role);
+                  if (addTokenPreset) setAddTokenPreset(undefined);
+                }}
+                onUpdateManual={updateManual}
+                onRemoveManual={removeManual}
+                locked={vm.created}
               />
-            </AnchorsStep>
-          )}
+            )}
+          </section>
 
-          {step === 3 && (
-            <SystemView
-              tokens={vm.systemTokens}
-              assignments={vm.resolvedAssignments}
-              fills={fills}
-              accent={vm.accent}
-              accentHarmony={pool.accentChoice?.harmony}
-              onAccentHarmony={(harmony) => setAccent({ harmony })}
-              onAccentDismiss={() => setAccent({ dismissed: true })}
-              onEditDerived={editDerivedValue}
-              onResetDerived={resetDerivedValue}
-              onGoToGaps={() => handleAssignRoleFromGap("color/text/primary")}
+          <section
+            id="system-notes"
+            className="flex w-full flex-col gap-8 border-t-2 border-border-default pt-8"
+          >
+            <button
+              type="button"
+              onClick={() => setNotesOpen((o) => !o)}
+              aria-expanded={notesOpen}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <span className="flex flex-col">
+                <h2 className="font-heading text-card-title font-bold">System notes</h2>
+                <span className="text-caption text-text-muted">
+                  Mood, motion, voice — optional, flagged in export when empty.
+                </span>
+              </span>
+              <span className="font-mono text-caption text-text-muted">{notesOpen ? "▲" : "▼"}</span>
+            </button>
+            {notesOpen && <SystemNotesPanel notes={pool.systemNotes ?? {}} onChange={setNote} />}
+            {!vm.created && (
+              <section className="flex flex-col gap-4 rounded-md border-2 border-dashed border-border-default bg-surface-page p-6">
+                <p className="text-caption text-text-muted">
+                  Happy with the draft? Create your system to finalize — exports below become
+                  official.
+                </p>
+                <Button variant="secondary" onClick={() => setShowCreateDialog(true)}>
+                  Create System
+                </Button>
+              </section>
+            )}
+            <ExportSection
+              projectName={vm.projectName}
+              designMd={vm.designMd}
+              exportInput={vm.exportInput}
+              gapCount={vm.gapCount}
+              onCopyDesignMd={copyWithGuardrail}
             />
-          )}
-
-          {step === 4 && (
-            <div className="flex w-full flex-col gap-8">
-              <SystemNotesPanel notes={pool.systemNotes ?? {}} onChange={setNote} />
-              {!vm.created && (
-                <section className="flex flex-col gap-4 rounded-md border-2 border-dashed border-border-default bg-surface-page p-6">
-                  <p className="text-caption text-text-muted">
-                    Happy with the draft? Create your system to finalize — merges lock, exports
-                    below become official.
-                  </p>
-                  <Button variant="secondary" onClick={() => setShowCreateDialog(true)}>
-                    Create System
-                  </Button>
-                </section>
-              )}
-              <ExportSection
-                projectName={vm.projectName}
-                designMd={vm.designMd}
-                exportInput={vm.exportInput}
-                gapCount={vm.gapCount}
-                onCopyDesignMd={copyWithGuardrail}
-              />
-            </div>
-          )}
+          </section>
 
           <section className="flex w-full flex-col gap-4 border-t-2 border-border-default pt-8">
             <button
@@ -324,17 +356,11 @@ export function Home() {
               rawCount={vm.exportInput.rawTokenCount}
               mergeCount={vm.exportInput.mergeCount}
               checklist={vm.checklist}
-              unreviewedMerges={vm.summary.proposedMerges}
               derivedCount={vm.summary.derivedCount}
               totalValues={totalValues}
-              onPreviewExport={() => {
-                setShowCreateDialog(false);
-                goToStep(4);
-              }}
               onConfirm={() => {
                 createSystem();
                 setShowCreateDialog(false);
-                goToStep(4);
                 if (vm.checklist.complete) void copyDesignMd();
               }}
               onClose={() => setShowCreateDialog(false)}
@@ -353,13 +379,13 @@ export function Home() {
                 className="w-full max-w-md rounded-lg border-2 border-border-default bg-surface-card p-6 shadow-modal"
                 onClick={(e) => e.stopPropagation()}
               >
-                <h2 className="font-heading text-card-title font-medium">Quick check before you ship</h2>
+                <h2 className="font-heading text-card-title font-medium">
+                  Quick check before you ship
+                </h2>
                 <p className="mt-2 text-caption text-text-primary">
-                  {vm.summary.proposedMerges > 0 &&
-                    `${vm.summary.proposedMerges} merge${vm.summary.proposedMerges === 1 ? "" : "s"} unreviewed · `}
-                  {vm.summary.derivedCount} of {totalValues} values were made for you and not
-                  hand-reviewed. They're all flagged in the export — ship anyway, or take the
-                  two-minute tour?
+                  {vm.summary.derivedCount} of {totalValues} values were filled in automatically
+                  and not hand-reviewed. They're all flagged in the export — ship anyway, or take
+                  a quick look?
                 </p>
                 <div className="mt-4 flex items-center gap-3">
                   <Button
@@ -374,7 +400,7 @@ export function Home() {
                     variant="secondary"
                     onClick={() => {
                       setShowGuardrail(false);
-                      goToStep(vm.summary.proposedMerges > 0 ? 1 : 3);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                   >
                     Review first
