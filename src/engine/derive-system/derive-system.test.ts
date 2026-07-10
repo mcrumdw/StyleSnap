@@ -1,0 +1,210 @@
+// Phase 10a acceptance — exact expected values from the fixtures, AA
+// enforcement, cascade respecting user edits, determinism (BUILD_PLAN).
+
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { parseStyleSnapExport } from "../../contract/schema";
+import type { StyleSnapToken } from "../../contract/types";
+import { computeChecklist } from "../completeness";
+import { contrastRatio } from "../export/accessibility";
+import { deriveSystem, type DeriveResult } from "./index";
+
+function fixtureTokens(name: string): StyleSnapToken[] {
+  const result = parseStyleSnapExport(
+    readFileSync(new URL(`../../../docs/fixtures/${name}`, import.meta.url), "utf-8"),
+  );
+  if (!result.ok) throw new Error(`fixture ${name} should parse`);
+  return result.data.tokens;
+}
+
+const derive = (tokens: StyleSnapToken[], overrides = {}, assignments = new Map<string, string>()) =>
+  deriveSystem({ tokens, assignments, overrides });
+
+const fillValue = (result: DeriveResult, role: string) => {
+  const fill = result.fills.find((f) => f.role === role);
+  expect(fill, role).toBeDefined();
+  return fill!;
+};
+
+describe("anchor detection (C.1)", () => {
+  it("test-drive: green button bg wins primary; most frequent body + grid-snapped base", () => {
+    const r = derive(fixtureTokens("capture-test-drive.json"));
+    expect(r.anchors.primaryColorId).toBe("ext_td_01"); // #17A673, 14× on button bg
+    expect(r.anchors.bodyTypographyId).toBe("ext_td_11"); // most frequent (26×)
+    expect(r.anchors.baseSpacing).toBe(12); // 10px (12×) snaps to 12 and joins 12px (20×)
+  });
+
+  it("thin: brand purple beats the more frequent body-copy ink (text colors never compete)", () => {
+    const r = derive(fixtureTokens("capture-thin.json"));
+    expect(r.anchors.primaryColorId).toBe("ext_th_01"); // 7× ×2 button bg beats 21× text
+    expect(r.anchors.baseSpacing).toBe(16);
+  });
+
+  it("lumen: the merged button blue wins primary — never the ink named color/text/primary", () => {
+    const lumen = [
+      ...fixtureTokens("capture-browser-messy.json"),
+      ...fixtureTokens("capture-figma-clean.json"),
+    ];
+    const r = derive(lumen);
+    expect(r.anchors.primaryColorId).toBe("ext_001"); // #2E6BFF, authoredName --color-primary
+  });
+
+  it("anchor overrides win", () => {
+    const tokens = fixtureTokens("capture-test-drive.json");
+    const r = derive(tokens, { primaryColorId: "ext_td_04", baseSpacing: 20 });
+    expect(r.anchors.primaryColorId).toBe("ext_td_04");
+    expect(r.anchors.baseSpacing).toBe(20);
+  });
+});
+
+describe("color derivation (C.2–C.4) — exact values from #17A673", () => {
+  const r = derive(fixtureTokens("capture-test-drive.json"));
+
+  it("interaction states by OKLCH lightness shifts", () => {
+    expect(fillValue(r, "color/action/primary").token.id).toBe("ext_td_01"); // anchor claims
+    expect(fillValue(r, "color/action/primary-hover").token.value).toBe("#009263");
+    expect(fillValue(r, "color/action/primary-active").token.value).toBe("#007E55");
+    expect(fillValue(r, "color/border/focus").token.id).toBe("ext_td_01"); // focus = primary
+  });
+
+  it("tinted neutrals wear the brand hue at chroma ≤ 0.02", () => {
+    expect(fillValue(r, "color/text/primary").token.value).toBe("#121E18");
+    expect(fillValue(r, "color/text/muted").token.value).toBe("#5F6D65");
+    expect(fillValue(r, "color/surface/page").token.value).toBe("#EFFFF6");
+    expect(fillValue(r, "color/surface/card").token.value).toBe("#FFFFFF");
+    expect(fillValue(r, "color/border/default").token.value).toBe("#D3E2DA");
+  });
+
+  it("feedback colors: conventional hues, brand chroma, AA-tuned", () => {
+    expect(fillValue(r, "color/feedback/success").token.value).toBe("#228744");
+    expect(fillValue(r, "color/feedback/warning").token.value).toBe("#A56800");
+    expect(fillValue(r, "color/feedback/error").token.value).toBe("#BE5550");
+    expect(fillValue(r, "color/feedback/info").token.value).toBe("#2778C1");
+  });
+
+  it("every derived text/feedback color passes AA on the derived card surface", () => {
+    const card = fillValue(r, "color/surface/card").token.value as string;
+    for (const role of [
+      "color/text/primary",
+      "color/text/muted",
+      "color/feedback/success",
+      "color/feedback/warning",
+      "color/feedback/error",
+      "color/feedback/info",
+    ]) {
+      const hex = fillValue(r, role).token.value as string;
+      expect(contrastRatio(hex, card), role).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+describe("type scale (C.6) and ramps (C.7)", () => {
+  const r = derive(fixtureTokens("capture-thin.json"));
+
+  it("modular scale from the 16px body anchor at ×1.25", () => {
+    expect(fillValue(r, "type/body").token.id).toBe("ext_th_04");
+    const size = (role: string) =>
+      (fillValue(r, role).token as { value: { fontSize: number } }).value.fontSize;
+    expect(size("type/caption")).toBe(13);
+    expect(size("type/subheading")).toBe(20);
+    expect(size("type/heading")).toBe(25);
+    expect(size("type/display")).toBe(31.5);
+  });
+
+  it("spacing ramp from base 16 on the 4px grid; captured 16 claims its slot", () => {
+    const value = (role: string) => fillValue(r, role).token.value;
+    expect(value("space/xs")).toBe(8);
+    expect(fillValue(r, "space/sm").token.id).toBe("ext_th_05"); // captured 16
+    expect(value("space/md")).toBe(24);
+    expect(value("space/lg")).toBe(32);
+    expect(value("space/xl")).toBe(48);
+    expect(value("space/2xl")).toBe(64);
+  });
+
+  it("radius ×0.5/×1/×2 from captured 8; border-width falls back to the 1px convention", () => {
+    expect(fillValue(r, "radius/sm").token.value).toBe(4);
+    expect(fillValue(r, "radius/md").token.id).toBe("ext_th_06");
+    expect(fillValue(r, "radius/lg").token.value).toBe(16);
+    const width = fillValue(r, "border-width/default");
+    expect(width.token.value).toBe(1);
+    expect(width.derivedFrom).toBe("convention");
+  });
+
+  it("shadow ramp reuses ink at 8% when nothing was captured", () => {
+    const sm = fillValue(r, "shadow/sm").token;
+    if (sm.type !== "shadow") throw new Error("expected shadow");
+    expect(sm.value[0]).toEqual({
+      inset: false,
+      offsetX: 0,
+      offsetY: 1,
+      blur: 2,
+      spread: 0,
+      color: "#1B1923", // the derived ink
+      opacity: 0.08,
+    });
+  });
+});
+
+describe("accent suggestion (C.5)", () => {
+  it("suppressed when a second hue was captured (lumen: red alert + gradient purple)", () => {
+    const lumen = [
+      ...fixtureTokens("capture-browser-messy.json"),
+      ...fixtureTokens("capture-figma-clean.json"),
+    ];
+    expect(derive(lumen).accent).toBeNull();
+  });
+
+  it("offered for single-hue captures with all three harmonies and a suitability default", () => {
+    const td = derive(fixtureTokens("capture-test-drive.json"));
+    expect(td.accent).toEqual({
+      candidates: {
+        complementary: "#AF5691",
+        "split-complementary": "#9560B4",
+        analogous: "#008380",
+      },
+      suggested: "split-complementary", // brand C between 0.09 and 0.17
+    });
+    const thin = derive(fixtureTokens("capture-thin.json"));
+    expect(thin.accent?.suggested).toBe("analogous"); // vivid purple, C > 0.17
+  });
+});
+
+describe("precedence and cascade (C.8)", () => {
+  const tokens = fixtureTokens("capture-test-drive.json");
+
+  it("captured/user assignments always win — no fill for taken roles", () => {
+    const taken = new Map([["color/text/primary", "ext_td_05"]]);
+    const r = deriveSystem({ tokens, assignments: taken, overrides: {} });
+    expect(r.fills.some((f) => f.role === "color/text/primary")).toBe(false);
+  });
+
+  it("changing the primary anchor regenerates the derived colors", () => {
+    const before = derive(tokens);
+    const after = derive(tokens, { primaryColorId: "ext_td_04" }); // darker green
+    expect(fillValue(after, "color/action/primary-hover").token.value).not.toBe(
+      fillValue(before, "color/action/primary-hover").token.value,
+    );
+    // Non-color derivations are untouched by a color anchor swap.
+    expect(fillValue(after, "space/2xl").token.value).toBe(
+      fillValue(before, "space/2xl").token.value,
+    );
+  });
+
+  it("deterministic: same input → deep-equal output", () => {
+    expect(derive(tokens)).toEqual(derive(tokens));
+  });
+});
+
+describe("thin capture → complete system (the point of it all)", () => {
+  it("6 tokens in, every required checklist item met, zero forms", () => {
+    const tokens = fixtureTokens("capture-thin.json");
+    const r = derive(tokens);
+    // Assemble the effective view the app would show: captured + derived.
+    const derivedTokens = r.fills.map((f) => f.token);
+    const all = [...tokens, ...derivedTokens.filter((t) => t.id.startsWith("derived_"))];
+    const assignments = new Map(r.fills.map((f) => [f.role, f.token.id]));
+    const checklist = computeChecklist(all, assignments);
+    expect(checklist.complete).toBe(true);
+    expect(checklist.requiredMet).toBe(checklist.requiredTotal);
+  });
+});

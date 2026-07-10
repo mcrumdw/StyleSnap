@@ -108,6 +108,24 @@ warns on mismatch (FR-4, `parseStyleSnapExport`). Rule: **any change to
 `types.ts` happens in this repo first** (with a version bump and a row in §3),
 then gets re-copied; never edit a downstream copy directly.
 
+### 2.7 Derivation-first completion ("the puzzle principle")
+Decided 2026-07-05 (team feedback: app still felt complicated; completion was
+a form-filling chore). The Webtool **auto-drafts every derivable gap
+deterministically** from three anchors (primary color, body typography, base
+spacing): interaction states and neutrals by OKLCH lightness/chroma math,
+feedback colors as conventional hues wearing the brand's chroma (AA-enforced),
+accents suggested via color-wheel harmonies (split-complementary default,
+suitability rule in PRD Appendix C), type via modular scale, spacing/radius/
+shadow via ramps. The user reviews a **complete draft** and edits only
+intentionally.
+
+Guardrails that keep this compatible with §2.2/§8 ("suggestive, never
+destructive"): derived values are visibly badged + provenance-marked in every
+export; captured values always beat derived for a role; re-derivation never
+overwrites a human edit (dirty flags); accents are suggestion cards, never
+auto-assigned. This is math, not AI — deterministic and testable; AI variants
+remain V2 (FR-20).
+
 ---
 
 ## 3. Token schema changes — v1.0 → v2.0 (`docs/types.ts`)
@@ -178,6 +196,9 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-06-29 | Filled DESIGN.md (bold & expressive direction): electric indigo `#5B2EFF` primary, hot-pink accent, hard offset shadow signature, Space Grotesk/Inter/JetBrains Mono, light-first (dark mode deferred) | — |
 | 2026-06-29 | PRD draft v2: integrated ideas from the earlier v0.1 PRD (North-Star <10min, Maya/Jonas personas + JTBD, paste-first ingest, rule-based dedup with duplicate-vs-"similar", suggestive-never-destructive + reversible merges + Create System gate, deterministic+provenance design.md, in-session MVP architecture, tech stack, risks). **Decision: human review + gap completion (manual core, AI as accelerator) is the product's core value — raw JSON without review is untrusted.** | — |
 | 2026-06-29 | Doc reorg: old v0.1 PRD deleted; root `PRD.md` v2 renamed and moved to **`docs/PRD_webtool_v2.md`** — now the canonical web-app PRD. | — |
+| 2026-07-05 | **Phase 10 UX hardened after re-walkthrough** (UX_RESEARCH §7): flow inverted to **review-by-exception** — land on the complete draft + summary strip ("4 proposed merges · 3 anchors · 14 derived"), steps become repair shops; derivation runs on **cluster canonicals** pre-merge and refines live (fixes the merge→anchor sequencing hole); merge review is a queue, not a badge hunt; **10c cognitive-load rules** added (≤3 decisions above fold, one primary CTA, no-jargon copy, confess-automation-in-place, 3 badge states max). New risks R1–R3 tracked in acceptance. | — |
+| 2026-07-05 | **Derivation-first completion adopted** (§2.7; agreed makram + team feedback): PRD **FR-19 revised** + **Appendix C** (anchor detection, OKLCH state/neutral math, conventional-hue feedback colors with brand chroma, color-wheel accent suggestions w/ suitability rule, modular type scale, foundation ramps, dirty-flag cascade). PRD → v2.2. **Phase 10 rewritten** as "auto-completed draft + stepper": engine first (10a), flow UI (10b) with steps Clean up → Anchors & meaning → Your system → Review & export; Phase 11 P5 absorbed; golden-path target tightened to < 5 min. | — |
+| 2026-07-05 | **Simulated usability study added** (`docs/UX_RESEARCH.md`): 10 scenarios × 12 hypothetical users against the 8c/8d UI; 22 friction points → 13 ranked pain points. Explicitly hypotheses, not data — real 5-user validation recommended before Phase 11. Outcomes: Phase 10 extended with export guardrail (P2), resume-to-step (P9), stepper a11y (P11); **Phase 11 added** (batch suggestion accept, reopen-after-finalize + toast undo, scale builders, ignore-token, error-copy quick fixes); P7/P8 sent to backlog. | — |
 | 2026-07-05 | **Phase 10 spec added** (UX review vs the Maya persona): 8c's two stacked tab levels + drawers presented the pipeline as a ~10-destination map; replaced by a **4-step flow** (Clean up → Give meaning → Fill gaps → Review & export) with one context-aware primary CTA, inline gaps/export (no overlays), user-vocabulary labels, free navigation. 8c plumbing (view-model, deep links, 8d picker) retained. Open-phase order set to **10 → 9**; Phase 9's System-notes panel placed in step 4. | — |
 | 2026-07-04 | **Phase 9 spec added** (user testing): `design.md` export gains **descriptive layers** (PRD §11 extended) — computed Accessibility section (measured WCAG ratios per assigned text/surface pair, failures also listed in Gaps), computed component sketches from `captureId` groups, and a user-authored **System notes** panel (mood, component principles, motion, voice, layout; empty fields become Gaps lines; notes round-trip via cleaned JSON). Oracle `design.example.md` extended accordingly (ratios machine-verified). AI-drafted descriptions deferred to V2/FR-20. | — |
 | 2026-07-04 | **Phase 8 spec added to BUILD_PLAN.md** after user testing of the MVP build: role storage inverted from per-token `role` field (1:1 — couldn't express one primitive holding several roles, contradicting §2.3 and the oracle's dual-use `color/ink`) to an `assignments: role → primitiveId` map; additive multi-role UI; new **System view** grouped by role subcategory (Text/Surface/Action/Border/Feedback) showing primitives with all their semantic uses. Alternative considered and rejected: keeping 1:1 and displaying colors in usage subcategories — would require duplicate same-hex tokens, breaking value-based dedup (Appendix A.6) and the single-source-of-truth property of primitives. | — |

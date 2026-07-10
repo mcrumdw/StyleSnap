@@ -8,6 +8,9 @@ interface CreateSystemDialogProps {
   rawCount: number;
   mergeCount: number;
   checklist: Checklist;
+  /** Phase 10 guardrail stats — automated values, confessed here. */
+  derivedCount?: number;
+  totalValues?: number;
   onConfirm: () => void;
   onClose: () => void;
   onPreviewExport?: () => void;
@@ -20,6 +23,8 @@ export function CreateSystemDialog({
   rawCount,
   mergeCount,
   checklist,
+  derivedCount = 0,
+  totalValues = 0,
   onConfirm,
   onClose,
   onPreviewExport,
@@ -48,6 +53,13 @@ export function CreateSystemDialog({
           {mergeCount === 1 ? "" : "s"}). This finalizes the system:{" "}
           <strong>merges lock</strong> and exports become available from the bar above.
         </p>
+
+        {derivedCount > 0 && (
+          <p className="rounded-sm border-2 border-border-default bg-surface-page p-3 text-caption text-text-primary">
+            {derivedCount} of {totalValues} values were filled in automatically — all marked in
+            the export's provenance.
+          </p>
+        )}
 
         {requiredOpen > 0 ? (
           <p className="rounded-sm border-2 border-warning bg-surface-card p-3 text-caption text-warning-text">

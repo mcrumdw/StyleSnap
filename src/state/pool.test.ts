@@ -6,7 +6,15 @@ import {
   addManualToken,
   appendImport,
   assignRole,
+  autoMergeClusters,
   createSystem,
+  editDerived,
+  rejectCluster,
+  removeMerge,
+  resetDerived,
+  setAccentChoice,
+  setAnchorOverride,
+  setTypeRatio,
   defaultProjectName,
   deserializeDraft,
   emptyPool,
@@ -19,6 +27,7 @@ import {
   serializeDraft,
   setDecision,
   setProjectName,
+  setSystemNote,
   unassignRole,
 } from "./pool";
 
@@ -181,6 +190,106 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.merges;
     expect(deserializeDraft(JSON.stringify(legacy))?.merges).toEqual([]);
+  });
+
+  it("round-trips System notes; pre-Phase-9 drafts load without them (Phase 9b)", () => {
+    let pool = poolWithBothFixtures();
+    pool = setSystemNote(pool, "mood", "Calm and precise.");
+    pool = setSystemNote(pool, "motion", "150ms ease-out.");
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.systemNotes).toEqual({ mood: "Calm and precise.", motion: "150ms ease-out." });
+
+    // Clearing a field drops it; clearing the last one drops nothing else.
+    pool = setSystemNote(pool, "motion", "");
+    expect(pool.systemNotes).toEqual({ mood: "Calm and precise." });
+
+    // Pre-Phase-9 draft: no systemNotes key — loads losslessly without them.
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    delete legacy.systemNotes;
+    const migrated = deserializeDraft(JSON.stringify(legacy));
+    expect(migrated).not.toBeNull();
+    expect(migrated?.systemNotes).toBeUndefined();
+
+    // A corrupt notes value is dropped defensively, not fatal.
+    legacy.systemNotes = { mood: 42, bogus: "x" };
+    expect(deserializeDraft(JSON.stringify(legacy))?.systemNotes).toBeUndefined();
+  });
+
+  it("appendImport restores notes lifted from cleaned JSON (Phase 9b)", () => {
+    const base = poolWithBothFixtures();
+    const data = parsedFixture("capture-figma-clean.json");
+    const stamped = appendImport(base, data, { importId: "i3", importedAt: "t" }, {
+      mood: "Fresh SaaS.",
+    });
+    expect(stamped.systemNotes).toEqual({ mood: "Fresh SaaS." });
+    // Imported fields overwrite; untouched fields survive.
+    const merged = appendImport(
+      setSystemNote(base, "voice", "Playful."),
+      data,
+      { importId: "i4", importedAt: "t" },
+      { mood: "Fresh SaaS." },
+    );
+    expect(merged.systemNotes).toEqual({ voice: "Playful.", mood: "Fresh SaaS." });
+  });
+
+  it("auto-merges detected clusters at import; un-merge sticks (2026-07-06 fix-up)", () => {
+    let pool = emptyPool();
+    pool = appendImport(pool, parsedFixture("capture-browser-messy.json"), {
+      importId: "imp-1",
+      importedAt: "2026-07-06T10:00:00Z",
+    });
+    pool = autoMergeClusters(pool, "2026-07-06T10:00:00Z");
+
+    // The four near-identical blues collapse into the canonical automatically.
+    const blueMerge = pool.merges.find((m) => m.survivorId === "ext_001");
+    expect(blueMerge?.mergedIds.sort()).toEqual(["ext_002", "ext_003", "ext_004"]);
+    // The identical #101828 pair too.
+    expect(pool.merges.some((m) => m.survivorId === "ext_006" && m.mergedIds.includes("ext_007"))).toBe(true);
+    // The hover blue is a real state — never swallowed by the blues.
+    expect(blueMerge?.mergedIds).not.toContain("ext_005");
+
+    // Un-merge sticks: auto-merge only runs at import time.
+    const unmerged = removeMerge(pool, "ext_001");
+    expect(unmerged.merges.some((m) => m.survivorId === "ext_001")).toBe(false);
+
+    // Idempotent right after: everything already merged, nothing new to add.
+    expect(autoMergeClusters(pool, "t2").merges).toHaveLength(pool.merges.length);
+  });
+
+  it("round-trips Phase 10 derivation decisions; pre-Phase-10 drafts load without them", () => {
+    let pool = poolWithBothFixtures();
+    pool = setAnchorOverride(pool, { primaryColorId: "ext_005", baseSpacing: 20 });
+    pool = editDerived(
+      pool,
+      "color/feedback/info",
+      { id: "derived_color_feedback_info", captureId: "derived", source: "derived", name: null, occurrences: 1, merged: false, type: "color", value: "#1D6FD8", opacity: 1 },
+      "2026-07-05T12:00:00Z",
+    );
+    pool = setAccentChoice(pool, { harmony: "analogous" });
+    pool = setTypeRatio(pool, 1.333);
+    pool = rejectCluster(pool, "ext_001");
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.anchorOverrides).toEqual({ primaryColorId: "ext_005", baseSpacing: 20 });
+    expect(restored?.derivedEdits?.["color/feedback/info"]?.token.value).toBe("#1D6FD8");
+    expect(restored?.accentChoice).toEqual({ harmony: "analogous" });
+    expect(restored?.typeRatio).toBe(1.333);
+    expect(restored?.rejectedClusters).toEqual(["ext_001"]);
+
+    // Clearing an override / resetting an edit drops the key.
+    pool = setAnchorOverride(pool, { primaryColorId: undefined });
+    expect(pool.anchorOverrides).toEqual({ baseSpacing: 20 });
+    pool = resetDerived(pool, "color/feedback/info");
+    expect(pool.derivedEdits).toEqual({});
+
+    // Pre-Phase-10 drafts (no fields) load losslessly; corrupt entries drop.
+    const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
+    expect(deserializeDraft(JSON.stringify(legacy))?.anchorOverrides).toBeUndefined();
+    legacy.derivedEdits = { "color/x": { token: { bogus: true }, editedAt: 7 } };
+    legacy.typeRatio = 9;
+    const migrated = deserializeDraft(JSON.stringify(legacy));
+    expect(migrated).not.toBeNull();
+    expect(migrated?.derivedEdits).toBeUndefined();
+    expect(migrated?.typeRatio).toBeUndefined();
   });
 
   it("round-trips projectName + systemCreatedAt; derives a default name", () => {

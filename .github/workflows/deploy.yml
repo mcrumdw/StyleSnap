@@ -1,0 +1,48 @@
+# Deploy StyleSnap to Vercel on every push to main.
+#
+# One-time setup (GitHub repo → Settings → Secrets and variables → Actions):
+#   VERCEL_TOKEN — create at https://vercel.com/account/tokens
+#
+# Org/project IDs are public; only the token is secret.
+
+name: Deploy to Vercel
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@55
+
+      - name: Pull Vercel env
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
+          VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
+
+      - name: Build
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
+          VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
+
+      - name: Deploy to production
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
+          VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
