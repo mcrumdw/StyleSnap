@@ -24,6 +24,25 @@ export interface DerivedTypeSlot {
   method: string;
 }
 
+/** Monospace companion — body size, system mono stack (code, token values). */
+export function deriveMono(body: TypographyToken): TypographyValue {
+  const size = roundHalf(body.value.fontSize * 0.875);
+  return {
+    fontFamily: "ui-monospace",
+    fontStack: [
+      "ui-monospace",
+      "SFMono-Regular",
+      "SF Mono",
+      "Menlo",
+      "Consolas",
+      "monospace",
+    ],
+    fontSize: size,
+    fontWeight: 400,
+    lineHeight: 1.5,
+  };
+}
+
 export function deriveTypeScale(
   body: TypographyToken,
   capturedTypography: TypographyToken[],

@@ -1,9 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer } from "react";
 import type { StyleSnapExport, StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import type { SystemNotes, SystemNotesField } from "../engine/export";
+import type { AssembledDescription } from "../engine/templates";
 import {
+  canRedoHistory,
+  canUndoHistory,
+  emptyHistory,
+  peekRedoLabel,
+  peekUndoLabel,
+  pushHistory,
+  redoHistory,
+  type HistoryState,
+  undoHistory,
+} from "./history";
+import {
+  applyNoteTemplate,
   autoMergeClusters,
   editDerived,
   resetDerived,
@@ -19,6 +32,7 @@ import {
   clearDraft,
   createSystem as createSystemPure,
   emptyPool,
+  isSystemCreated,
   loadDraft,
   removeManualToken,
   removeMerge,
@@ -33,142 +47,327 @@ import {
 } from "./pool";
 import type { PipelineStep } from "./pipeline";
 
+type PoolState = {
+  pool: TokenPool;
+  history: HistoryState;
+};
+
+type PoolAction =
+  | {
+      type: "commit";
+      updater: (pool: TokenPool) => TokenPool;
+      label: string;
+      affectsMerges: boolean;
+    }
+  | { type: "silent"; updater: (pool: TokenPool) => TokenPool }
+  | { type: "replace"; pool: TokenPool; clearHistory: boolean }
+  | { type: "import"; data: StyleSnapExport; notes?: SystemNotes }
+  | { type: "undo"; locked: boolean }
+  | { type: "redo"; locked: boolean };
+
+/** @internal Exported for reducer integration tests. */
+export function poolReducer(state: PoolState, action: PoolAction): PoolState {
+  switch (action.type) {
+    case "commit": {
+      const next = action.updater(state.pool);
+      if (next === state.pool) return state;
+      return {
+        pool: next,
+        history: pushHistory(state.history, state.pool, next, action.label, action.affectsMerges),
+      };
+    }
+    case "silent": {
+      const next = action.updater(state.pool);
+      return next === state.pool ? state : { ...state, pool: next };
+    }
+    case "replace":
+      return {
+        pool: action.pool,
+        history: action.clearHistory ? emptyHistory() : state.history,
+      };
+    case "import": {
+      const importedAt = new Date().toISOString();
+      let next = appendImport(
+        state.pool,
+        action.data,
+        { importId: crypto.randomUUID(), importedAt },
+        action.notes,
+      );
+      next = autoMergeClusters(next, importedAt);
+      return { pool: next, history: emptyHistory() };
+    }
+    case "undo": {
+      const result = undoHistory(state.history, state.pool, action.locked);
+      return result ? { pool: result.pool, history: result.history } : state;
+    }
+    case "redo": {
+      const result = redoHistory(state.history, state.pool, action.locked);
+      return result ? { pool: result.pool, history: result.history } : state;
+    }
+  }
+}
+
+function anchorLabel(patch: Partial<AnchorOverrides>): string {
+  if ("primaryColorId" in patch) return "Change primary color anchor";
+  if ("secondaryColorId" in patch) return "Change secondary color anchor";
+  if ("bodyTypographyId" in patch) return "Change body typography anchor";
+  if ("baseSpacing" in patch) return `Change base spacing to ${patch.baseSpacing}px`;
+  return "Change anchor";
+}
+
+function editLabel(role: string, token: StyleSnapToken): string {
+  if (token.type === "color") return `Change ${role} to ${token.value}`;
+  return `Edit ${role}`;
+}
+
 /**
  * The session token pool, backed by the localStorage draft (FR-29):
  * restored on load, auto-saved on every change, cleared by "Start over".
  */
 export function usePool() {
-  const [pool, setPool] = useState<TokenPool>(() => loadDraft(localStorage) ?? emptyPool());
+  const [state, dispatch] = useReducer(poolReducer, undefined, () => ({
+    pool: loadDraft(localStorage) ?? emptyPool(),
+    history: emptyHistory(),
+  }));
+
+  const { pool, history } = state;
+  const locked = isSystemCreated(pool);
 
   useEffect(() => {
     saveDraft(localStorage, pool);
   }, [pool]);
 
+  const commit = useCallback(
+    (
+      updater: (current: TokenPool) => TokenPool,
+      label: string,
+      affectsMerges = false,
+    ) => dispatch({ type: "commit", updater, label, affectsMerges }),
+    [],
+  );
+
+  const silent = useCallback(
+    (updater: (current: TokenPool) => TokenPool) => dispatch({ type: "silent", updater }),
+    [],
+  );
+
+  const undo = useCallback(() => dispatch({ type: "undo", locked }), [locked]);
+  const redo = useCallback(() => dispatch({ type: "redo", locked }), [locked]);
+
+  const canUndo = canUndoHistory(history, locked);
+  const canRedo = canRedoHistory(history, locked);
+  const undoLabel = peekUndoLabel(history, locked);
+  const redoLabel = peekRedoLabel(history, locked);
+
   const addImport = useCallback((data: StyleSnapExport, notes?: SystemNotes) => {
-    setPool((current) => {
-      const importedAt = new Date().toISOString();
-      const next = appendImport(
-        current,
-        data,
-        { importId: crypto.randomUUID(), importedAt },
-        notes,
+    dispatch({ type: "import", data, notes });
+  }, []);
+
+  const setNote = useCallback(
+    (field: SystemNotesField, value: string) => {
+      silent((current) => setSystemNote(current, field, value));
+    },
+    [silent],
+  );
+
+  const applyTemplate = useCallback(
+    (assembled: AssembledDescription, adjectives: string[], options?: { refresh?: boolean }) => {
+      silent((current) => applyNoteTemplate(current, assembled, adjectives, options));
+    },
+    [silent],
+  );
+
+  const setAnchor = useCallback(
+    (patch: Partial<AnchorOverrides>) => {
+      commit((current) => setAnchorOverridePure(current, patch), anchorLabel(patch));
+    },
+    [commit],
+  );
+
+  const editDerivedValue = useCallback(
+    (role: string, token: StyleSnapToken) => {
+      const editedAt = new Date().toISOString();
+      commit(
+        (current) => editDerived(current, role, token, editedAt),
+        editLabel(role, token),
       );
-      // Merges are automatic since the 2026-07-06 fix-up — reversible in the
-      // captured grid, never re-applied after an un-merge (import-time only).
-      return autoMergeClusters(next, importedAt);
-    });
-  }, []);
+    },
+    [commit],
+  );
 
-  /** Phase 9b — set or clear one System-notes field. */
-  const setNote = useCallback((field: SystemNotesField, value: string) => {
-    setPool((current) => setSystemNote(current, field, value));
-  }, []);
+  const resetDerivedValue = useCallback(
+    (role: string) => {
+      commit((current) => resetDerived(current, role), `Reset ${role} to derived`);
+    },
+    [commit],
+  );
 
-  // ── Phase 10 derivation decisions ──
-  const setAnchor = useCallback((patch: Partial<AnchorOverrides>) => {
-    setPool((current) => setAnchorOverridePure(current, patch));
-  }, []);
-  const editDerivedValue = useCallback((role: string, token: StyleSnapToken) => {
-    setPool((current) => editDerived(current, role, token, new Date().toISOString()));
-  }, []);
-  const resetDerivedValue = useCallback((role: string) => {
-    setPool((current) => resetDerived(current, role));
-  }, []);
-  const setAccent = useCallback((choice: { harmony?: Harmony; dismissed?: boolean }) => {
-    setPool((current) => setAccentChoicePure(current, choice));
-  }, []);
-  const setRatio = useCallback((ratio: TypeRatio) => {
-    setPool((current) => setTypeRatioPure(current, ratio));
-  }, []);
+  const setAccent = useCallback(
+    (choice: { harmony?: Harmony; dismissed?: boolean }) => {
+      silent((current) => setAccentChoicePure(current, choice));
+    },
+    [silent],
+  );
 
-  const mergeCluster = useCallback((survivorId: string, mergedIds: string[]) => {
-    const record: MergeRecord = { survivorId, mergedIds, mergedAt: new Date().toISOString() };
-    setPool((current) => addMerge(current, record));
-  }, []);
+  const setRatio = useCallback(
+    (ratio: TypeRatio) => {
+      silent((current) => setTypeRatioPure(current, ratio));
+    },
+    [silent],
+  );
 
-  const unmerge = useCallback((survivorId: string) => {
-    setPool((current) => removeMerge(current, survivorId));
-  }, []);
+  const mergeCluster = useCallback(
+    (survivorId: string, mergedIds: string[]) => {
+      const record: MergeRecord = { survivorId, mergedIds, mergedAt: new Date().toISOString() };
+      const count = mergedIds.length + 1;
+      commit((current) => addMerge(current, record), `Merge ${count} tokens`, true);
+    },
+    [commit],
+  );
 
-  const setName = useCallback((tokenId: string, name: string | undefined) => {
-    setPool((current) => setDecision(current, tokenId, { name }));
-  }, []);
+  const unmerge = useCallback(
+    (survivorId: string) => {
+      commit((current) => removeMerge(current, survivorId), "Un-merge tokens", true);
+    },
+    [commit],
+  );
 
-  /** Point a role at a primitive (Phase 8). Overwrites — the UI confirms reassigns. */
-  const assign = useCallback((role: string, tokenId: string) => {
-    setPool((current) => assignRole(current, role, tokenId));
-  }, []);
+  const setName = useCallback(
+    (tokenId: string, name: string | undefined) => {
+      silent((current) => setDecision(current, tokenId, { name }));
+    },
+    [silent],
+  );
 
-  const unassign = useCallback((role: string) => {
-    setPool((current) => unassignRole(current, role));
-  }, []);
+  const assign = useCallback(
+    (role: string, tokenId: string) => {
+      silent((current) => assignRole(current, role, tokenId));
+    },
+    [silent],
+  );
 
-  /** Add a manual token (FR-19); confirming a role in the same step is atomic. */
-  const addManual = useCallback((token: StyleSnapToken, role?: string) => {
-    setPool((current) => {
-      let next = addManualToken(current, token);
-      if (role) next = assignRole(next, role, token.id);
-      return next;
-    });
-  }, []);
+  const unassign = useCallback(
+    (role: string) => {
+      silent((current) => unassignRole(current, role));
+    },
+    [silent],
+  );
 
-  const updateManual = useCallback((token: StyleSnapToken, role?: string | null) => {
-    setPool((current) => {
-      let next = updateManualToken(current, token);
-      if (role !== undefined) {
-        // The dialog edits ONE role for a manual token: retarget it, dropping
-        // whatever this token carried before.
-        for (const [r, id] of Object.entries(next.assignments)) {
-          if (id === token.id && r !== role) next = unassignRole(next, r);
+  const addManual = useCallback(
+    (token: StyleSnapToken, role?: string) => {
+      silent((current) => {
+        let next = addManualToken(current, token);
+        if (role) next = assignRole(next, role, token.id);
+        return next;
+      });
+    },
+    [silent],
+  );
+
+  const updateManual = useCallback(
+    (token: StyleSnapToken, role?: string | null) => {
+      silent((current) => {
+        let next = updateManualToken(current, token);
+        if (role !== undefined) {
+          for (const [r, id] of Object.entries(next.assignments)) {
+            if (id === token.id && r !== role) next = unassignRole(next, r);
+          }
+          if (role !== null) next = assignRole(next, role, token.id);
         }
-        if (role !== null) next = assignRole(next, role, token.id);
-      }
-      return next;
-    });
-  }, []);
+        return next;
+      });
+    },
+    [silent],
+  );
 
-  const removeManual = useCallback((tokenId: string) => {
-    setPool((current) => removeManualToken(current, tokenId));
-  }, []);
+  const removeManual = useCallback(
+    (tokenId: string) => {
+      silent((current) => removeManualToken(current, tokenId));
+    },
+    [silent],
+  );
 
-  const setProjectName = useCallback((name: string) => {
-    setPool((current) => setProjectNamePure(current, name));
-  }, []);
+  const setProjectName = useCallback(
+    (name: string) => {
+      silent((current) => setProjectNamePure(current, name));
+    },
+    [silent],
+  );
 
-  /** FR-23 — finalize. Merges lock; the export timestamp is pinned here. */
   const createSystem = useCallback(() => {
-    setPool((current) => createSystemPure(current, new Date().toISOString()));
-  }, []);
+    silent((current) => createSystemPure(current, new Date().toISOString()));
+  }, [silent]);
 
-  const setStep = useCallback((step: PipelineStep) => {
-    setPool((current) => setCurrentStepPure(current, step));
-  }, []);
+  const setStep = useCallback(
+    (step: PipelineStep) => {
+      silent((current) => setCurrentStepPure(current, step));
+    },
+    [silent],
+  );
 
   const startOver = useCallback(() => {
     clearDraft(localStorage);
-    setPool(emptyPool());
+    dispatch({ type: "replace", pool: emptyPool(), clearHistory: true });
   }, []);
 
-  return {
-    pool,
-    addImport,
-    mergeCluster,
-    unmerge,
-    setName,
-    assign,
-    unassign,
-    addManual,
-    updateManual,
-    removeManual,
-    setProjectName,
-    setNote,
-    setAnchor,
-    editDerivedValue,
-    resetDerivedValue,
-    setAccent,
-    setRatio,
-    createSystem,
-    setStep,
-    startOver,
-  };
+  return useMemo(
+    () => ({
+      pool,
+      addImport,
+      mergeCluster,
+      unmerge,
+      setName,
+      assign,
+      unassign,
+      addManual,
+      updateManual,
+      removeManual,
+      setProjectName,
+      setNote,
+      applyTemplate,
+      setAnchor,
+      editDerivedValue,
+      resetDerivedValue,
+      setAccent,
+      setRatio,
+      createSystem,
+      setStep,
+      startOver,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      undoLabel,
+      redoLabel,
+    }),
+    [
+      pool,
+      addImport,
+      mergeCluster,
+      unmerge,
+      setName,
+      assign,
+      unassign,
+      addManual,
+      updateManual,
+      removeManual,
+      setProjectName,
+      setNote,
+      applyTemplate,
+      setAnchor,
+      editDerivedValue,
+      resetDerivedValue,
+      setAccent,
+      setRatio,
+      createSystem,
+      setStep,
+      startOver,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      undoLabel,
+      redoLabel,
+    ],
+  );
 }

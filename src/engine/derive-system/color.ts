@@ -72,6 +72,26 @@ export function tuneForAA(c: number, h: number, startL = 0.64): string {
   return hexAt(l, c, h);
 }
 
+/** Darken a fill until white label text passes AA (4.5:1) — for CTA fills. */
+export function tuneFillForWhiteText(hex: string): string {
+  const { c, h, l } = oklchOf(hex);
+  let fillL = l;
+  while (fillL > 0.15 && contrastRatio("#FFFFFF", hexAt(fillL, c, h)) < 4.5) {
+    fillL = Math.round((fillL - 0.01) * 100) / 100;
+  }
+  return hexAt(fillL, c, h);
+}
+
+/** Link color — same hue as brand, darkened until AA on the page surface. */
+export function deriveLinkColor(primaryHex: string, surfacePageHex: string): string {
+  const { c, h, l } = oklchOf(primaryHex);
+  let linkL = l;
+  while (linkL > 0.15 && contrastRatio(hexAt(linkL, c, h), surfacePageHex) < 4.5) {
+    linkL = Math.round((linkL - 0.01) * 100) / 100;
+  }
+  return hexAt(linkL, c, h);
+}
+
 export function deriveFeedback(primaryHex: string): Record<FeedbackRole, string> {
   const brand = oklchOf(primaryHex);
   const chroma = Math.min(brand.c, 0.18);
@@ -99,16 +119,15 @@ export interface AccentSuggestion {
  * Only when the capture has no second hue: every captured full-opacity,
  * non-neutral color sits within ±40° of the primary.
  */
-export function deriveAccent(
-  primaryHex: string,
-  capturedHexes: string[],
-): AccentSuggestion | null {
+/** Ghost/outline secondary CTA — same hue, low chroma (when no harmony accent applies). */
+export function deriveSecondaryFromPrimary(primaryHex: string): string {
+  const { l, c, h } = oklchOf(primaryHex);
+  return hexAt(Math.min(0.78, l + 0.12), Math.min(c * 0.35, 0.1), h);
+}
+
+/** Color-theory candidates from primary alone — always available for secondary swap. */
+export function harmonyFromPrimary(primaryHex: string): AccentSuggestion {
   const brand = oklchOf(primaryHex);
-  for (const hex of capturedHexes) {
-    const color = oklchOf(hex);
-    if (color.c < NEUTRAL_CHROMA) continue;
-    if (hueDistance(color.h, brand.h) > 40) return null; // second hue exists
-  }
   const at = (rotation: number) => tuneForAA(brand.c, (brand.h + rotation + 360) % 360, brand.l);
   const suggested: Harmony =
     brand.c > 0.17 ? "analogous" : brand.c < 0.09 ? "complementary" : "split-complementary";
@@ -120,4 +139,17 @@ export function deriveAccent(
     },
     suggested,
   };
+}
+
+export function deriveAccent(
+  primaryHex: string,
+  capturedHexes: string[],
+): AccentSuggestion | null {
+  const brand = oklchOf(primaryHex);
+  for (const hex of capturedHexes) {
+    const color = oklchOf(hex);
+    if (color.c < NEUTRAL_CHROMA) continue;
+    if (hueDistance(color.h, brand.h) > 40) return null; // second hue exists
+  }
+  return harmonyFromPrimary(primaryHex);
 }

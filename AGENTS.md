@@ -20,6 +20,8 @@ application** (makram's surface). Course final project, 3-person team.
 - `docs/schema.ts` — zod runtime twin of types.ts. `parseStyleSnapExport()`
   is the only entry point for user JSON. Keep its sync assertions compiling.
 - `docs/DECISIONS.md` — why things are the way they are. Append, don't rewrite.
+  **When you change product behavior, UX, or architecture, update this file in
+  the same task** — see § Decision log below.
 
 ## Test data & oracle
 
@@ -54,3 +56,20 @@ application** (makram's surface). Course final project, 3-person team.
 - Run `npm test` and `tsc --noEmit` before declaring any task done.
 - Follow the de-scope order in PRD §13 if scope pressure hits — never cut
   dedup, merge, or the design.md export.
+
+## Decision log (mandatory)
+
+Any task that **changes** product behavior, UX flows, architecture, or
+hard constraints must **append** to `docs/DECISIONS.md` before you declare the
+task done — do not wait for the user to ask.
+
+1. Bump `Last updated` at the top to today's date.
+2. If the change is a lasting design/architecture choice, add a new **§2.x**
+   subsection (next number) with **Decided YYYY-MM-DD**, rationale, and what
+   was rejected or deferred.
+3. Always add a **§6 change history** row (newest first) summarizing what
+   shipped; use `—` for commit hash until the user commits.
+4. **Append only** — never rewrite or delete prior entries.
+
+Skip the log only for pure refactors, copy tweaks, or test fixes that do not
+change behavior or constraints.

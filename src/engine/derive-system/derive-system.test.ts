@@ -47,6 +47,18 @@ describe("anchor detection (C.1)", () => {
     ];
     const r = derive(lumen);
     expect(r.anchors.primaryColorId).toBe("ext_001"); // #2E6BFF, authoredName --color-primary
+    expect(r.anchors.secondaryColorId).toBe("ext_012"); // #D92D20 alert — distinct hue
+  });
+
+  it("ember-app: orange primary + red alert secondary", () => {
+    const r = derive(fixtureTokens("capture-ember-app.json"));
+    expect(r.anchors.primaryColorId).toBe("ext_em_01");
+    expect(r.anchors.secondaryColorId).toBe("ext_em_12");
+  });
+
+  it("thin: no secondary anchor on single-hue capture", () => {
+    const r = derive(fixtureTokens("capture-thin.json"));
+    expect(r.anchors.secondaryColorId).toBeUndefined();
   });
 
   it("anchor overrides win", () => {
@@ -206,5 +218,58 @@ describe("thin capture → complete system (the point of it all)", () => {
     const checklist = computeChecklist(all, assignments);
     expect(checklist.complete).toBe(true);
     expect(checklist.requiredMet).toBe(checklist.requiredTotal);
+  });
+
+  it("test-drive: recommended roles and captured foundations are auto-filled — no orphan gaps", () => {
+    const tokens = fixtureTokens("capture-test-drive.json");
+    const r = derive(tokens);
+    const assignments = new Map(r.fills.map((f) => [f.role, f.token.id]));
+    const all = [...tokens, ...r.fills.map((f) => f.token).filter((t) => t.id.startsWith("derived_"))];
+    const checklist = computeChecklist(all, assignments);
+    const gaps = checklist.items.filter((i) => i.status === "gap" && i.id !== "manual-foundations");
+
+    expect(fillValue(r, "color/action/secondary").token.id).toMatch(/^derived_/);
+    expect(fillValue(r, "color/action/secondary").method).toContain("accent");
+    expect(fillValue(r, "type/mono").token.type).toBe("typography");
+    expect(fillValue(r, "shadow/md").token.id).toBe("ext_td_20");
+    expect(assignments.get("radius/lg")).toBe("ext_td_18");
+    expect(gaps.filter((g) => g.severity === "recommended")).toHaveLength(0);
+    expect(gaps.filter((g) => g.id.startsWith("unassigned-"))).toHaveLength(0);
+  });
+
+  it("uses secondary anchor when a distinct hue is detected", () => {
+    const r = derive(fixtureTokens("capture-ember-app.json"));
+    const secondary = fillValue(r, "color/action/secondary");
+    expect(secondary.token.id).toBe("ext_em_12");
+    expect(secondary.method).toContain("secondary");
+  });
+
+  it("uses accentHarmony override for secondary when no secondary anchor", () => {
+    const tokens = fixtureTokens("capture-test-drive.json");
+    const withAnalogous = deriveSystem({ tokens, assignments: new Map(), accentHarmony: "analogous" });
+    const withComplementary = deriveSystem({
+      tokens,
+      assignments: new Map(),
+      accentHarmony: "complementary",
+    });
+    expect(fillValue(withAnalogous, "color/action/secondary").token.value).not.toBe(
+      fillValue(withComplementary, "color/action/secondary").token.value,
+    );
+  });
+
+  it("accentHarmony overrides auto-detected secondary anchor", () => {
+    const tokens = fixtureTokens("capture-ember-app.json");
+    const anchored = derive(fixtureTokens("capture-ember-app.json"));
+    expect(fillValue(anchored, "color/action/secondary").token.id).toBe("ext_em_12");
+
+    const withHarmony = deriveSystem({
+      tokens,
+      assignments: new Map(),
+      accentHarmony: "complementary",
+    });
+    const secondary = fillValue(withHarmony, "color/action/secondary");
+    expect(secondary.token.id).toMatch(/^derived_/);
+    expect(secondary.method).toContain("complementary");
+    expect(secondary.token.value).not.toBe("#D92D20");
   });
 });

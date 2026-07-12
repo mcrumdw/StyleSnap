@@ -2,11 +2,13 @@
 // rest of the system derives from. Anchors are PROPOSALS the user can swap.
 
 import type { StyleSnapToken, TokenContext } from "../../contract/types";
-import { isNeutral } from "./oklch";
+import { isNeutral, oklchOf, hueDistance } from "./oklch";
 
 export interface Anchors {
   /** Token id of the primary color (a captured token, never synthetic). */
   primaryColorId?: string;
+  /** Token id of the secondary color — distinct accent / second CTA hue. */
+  secondaryColorId?: string;
   /** Token id of the body typography. */
   bodyTypographyId?: string;
   /** Base spacing in px, snapped to the 4px grid. */
@@ -17,6 +19,7 @@ export interface Anchors {
 
 export interface AnchorOverrides {
   primaryColorId?: string;
+  secondaryColorId?: string;
   bodyTypographyId?: string;
   baseSpacing?: number;
 }
@@ -58,6 +61,47 @@ function primaryWeight(token: StyleSnapToken, rawById: ReadonlyMap<string, Style
   return weight;
 }
 
+/** Secondary must be a different personality than primary — hue gap or alert/error role. */
+function isDistinctSecondary(
+  token: StyleSnapToken,
+  rawById: ReadonlyMap<string, StyleSnapToken>,
+  primaryHex?: string,
+): boolean {
+  if (primaryHex === undefined || token.type !== "color") return false;
+  for (const ctx of contextsOf(token, rawById)) {
+    if (ctx.ariaRole === "alert") return true;
+  }
+  return hueDistance(oklchOf(token.value).h, oklchOf(primaryHex).h) >= 18;
+}
+
+/** Secondary anchor: authored "secondary/accent" names, then alert or distinct hue. */
+function secondaryWeight(
+  token: StyleSnapToken,
+  rawById: ReadonlyMap<string, StyleSnapToken>,
+  primaryHex?: string,
+): number {
+  let weight = 0;
+  for (const ctx of contextsOf(token, rawById)) {
+    const authored = ctx.authoredName ?? "";
+    if (/secondary|accent/i.test(authored) && !/text/i.test(authored)) {
+      weight = Math.max(weight, 3);
+    }
+    if (ctx.ariaRole === "alert") {
+      weight = Math.max(weight, 3);
+    }
+    if (ctx.cssProperty === "background-color") {
+      const actionish =
+        ctx.element === "button" || ctx.element === "a" || ctx.ariaRole === "button";
+      weight = Math.max(weight, actionish ? 1.5 : 0.75);
+    }
+  }
+  if (primaryHex && token.type === "color") {
+    const dist = hueDistance(oklchOf(token.value).h, oklchOf(primaryHex).h);
+    if (dist >= 18) weight += 2;
+  }
+  return weight;
+}
+
 export function detectAnchors(
   tokens: StyleSnapToken[],
   rawById: ReadonlyMap<string, StyleSnapToken> = new Map(),
@@ -78,6 +122,30 @@ export function detectAnchors(
       anchors.primaryColorId = token.id;
     }
   }
+
+  const primaryToken = anchors.primaryColorId
+    ? tokens.find((t) => t.id === anchors.primaryColorId)
+    : undefined;
+  const primaryHex =
+    primaryToken?.type === "color" ? primaryToken.value : undefined;
+
+  // Secondary color — only when a distinct second hue exists in the capture.
+  let bestSecondary: { score: number; id: string } | undefined;
+  for (const token of tokens) {
+    if (token.id === anchors.primaryColorId) continue;
+    if (token.type !== "color" || token.opacity < 1 || isNeutral(token.value)) continue;
+    if (!isDistinctSecondary(token, rawById, primaryHex)) continue;
+    const score = token.occurrences * secondaryWeight(token, rawById, primaryHex);
+    if (score <= 0) continue;
+    if (
+      !bestSecondary ||
+      score > bestSecondary.score ||
+      (score === bestSecondary.score && token.id < bestSecondary.id)
+    ) {
+      bestSecondary = { score, id: token.id };
+    }
+  }
+  if (bestSecondary) anchors.secondaryColorId = bestSecondary.id;
 
   // Body typography — most frequent typography token.
   let bodyBest = -1;
@@ -117,6 +185,9 @@ export function detectAnchors(
   // User swaps win (validated upstream; unknown ids fall back to detection).
   if (overrides.primaryColorId && tokens.some((t) => t.id === overrides.primaryColorId)) {
     anchors.primaryColorId = overrides.primaryColorId;
+  }
+  if (overrides.secondaryColorId && tokens.some((t) => t.id === overrides.secondaryColorId)) {
+    anchors.secondaryColorId = overrides.secondaryColorId;
   }
   if (overrides.bodyTypographyId && tokens.some((t) => t.id === overrides.bodyTypographyId)) {
     anchors.bodyTypographyId = overrides.bodyTypographyId;

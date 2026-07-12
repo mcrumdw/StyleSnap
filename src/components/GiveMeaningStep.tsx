@@ -1,7 +1,9 @@
 import { useMemo } from "react";
+import type { StyleSnapToken } from "../contract/types";
 import { applyMerges, type MergeRecord } from "../engine/dedup";
 import { deriveRoleCandidates, fallbackName } from "../engine/roles";
 import { resolveAssignments, type TokenDecision } from "../state/pool";
+import type { FillInfo } from "../state/useSessionViewModel";
 import type { PoolEntry } from "../state/workspace";
 import { EditRolesPanel } from "./EditRolesPanel";
 
@@ -9,10 +11,21 @@ interface GiveMeaningStepProps {
   entries: PoolEntry[];
   merges: MergeRecord[];
   decisions: Record<string, TokenDecision>;
+  /** Effective role → token id (captured + auto-derived). */
   assignments: Record<string, string>;
+  /** Full token list including derived synthetics — required for derived roles. */
+  systemTokens: StyleSnapToken[];
+  /** Draft fills with derivedEdits overlay — source of truth for row display. */
+  draftFills?: Array<{ role: string; token: StyleSnapToken }>;
+  /** role → fill provenance for value editing. */
+  fills?: Record<string, FillInfo>;
   focusRoleId?: string;
+  /** App-shell category pages: render only the slice for this role prefix. */
+  rolePrefix?: "color/" | "type/" | "space/" | "radius/" | "border-width/" | "shadow/";
   onAssign: (role: string, tokenId: string) => void;
   onUnassign: (role: string) => void;
+  onEditDerived?: (role: string, token: StyleSnapToken) => void;
+  onResetDerived?: (role: string) => void;
 }
 
 /** Phase 10 step 2 — semantic role assignment (EditRolesPanel + derived state). */
@@ -21,9 +34,15 @@ export function GiveMeaningStep({
   merges,
   decisions,
   assignments,
+  systemTokens,
+  draftFills = [],
+  fills,
   focusRoleId,
+  rolePrefix,
   onAssign,
   onUnassign,
+  onEditDerived,
+  onResetDerived,
 }: GiveMeaningStepProps) {
   const view = useMemo(() => {
     const merged = applyMerges(entries, merges);
@@ -32,6 +51,13 @@ export function GiveMeaningStep({
       return name !== undefined ? { ...entry, token: { ...entry.token, name } } : entry;
     });
   }, [entries, merges, decisions]);
+
+  const tokenById = useMemo(() => new Map(systemTokens.map((t) => [t.id, t])), [systemTokens]);
+
+  const roleTokens = useMemo(
+    () => new Map(draftFills.map((f) => [f.role, f.token] as const)),
+    [draftFills],
+  );
 
   const rawById = useMemo(
     () => new Map(entries.map((e) => [e.token.id, e.token])),
@@ -55,16 +81,14 @@ export function GiveMeaningStep({
   const holderLabel = (role: string): string | undefined => {
     const holderId = resolved[role];
     if (holderId === undefined) return undefined;
-    const holder = view.find((e) => e.token.id === holderId);
-    return holder ? holder.token.name ?? fallbackName(holder.token) : undefined;
+    const holder = tokenById.get(holderId);
+    return holder ? holder.name ?? fallbackName(holder) : undefined;
   };
-
-  const systemTokens = view.map((e) => e.token);
 
   return (
     <section className="flex w-full flex-col gap-4">
-      <p className="text-caption text-text-muted">
-        Tell each value what job it does in your system.{" "}
+        <p className="text-caption text-text-muted">
+          Auto-filled roles show below — click to edit values or swap primitives you disagree with.{" "}
         <span title="A role is a named slot like color/text/primary — it points at one captured value. One value can fill several roles.">
           What's a role?
         </span>
@@ -72,11 +96,16 @@ export function GiveMeaningStep({
       <EditRolesPanel
         tokens={systemTokens}
         assignments={resolved}
+        roleTokens={roleTokens}
+        fills={fills}
         suggestedByRole={suggestedByRole}
         holderLabel={holderLabel}
         onAssign={onAssign}
         onUnassign={onUnassign}
+        onEditDerived={onEditDerived}
+        onResetDerived={onResetDerived}
         focusRoleId={focusRoleId}
+        rolePrefix={rolePrefix}
       />
     </section>
   );

@@ -10,7 +10,7 @@ interface EmptyStateProps {
 export function EmptyState({ heading, message, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center gap-4 py-16 text-center">
-      <h2 className="font-heading text-page-title font-bold text-text-primary">
+      <h2 className="font-heading text-section-header font-bold text-text-primary sm:text-page-title">
         {heading}
       </h2>
       <p className="text-base text-text-muted">{message}</p>
