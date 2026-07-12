@@ -320,6 +320,28 @@ fields are filled (export gate unchanged).
 (`applyStyleProfile`, `styleFamily`), `src/routes/Home.tsx`, `src/routes/Describe.tsx`,
 `src/engine/derive-system/index.ts` + `ramps.ts`.
 
+### 2.18 Production deploy — single path (GitHub Actions)
+Decided 2026-07-12. **Problem:** After PR #16 merged `makram2` to `main`, GitHub
+Actions built the correct bundle (`index-BqW_PkrE.js`, 414 KB) and aliased
+`stylesnap-lac.vercel.app`, but production kept serving the pre-makram2 bundle
+(`index-6MiPuC3G.js`, 394 KB) — missing `/describe`, style bias, and description-first
+flow. Forensics: PR #15's prebuilt deploy uploaded only 4 KB; production
+`last-modified` shifted ~1 min after the good deploy, consistent with a second
+deploy path overwriting the alias.
+
+**Decision:** GitHub Actions (`.github/workflows/deploy.yml`) is the **only**
+production deploy path. Vercel dashboard Git auto-deploy for production must be
+**disabled** (Settings → Git → uncheck automatic production deployments, or
+disconnect Git deploy entirely). Preview deploys from branches may stay on.
+
+**Guardrail (shipped):** deploy workflow verifies production HTML is not the
+stale `index-6MiPuC3G.js` hash and that the served JS contains the makram2
+marker string `Continue to colors`. Fails the job if alias drift recurs.
+
+**Manual recovery:** Actions → "Deploy to Vercel" → Run workflow (`workflow_dispatch`
+on `main`), or promote the latest successful Actions deployment in the Vercel
+dashboard.
+
 ---
 
 ### 2.12 Simplified session shell (second pass)
@@ -432,6 +454,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-12 | **Production deploy single-path** (§2.18): disable duplicate Vercel Git production deploys; post-deploy bundle verification in `deploy.yml`; manual `workflow_dispatch` recovery documented. | — |
 | 2026-07-12 | **Description-first style bias** (§2.17, branch `makram2`): mood family → type ratio, harmony, radius scale, shadow style; import routes to Description; `styleFamily` in draft. | — |
 | 2026-07-12 | **Secondary harmony swap** (§2.16): Secondary Swap → color-theory picker (`harmonyFromPrimary`) + fine-tune hex + capture revert; explicit harmony overrides auto-detected secondary anchor; full-width color-family swatches; anchor/preview info text → hover tooltips. | — |
 | 2026-07-12 | **Primary + Secondary anchors** (§2.15): Colors page two-card grid; `secondaryColorId` in anchors + derivation for `color/action/secondary`; Typography gets text-style anchor; base-unit UI removed. | — |

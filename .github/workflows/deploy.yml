@@ -53,4 +53,28 @@ jobs:
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy to production
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
+
+      - name: Verify production bundle
+        run: |
+          html=$(curl -fsSL "https://stylesnap-lac.vercel.app/")
+          if echo "$html" | grep -q 'index-6MiPuC3G.js'; then
+            echo "::error::Production still serves stale bundle index-6MiPuC3G.js (pre-makram2)."
+            echo "Disable Vercel Git auto-deploy for production — rely on this workflow only."
+            exit 1
+          fi
+          js=$(echo "$html" | sed -n 's/.*src="\/assets\/\(index-[^"]*\.js\)".*/\1/p')
+          if [ -z "$js" ]; then
+            echo "::error::Production HTML missing JS bundle reference."
+            exit 1
+          fi
+          bundle=$(curl -fsSL "https://stylesnap-lac.vercel.app/assets/$js")
+          echo "$bundle" | grep -q 'Continue to colors' || {
+            echo "::error::Production bundle missing makram2 marker (Continue to colors)."
+            exit 1
+          }
+          echo "Verified production serves $js with makram2 content."
