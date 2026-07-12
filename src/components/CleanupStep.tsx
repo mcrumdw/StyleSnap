@@ -73,6 +73,8 @@ interface CleanupStepProps {
   onUpdateManual: (token: StyleSnapToken, role?: string | null) => void;
   onRemoveManual: (tokenId: string) => void;
   onMergeCelebration?: (message: string) => void;
+  /** Toast with optional one-click undo (uses the session history stack). */
+  onActionToast?: (message: string, undo?: () => void) => void;
   locked?: boolean;
 }
 
@@ -97,6 +99,7 @@ export function CleanupStep({
   onUpdateManual,
   onRemoveManual,
   onMergeCelebration,
+  onActionToast,
   locked = false,
 }: CleanupStepProps) {
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_FILTERS);
@@ -203,14 +206,17 @@ export function CleanupStep({
     onMergeCluster(survivorId, mergedIds);
     setOpenClusterId(null);
     const count = mergedIds.length + 1;
-    const msg = `Nice — ${count} ${MERGE_NOUNS[cluster.canonical.type]} just became 1. Next: give them meaning.`;
-    setToast(msg);
+    const msg = `Nice — ${count} ${MERGE_NOUNS[cluster.canonical.type]} just became 1.`;
+    if (onActionToast) onActionToast(msg);
+    else setToast(msg);
     onMergeCelebration?.(msg);
   }
 
   function handleUnmerge(survivorId: string) {
     onUnmerge(survivorId);
-    setToast("Un-merged — the originals are back, untouched.");
+    const msg = "Un-merged — the originals are back, untouched.";
+    if (onActionToast) onActionToast(msg);
+    else setToast(msg);
   }
 
   return (

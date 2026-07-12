@@ -3,7 +3,13 @@ import type { StyleSnapToken } from "../contract/types";
 import { computeChecklist } from "../engine/completeness";
 import { applyMerges } from "../engine/dedup";
 import { deriveSystem, type Anchors, type AccentSuggestion } from "../engine/derive-system";
-import { generateDesignMd, type DerivedProvenance, type ExportInput } from "../engine/export";
+import { styleProfileFromFamily } from "../engine/style-profile";
+import {
+  generateDesignMd,
+  NOTE_FIELDS,
+  type DerivedProvenance,
+  type ExportInput,
+} from "../engine/export";
 import {
   defaultProjectName,
   isSystemCreated,
@@ -16,6 +22,12 @@ import { poolEntries } from "./workspace";
 
 /** How a value got into the draft — drives the visual states. */
 export type FillOrigin = "captured" | "derived" | "edited";
+
+export interface FillInfo {
+  origin: FillOrigin;
+  method: string;
+  derivedFrom: string;
+}
 
 export interface DraftFill {
   role: string;
@@ -50,19 +62,39 @@ export function useSessionViewModel(pool: TokenPool) {
         assignments: new Map(Object.entries(view.assignments)),
         overrides: pool.anchorOverrides,
         typeRatio: pool.typeRatio,
+        accentHarmony: pool.accentChoice?.harmony,
+        styleProfile: pool.styleFamily
+          ? {
+              radiusScale: styleProfileFromFamily(pool.styleFamily).radiusScale,
+              shadowStyle: styleProfileFromFamily(pool.styleFamily).shadowStyle,
+            }
+          : undefined,
       }),
-    [view, rawById, pool.anchorOverrides, pool.typeRatio],
+    [view, rawById, pool.anchorOverrides, pool.typeRatio, pool.accentChoice?.harmony, pool.styleFamily],
   );
 
   const draftFills = useMemo((): DraftFill[] => {
-    return draft.fills.map((fill) => {
-      const synthetic = fill.token.id.startsWith("derived_");
-      const edit = synthetic ? pool.derivedEdits?.[fill.role] : undefined;
+    const fills: DraftFill[] = draft.fills.map((fill) => {
+      const edit = pool.derivedEdits?.[fill.role];
       if (edit) {
         return { ...fill, token: edit.token, origin: "edited" as const };
       }
+      const synthetic = fill.token.id.startsWith("derived_");
       return { ...fill, origin: synthetic ? ("derived" as const) : ("captured" as const) };
     });
+    const rolesWithFill = new Set(fills.map((f) => f.role));
+    // Edits on roles that derivation skipped (pool.assignments blocks the fill).
+    for (const [role, edit] of Object.entries(pool.derivedEdits ?? {})) {
+      if (rolesWithFill.has(role)) continue;
+      fills.push({
+        role,
+        token: edit.token,
+        origin: "edited",
+        derivedFrom: edit.token.id,
+        method: "user edit",
+      });
+    }
+    return fills;
   }, [draft, pool.derivedEdits]);
 
   const anchors: Anchors = draft.anchors;
@@ -72,11 +104,12 @@ export function useSessionViewModel(pool: TokenPool) {
   const effective = useMemo(() => {
     const assignments = new Map(Object.entries(view.assignments));
     const derived = new Map<string, DerivedProvenance>();
-    const syntheticTokens: StyleSnapToken[] = [];
+    const tokenById = new Map(view.tokens.map((t) => [t.id, t]));
+
     for (const fill of draftFills) {
       assignments.set(fill.role, fill.token.id);
+      tokenById.set(fill.token.id, fill.token);
       if (fill.token.id.startsWith("derived_")) {
-        syntheticTokens.push(fill.token);
         derived.set(fill.token.id, {
           derivedFrom: fill.derivedFrom,
           method: fill.method,
@@ -84,7 +117,21 @@ export function useSessionViewModel(pool: TokenPool) {
         });
       }
     }
-    return { assignments, derived, tokens: [...view.tokens, ...syntheticTokens] };
+
+    const tokens: StyleSnapToken[] = [];
+    const seen = new Set<string>();
+    for (const token of view.tokens) {
+      tokens.push(tokenById.get(token.id) ?? token);
+      seen.add(token.id);
+    }
+    for (const fill of draftFills) {
+      if (!seen.has(fill.token.id)) {
+        tokens.push(tokenById.get(fill.token.id)!);
+        seen.add(fill.token.id);
+      }
+    }
+
+    return { assignments, derived, tokens };
   }, [view, draftFills]);
 
   const exportInput = useMemo((): ExportInput => {
@@ -104,6 +151,7 @@ export function useSessionViewModel(pool: TokenPool) {
       assignments: effective.assignments,
       names,
       notes: pool.systemNotes ?? {},
+      noteSources: pool.noteSources,
       derived: effective.derived,
     };
   }, [pool, projectName, effective, rawById]);
@@ -138,11 +186,20 @@ export function useSessionViewModel(pool: TokenPool) {
   const summary = useMemo(() => {
     const anchorsPicked = [
       anchors.primaryColorId,
+      anchors.secondaryColorId,
       anchors.bodyTypographyId,
       anchors.baseSpacing,
     ].filter((a) => a !== undefined).length;
     return { anchorsPicked, derivedCount: draft.derivedCount };
   }, [anchors, draft.derivedCount]);
+
+  // FR-19b — the "no missing elements" gate: every note field filled (user
+  // or template) AND every required checklist item met.
+  const notesComplete = useMemo(
+    () => NOTE_FIELDS.every((f) => (pool.systemNotes?.[f.key] ?? "").trim().length > 0),
+    [pool.systemNotes],
+  );
+  const exportReady = checklist.complete && notesComplete;
 
   return {
     projectName,
@@ -159,5 +216,7 @@ export function useSessionViewModel(pool: TokenPool) {
     anchors,
     accent,
     summary,
+    notesComplete,
+    exportReady,
   };
 }

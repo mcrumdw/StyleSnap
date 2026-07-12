@@ -187,7 +187,7 @@ export function AddTokenDialog({
                 onChange={(e) => setFamily(e.target.value)}
                 placeholder="Inter"
               />
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <label className="flex flex-col gap-1">
                   <span className="text-caption font-medium text-text-muted">Size (px)</span>
                   <input type="number" min={1} value={size} onChange={(e) => setSize(Number(e.target.value))} className={field} />

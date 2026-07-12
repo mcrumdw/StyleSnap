@@ -23,7 +23,14 @@ import { computeChecklist, type ChecklistItem } from "../completeness";
 import { fallbackName, roleDefinition, roleOrderIndex } from "../roles";
 import { accessibilitySection, contrastGapBullets } from "./accessibility";
 import { componentsSection } from "./sketches";
-import { filledNotes, NOTE_FIELDS, noteText, type SystemNotes } from "./notes";
+import {
+  filledNotes,
+  NOTE_FIELDS,
+  noteText,
+  type SystemNotes,
+  type SystemNotesField,
+} from "./notes";
+import { snippetProvenanceLabel } from "../templates";
 
 export type { SystemNotes, SystemNotesField } from "./notes";
 export { NOTE_FIELDS, sanitizeNotes } from "./notes";
@@ -51,6 +58,8 @@ export interface ExportInput {
   names: ReadonlyMap<string, string>;
   /** Phase 9b — the user-authored System notes; empty fields become Gaps lines. */
   notes: SystemNotes;
+  /** FR-19b — per-field provenance: "user" or a starter-template id. */
+  noteSources?: Partial<Record<SystemNotesField, string>>;
   /**
    * Phase 10 — provenance for derived/edited values by token id (FR-19).
    * Absent for fully hand-reviewed sessions.
@@ -363,8 +372,20 @@ function foundationsSection(input: ExportInput): string {
       }
     }
     for (const token of withoutRole(input, type)) {
+      const value = token.value as number;
+      const slotValues = assigned.map(({ token: t }) => t.value as number);
+      const snap4 = (v: number) => Math.max(4, Math.round(v / 4) * 4);
+      if (
+        type === "spacing" &&
+        slotValues.some((v) => Math.abs(v - snap4(value)) <= 4 || Math.abs(v - value) <= 4)
+      ) {
+        continue;
+      }
+      if (type === "border-radius" && slotValues.some((v) => Math.abs(v - value) <= 2)) {
+        continue;
+      }
       notes.push(
-        `A ${token.value as number}px value, ${token.occurrences}×, is captured but **unassigned** — see §Gaps.`,
+        `A ${value}px value, ${token.occurrences}×, is captured but **unassigned** — see §Gaps.`,
       );
     }
     const noteText = notes.length > 0 ? ` (${notes.join(" ")})` : "";
@@ -446,12 +467,22 @@ function gapsSection(input: ExportInput): string {
   ].join("\n");
 }
 
-/** Phase 9b — "## Mood & voice (author notes)": all five fields, always. */
+/**
+ * Phase 9b — "## Mood & voice (author notes)": all five fields, always.
+ * FR-19b: template-filled fields confess their starter so the consumer knows
+ * which prose is hand-written and which came from a matched template.
+ */
 function notesSection(input: ExportInput): string {
   const lines = ["## Mood & voice (author notes)"];
   for (const field of NOTE_FIELDS) {
     const text = noteText(input.notes, field.key);
-    lines.push("", `**${field.label}:** ${text ?? "*(not captured — see Gaps)*"}`);
+    const source = input.noteSources?.[field.key];
+    const label =
+      text !== undefined && source !== undefined && source !== "user"
+        ? snippetProvenanceLabel(source, field.key)
+        : undefined;
+    const suffix = label ? ` *(from the "${label}" starter — edit to taste)*` : "";
+    lines.push("", `**${field.label}:** ${text ?? "*(not captured — see Gaps)*"}${suffix}`);
   }
   return lines.join("\n");
 }

@@ -32,13 +32,13 @@ function GapRow({
 
   return (
     <li
-      className={`flex items-center justify-between gap-4 rounded-md border-2 bg-surface-card p-3 ${SEVERITY_STYLES[item.severity]}`}
+      className={`flex flex-col gap-3 rounded-md border-2 bg-surface-card p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${SEVERITY_STYLES[item.severity]}`}
     >
       <div className="flex min-w-0 flex-col gap-1">
         <span className="font-mono text-caption font-medium text-text-primary">{item.label}</span>
         <span className="text-caption text-text-muted">{item.description}</span>
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex flex-wrap gap-2 sm:shrink-0">
         {role && !item.id.startsWith("unassigned-") && (
           <Button size="sm" variant="secondary" onClick={() => onAssignRole(role)}>
             Assign role
@@ -63,7 +63,9 @@ function GapRow({
 export function GapPanel({ checklist, onAssignRole, onAddToken, onOpenNotes }: GapPanelProps) {
   const [showOptional, setShowOptional] = useState(false);
 
-  const gaps = checklist.items.filter((i) => i.status === "gap");
+  const gaps = checklist.items.filter(
+    (i) => i.status === "gap" && i.id !== "manual-foundations",
+  );
   const requiredGaps = gaps.filter((i) => i.severity === "required");
   const optionalGaps = gaps.filter((i) => i.severity !== "required");
 
@@ -74,8 +76,8 @@ export function GapPanel({ checklist, onAssignRole, onAddToken, onOpenNotes }: G
       <div className="flex flex-col gap-1">
         <h2 className="font-heading text-card-title font-bold">Still needs your input</h2>
         <p className="text-caption text-text-muted">
-          Everything else was filled from your capture. These items can't be guessed — add notes or
-          assign manually.
+          Everything else was filled automatically. Only true blockers appear here — describe your
+          system on the Describe page before export.
         </p>
       </div>
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { generateCleanedJson, type ExportInput } from "../engine/export";
+import { downloadFile, projectSlug } from "../routes/exportActions";
 import { Button } from "./Button";
 import { Toast } from "./Toast";
 
@@ -9,16 +10,12 @@ interface ExportSectionProps {
   exportInput: ExportInput;
   gapCount: number;
   onCopyDesignMd?: () => void;
+  /** FR-19b — wrap copy/download behind the completeness gate. */
+  withCompleteSystem?: (action: () => void) => void;
 }
 
 function download(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(filename, content, mime);
 }
 
 type ExportTab = "design" | "json";
@@ -30,6 +27,7 @@ export function ExportSection({
   exportInput,
   gapCount,
   onCopyDesignMd,
+  withCompleteSystem,
 }: ExportSectionProps) {
   const [tab, setTab] = useState<ExportTab>("design");
   const [toast, setToast] = useState<string | null>(null);
@@ -40,17 +38,32 @@ export function ExportSection({
   }, [exportInput, tab]);
 
   const copy = async (content: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setToast(`${label} copied — paste it into your AI coding tool.`);
-      if (label === "design.md") onCopyDesignMd?.();
-    } catch {
-      setToast("Couldn't reach the clipboard — use Download instead.");
-    }
+    const run = async () => {
+      try {
+        await navigator.clipboard.writeText(content);
+        setToast(`${label} copied — paste it into your AI coding tool.`);
+        if (label === "design.md") onCopyDesignMd?.();
+      } catch {
+        setToast("Couldn't reach the clipboard — use Download instead.");
+      }
+    };
+    if (withCompleteSystem) withCompleteSystem(() => void run());
+    else void run();
   };
 
-  const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = projectSlug(projectName);
   const content = tab === "design" ? designMd : cleanedJson;
+
+  const downloadExport = () => {
+    const run = () =>
+      download(
+        tab === "design" ? "design.md" : `${slug || "stylesnap"}-tokens.json`,
+        content,
+        tab === "design" ? "text/markdown" : "application/json",
+      );
+    if (withCompleteSystem) withCompleteSystem(run);
+    else run();
+  };
 
   return (
     <section className="flex w-full flex-col gap-4 rounded-md border-2 border-border-default bg-surface-card p-6 shadow-card">
@@ -91,17 +104,7 @@ export function ExportSection({
         >
           Copy
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() =>
-            download(
-              tab === "design" ? "design.md" : `${slug || "stylesnap"}-tokens.json`,
-              content,
-              tab === "design" ? "text/markdown" : "application/json",
-            )
-          }
-        >
+        <Button size="sm" variant="secondary" onClick={downloadExport}>
           Download
         </Button>
       </div>

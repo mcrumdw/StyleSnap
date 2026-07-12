@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseStyleSnapExport } from "../contract/schema";
 import type { StyleSnapExport } from "../contract/types";
+import { assembleDescription } from "../engine/templates";
 import {
   addManualToken,
   appendImport,
+  applyNoteTemplate,
   assignRole,
   autoMergeClusters,
   createSystem,
@@ -290,6 +292,37 @@ describe("localStorage draft (FR-29)", () => {
     expect(migrated).not.toBeNull();
     expect(migrated?.derivedEdits).toBeUndefined();
     expect(migrated?.typeRatio).toBeUndefined();
+  });
+
+  it("applyNoteTemplate fills only empty fields, records sources, round-trips (FR-19b)", () => {
+    const assembled = assembleDescription(["calm"]);
+    let pool = poolWithBothFixtures();
+    pool = setSystemNote(pool, "mood", "Hand-written mood.");
+    pool = applyNoteTemplate(pool, assembled, ["calm", "minimal"]);
+
+    expect(pool.systemNotes?.mood).toBe("Hand-written mood.");
+    expect(pool.noteSources?.mood).toBe("user");
+    expect(pool.systemNotes?.motion).toBe(assembled.notes.motion);
+    expect(pool.noteSources?.motion).toBe(assembled.sources.motion);
+    expect(pool.adjectives).toEqual(["calm", "minimal"]);
+    expect(pool.styleFamily).toBe(assembled.moodFamily);
+    expect(pool.typeRatio).toBe(1.25);
+
+    // Typing over a template field claims it for the user.
+    pool = setSystemNote(pool, "motion", "My own motion rules.");
+    expect(pool.noteSources?.motion).toBe("user");
+
+    // Draft round-trip keeps provenance; corrupt entries drop silently.
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.noteSources).toEqual(pool.noteSources);
+    expect(restored?.adjectives).toEqual(["calm", "minimal"]);
+    expect(restored?.styleFamily).toBe(assembled.moodFamily);
+    const legacy = JSON.parse(serializeDraft(pool));
+    legacy.noteSources = { mood: 7, bogus: "x" };
+    legacy.adjectives = "not-an-array";
+    const migrated = deserializeDraft(JSON.stringify(legacy));
+    expect(migrated?.noteSources).toBeUndefined();
+    expect(migrated?.adjectives).toBeUndefined();
   });
 
   it("round-trips projectName + systemCreatedAt; derives a default name", () => {

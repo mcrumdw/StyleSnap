@@ -13,18 +13,30 @@ import { detectAnchors, type AnchorOverrides, type Anchors } from "./anchors";
 import {
   deriveAccent,
   deriveFeedback,
+  deriveLinkColor,
   deriveNeutrals,
   deriveStates,
+  harmonyFromPrimary,
+  tuneFillForWhiteText,
   type AccentSuggestion,
+  type Harmony,
 } from "./color";
-import { DEFAULT_TYPE_RATIO, deriveTypeScale, type TypeRatio } from "./type";
-import { deriveRadiusRamp, deriveShadowRamp, deriveSpacingRamp } from "./ramps";
+import { DEFAULT_TYPE_RATIO, deriveMono, deriveTypeScale, type TypeRatio } from "./type";
+import {
+  deriveSpacingRamp,
+  radiusSlotPlan,
+  shadowSlotPlan,
+  type ShadowStyle,
+} from "./ramps";
+import { scaleRadius, type StyleProfile } from "../style-profile";
 
 export type { AccentSuggestion, Harmony } from "./color";
+export { harmonyFromPrimary } from "./color";
 export type { Anchors, AnchorOverrides } from "./anchors";
 export type { TypeRatio } from "./type";
 export { DEFAULT_TYPE_RATIO } from "./type";
-export { contrastRatio } from "../export/accessibility";
+export { styleProfileFromFamily, scaleRadius } from "../style-profile";
+export type { StyleProfile, ShadowStyle as StyleShadowStyle } from "../style-profile";
 
 export interface DeriveInput {
   /** The cluster-canonical view: confirmed merges applied, open clusters collapsed to canonicals. */
@@ -35,6 +47,10 @@ export interface DeriveInput {
   assignments: ReadonlyMap<string, string>;
   overrides?: AnchorOverrides;
   typeRatio?: TypeRatio;
+  /** User-picked accent harmony (C.5) — updates secondary live. */
+  accentHarmony?: Harmony;
+  /** FR-19b style family — biases derived radius + shadow ramps. */
+  styleProfile?: Pick<StyleProfile, "radiusScale" | "shadowStyle">;
 }
 
 export interface DerivedFill {
@@ -90,7 +106,7 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   let accent: AccentSuggestion | null = null;
   if (primary && primary.type === "color") {
     const from = primary.id;
-    fill("color/action/primary", primary, from, "anchor (your main color)");
+    fill("color/action/primary", primary, from, "anchor (your primary color)");
 
     const states = deriveStates(primary.value);
     fill("color/action/primary-hover", syntheticColor("color/action/primary-hover", states.hover), from, "hover (ΔL −0.06)");
@@ -98,6 +114,18 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     fill("color/border/focus", primary, from, "focus ring = primary");
 
     const neutrals = deriveNeutrals(primary.value);
+    const linkHex = deriveLinkColor(primary.value, neutrals.surfacePage);
+    if (linkHex.toLowerCase() === primary.value.toLowerCase()) {
+      fill("color/text/link", primary, from, "link = brand primary");
+    } else {
+      fill(
+        "color/text/link",
+        syntheticColor("color/text/link", linkHex),
+        from,
+        "link (brand hue, AA-tuned for page surface)",
+      );
+    }
+
     const neutralMethod = (l: string) => `tinted neutral (brand hue, ${l})`;
     fill("color/text/primary", syntheticColor("color/text/primary", neutrals.textPrimary), from, neutralMethod("L 0.22"));
     fill("color/text/muted", syntheticColor("color/text/muted", neutrals.textMuted), from, neutralMethod("L 0.52"));
@@ -123,6 +151,33 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
       return [];
     });
     accent = deriveAccent(primary.value, capturedHexes);
+
+    const harmonySuggestion = harmonyFromPrimary(primary.value);
+    const secondaryAnchor = anchors.secondaryColorId
+      ? byId.get(anchors.secondaryColorId)
+      : undefined;
+    const explicitHarmony = input.accentHarmony;
+    if (
+      secondaryAnchor &&
+      secondaryAnchor.type === "color" &&
+      explicitHarmony === undefined
+    ) {
+      fill(
+        "color/action/secondary",
+        secondaryAnchor,
+        secondaryAnchor.id,
+        "anchor (your secondary color)",
+      );
+    } else {
+      const harmony = explicitHarmony ?? accent?.suggested ?? harmonySuggestion.suggested;
+      const secondaryBase = harmonySuggestion.candidates[harmony];
+      fill(
+        "color/action/secondary",
+        syntheticColor("color/action/secondary", tuneFillForWhiteText(secondaryBase)),
+        from,
+        `accent (${harmony} harmony, AA-tuned)`,
+      );
+    }
   }
 
   // ── Type scale (needs a body anchor) ──
@@ -151,6 +206,21 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
         `type scale ${slot.method}`,
       );
     }
+    fill(
+      "type/mono",
+      {
+        id: "derived_type_mono",
+        captureId: "derived",
+        source: "derived",
+        name: null,
+        occurrences: 1,
+        merged: false,
+        type: "typography",
+        value: deriveMono(body),
+      },
+      body.id,
+      "mono stack from body anchor",
+    );
   }
 
   // ── Foundations ──
@@ -188,41 +258,57 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     .filter((t): t is StyleSnapToken & { type: "border-radius"; value: number } => t.type === "border-radius")
     .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
   if (radii.length > 0) {
-    const base = radii[0];
-    for (const { role, value } of deriveRadiusRamp(base.value)) {
-      const captured = tokens.find((t) => t.type === "border-radius" && t.value === value);
+    const fallbackFrom = radii[0].id;
+    const radiusScale = input.styleProfile?.radiusScale ?? 1;
+    for (const slot of radiusSlotPlan(radii.map((r) => ({ id: r.id, value: r.value })))) {
+      const captured =
+        (slot.tokenId ? byId.get(slot.tokenId) : undefined) ??
+        tokens.find((t) => t.type === "border-radius" && t.value === slot.value);
+      const derivedValue = slot.tokenId ? slot.value : scaleRadius(slot.value, radiusScale);
+      const method =
+        slot.tokenId || radiusScale === 1
+          ? slot.method
+          : `${slot.method} (style ×${radiusScale})`;
       fill(
-        role,
-        captured ?? numericToken(role, "border-radius", value),
-        base.id,
-        captured ? "captured value claims the slot" : `radius ramp ×${value / base.value}`,
+        slot.role,
+        captured ?? numericToken(slot.role, "border-radius", derivedValue),
+        slot.tokenId ?? fallbackFrom,
+        method,
       );
     }
   }
 
   const shadows = tokens
-    .filter((t) => t.type === "shadow")
+    .filter((t): t is StyleSnapToken & { type: "shadow" } => t.type === "shadow")
     .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
   const inkHex = primary ? deriveNeutrals((primary as { value: string }).value).textPrimary : "#111111";
   const shadowSeed =
-    shadows[0]?.type === "shadow"
+    shadows[0] !== undefined
       ? { color: shadows[0].value[0].color, opacity: shadows[0].value[0].opacity, from: shadows[0].id }
       : { color: inkHex, opacity: 0.08, from: "convention" };
-  for (const { role, value } of deriveShadowRamp(shadowSeed.color, shadowSeed.opacity)) {
+  const shadowStyle: ShadowStyle = input.styleProfile?.shadowStyle ?? "soft";
+  for (const slot of shadowSlotPlan(
+    shadows.map((s) => ({ id: s.id, value: s.value })),
+    shadowSeed.color,
+    shadowSeed.opacity,
+    shadowStyle,
+  )) {
     fill(
-      role,
-      {
-        id: `derived_${role.replace(/\//g, "_")}`,
-        captureId: "derived",
-        source: "derived",
-        name: null,
-        occurrences: 1,
-        merged: false,
-        type: "shadow",
-        value,
-      },
-      shadowSeed.from,
-      "shadow ramp (captured shadow color)",
+      slot.role,
+      slot.tokenId && byId.get(slot.tokenId)
+        ? (byId.get(slot.tokenId) as StyleSnapToken)
+        : {
+            id: `derived_${slot.role.replace(/\//g, "_")}`,
+            captureId: "derived",
+            source: "derived",
+            name: null,
+            occurrences: 1,
+            merged: false,
+            type: "shadow",
+            value: slot.value,
+          },
+      slot.tokenId ?? shadowSeed.from,
+      slot.method,
     );
   }
 
@@ -233,6 +319,25 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     capturedWidth?.id ?? "convention",
     capturedWidth ? "captured value claims the slot" : "convention (1px hairline)",
   );
+
+  // Claim captured foundation values sitting near a derived slot (e.g. 10px → space/sm 12).
+  const snap4 = (v: number) => Math.max(4, Math.round(v / 4) * 4);
+  for (const token of tokens) {
+    if (token.type !== "spacing" && token.type !== "border-radius") continue;
+    if (fills.some((f) => f.token.id === token.id)) continue;
+    const prefix = token.type === "spacing" ? "space/" : "radius/";
+    const near = fills
+      .filter((f) => f.role.startsWith(prefix))
+      .map((f) => ({
+        fill: f,
+        dist: Math.abs((f.token.value as number) - (token.type === "spacing" ? snap4(token.value) : token.value)),
+      }))
+      .sort((a, b) => a.dist - b.dist || (a.fill.role < b.fill.role ? -1 : 1))[0];
+    if (!near || near.dist > 4) continue;
+    if (!near.fill.token.id.startsWith("derived_")) continue;
+    near.fill.token = token;
+    near.fill.method = "captured value claims the nearest slot";
+  }
 
   return {
     anchors,

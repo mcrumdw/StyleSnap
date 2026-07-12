@@ -9,15 +9,11 @@ import {
   TYPE_ROLES,
   type RoleDefinition,
 } from "../engine/roles";
-import type { FillOrigin } from "../state/useSessionViewModel";
+import type { FillInfo, FillOrigin } from "../state/useSessionViewModel";
 import { formatValue } from "../state/workspace";
 import { Button } from "./Button";
 
-export interface FillInfo {
-  origin: FillOrigin;
-  method: string;
-  derivedFrom: string;
-}
+export type { FillInfo } from "../state/useSessionViewModel";
 
 interface SystemViewProps {
   /** The effective view: captured + derived tokens, user names overlaid. */
@@ -392,8 +388,8 @@ export function SystemView({
             })}
           </div>
           <p className="text-caption text-text-muted">
-            A suggestion only — assign it to a role (like <span className="font-mono">color/action/secondary</span>)
-            whenever you're ready.
+            Pick a harmony — your <span className="font-mono">color/action/secondary</span> updates
+            instantly in the draft below.
           </p>
         </section>
       )}

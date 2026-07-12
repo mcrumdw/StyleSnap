@@ -12,7 +12,17 @@ import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema"
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
 import { applyMerges, detectClusters, type MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
-import { sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
+import { styleProfileFromFamily } from "../engine/style-profile";
+import type { Family } from "../engine/templates/families";
+import { NOTE_FIELDS, sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
+import {
+  fillNotes,
+  migrateNoteSources,
+  refreshNotesFromAssembly,
+  FAMILIES,
+  type AssembledDescription,
+  type NoteSource,
+} from "../engine/templates";
 import type { PipelineStep } from "./pipeline";
 import { clampStep } from "./pipeline";
 
@@ -73,6 +83,12 @@ export interface TokenPool {
   typeRatio?: TypeRatio;
   /** Phase 10 — merge-queue rejections ("keep separate"), by cluster id. */
   rejectedClusters?: string[];
+  /** FR-19b — per-field provenance of the notes: "user" or a template id. */
+  noteSources?: Partial<Record<SystemNotesField, NoteSource>>;
+  /** FR-19b — the adjectives picked (or auto-picked) for template matching. */
+  adjectives?: string[];
+  /** FR-19b — mood family driving style bias on derived tokens (§2.17). */
+  styleFamily?: Family;
 }
 
 export function emptyPool(): TokenPool {
@@ -108,8 +124,60 @@ export function setSystemNote(
   value: string,
 ): TokenPool {
   const systemNotes: SystemNotes = { ...pool.systemNotes, [field]: value };
-  if (!value) delete systemNotes[field];
-  return { ...pool, systemNotes };
+  const noteSources = { ...pool.noteSources };
+  if (!value) {
+    delete systemNotes[field];
+    delete noteSources[field]; // cleared — the field is open for a template again
+  } else {
+    noteSources[field] = "user"; // typing claims the field (FR-19b)
+  }
+  return { ...pool, systemNotes, noteSources };
+}
+
+/**
+ * FR-19b — apply style profile from mood family: type ratio, harmony (when
+ * allowed), radius/shadow bias via re-derivation. Does not touch derivedEdits.
+ */
+export function applyStyleProfile(
+  pool: TokenPool,
+  family: Family,
+  options?: { refresh?: boolean },
+): TokenPool {
+  const profile = styleProfileFromFamily(family);
+  let next: TokenPool = { ...pool, styleFamily: family, typeRatio: profile.typeRatio };
+
+  if (!pool.accentChoice?.dismissed) {
+    const shouldSetHarmony = options?.refresh || pool.accentChoice?.harmony === undefined;
+    if (shouldSetHarmony && pool.accentChoice?.harmony !== profile.harmony) {
+      next = setAccentChoice(next, { harmony: profile.harmony });
+    }
+  }
+  return next;
+}
+
+/**
+ * FR-19b — apply a starter template: fills ONLY the empty note fields,
+ * records per-field provenance, remembers adjectives, and applies style profile.
+ * User text is never overwritten.
+ */
+export function applyNoteTemplate(
+  pool: TokenPool,
+  assembled: AssembledDescription,
+  adjectives: string[],
+  options?: { refresh?: boolean },
+): TokenPool {
+  const { notes, sources } = (options?.refresh ? refreshNotesFromAssembly : fillNotes)(
+    pool.systemNotes ?? {},
+    assembled,
+    pool.noteSources,
+  );
+  const withNotes: TokenPool = {
+    ...pool,
+    systemNotes: notes,
+    noteSources: sources,
+    adjectives: [...adjectives],
+  };
+  return applyStyleProfile(withNotes, assembled.moodFamily, options);
 }
 
 /** Record a user-confirmed merge (FR-12). Pure — returns a new pool. */
@@ -223,13 +291,21 @@ export function setAnchorOverride(
   patch: Partial<AnchorOverrides>,
 ): TokenPool {
   const anchorOverrides: AnchorOverrides = { ...pool.anchorOverrides };
-  for (const key of ["primaryColorId", "bodyTypographyId", "baseSpacing"] as const) {
+  for (const key of ["primaryColorId", "secondaryColorId", "bodyTypographyId", "baseSpacing"] as const) {
     if (!(key in patch)) continue;
     const value = patch[key];
     if (value === undefined) delete anchorOverrides[key];
     else (anchorOverrides as Record<string, unknown>)[key] = value;
   }
-  return { ...pool, anchorOverrides };
+  let next: TokenPool = { ...pool, anchorOverrides };
+  if ("secondaryColorId" in patch && patch.secondaryColorId !== undefined) {
+    const accentChoice = { ...next.accentChoice };
+    delete accentChoice.harmony;
+    const derivedEdits = { ...next.derivedEdits };
+    delete derivedEdits["color/action/secondary"];
+    next = { ...next, accentChoice, derivedEdits };
+  }
+  return next;
 }
 
 /** C.8 dirty flag: the user edited a derived value — re-derivation never touches it. */
@@ -256,7 +332,14 @@ export function setAccentChoice(
   pool: TokenPool,
   choice: { harmony?: Harmony; dismissed?: boolean },
 ): TokenPool {
-  return { ...pool, accentChoice: { ...pool.accentChoice, ...choice } };
+  let next: TokenPool = { ...pool, accentChoice: { ...pool.accentChoice, ...choice } };
+  if (choice.harmony !== undefined) {
+    next = setAnchorOverride(next, { secondaryColorId: undefined });
+    const derivedEdits = { ...next.derivedEdits };
+    delete derivedEdits["color/action/secondary"];
+    next = { ...next, derivedEdits };
+  }
+  return next;
 }
 
 export function setTypeRatio(pool: TokenPool, typeRatio: TypeRatio): TokenPool {
@@ -475,13 +558,37 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   const notes = sanitizeNotes((json as Partial<TokenPool>).systemNotes);
   if (notes) pool.systemNotes = notes;
 
-  // Phase 10 derivation decisions — all optional; invalid entries are dropped
+  // FR-19b note provenance + adjectives — optional; invalid entries drop.
+  const rawSources = (json as Partial<TokenPool>).noteSources;
+  if (typeof rawSources === "object" && rawSources !== null && !Array.isArray(rawSources)) {
+    const noteSources: Partial<Record<SystemNotesField, NoteSource>> = {};
+    for (const field of NOTE_FIELDS) {
+      const source = (rawSources as Record<string, unknown>)[field.key];
+      if (typeof source === "string" && source) noteSources[field.key] = source;
+    }
+    if (Object.keys(noteSources).length > 0) pool.noteSources = migrateNoteSources(noteSources);
+  }
+  const rawAdjectives = (json as Partial<TokenPool>).adjectives;
+  if (Array.isArray(rawAdjectives)) {
+    const adjectives = rawAdjectives.filter((a): a is string => typeof a === "string");
+    if (adjectives.length > 0) pool.adjectives = adjectives;
+  }
+  const rawStyleFamily = (json as Partial<TokenPool>).styleFamily;
+  if (
+    typeof rawStyleFamily === "string" &&
+    (FAMILIES as readonly string[]).includes(rawStyleFamily)
+  ) {
+    pool.styleFamily = rawStyleFamily as Family;
+  }
+
+  // Phase 10 derivation decisions
   // defensively (a corrupt decision must never cost the whole draft).
   const draft = json as Partial<TokenPool>;
   if (typeof draft.anchorOverrides === "object" && draft.anchorOverrides !== null) {
     const src = draft.anchorOverrides as Record<string, unknown>;
     const anchorOverrides: AnchorOverrides = {};
     if (typeof src.primaryColorId === "string") anchorOverrides.primaryColorId = src.primaryColorId;
+    if (typeof src.secondaryColorId === "string") anchorOverrides.secondaryColorId = src.secondaryColorId;
     if (typeof src.bodyTypographyId === "string") anchorOverrides.bodyTypographyId = src.bodyTypographyId;
     if (typeof src.baseSpacing === "number") anchorOverrides.baseSpacing = src.baseSpacing;
     if (Object.keys(anchorOverrides).length > 0) pool.anchorOverrides = anchorOverrides;

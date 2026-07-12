@@ -138,9 +138,30 @@ export function computeChecklist(
   }
 
   // Captured foundation values no slot points at (oracle: the 12px).
+  const slotValue = (rolePrefix: string): number[] =>
+    [...assignments.entries()]
+      .filter(([role]) => role.startsWith(rolePrefix))
+      .map(([, id]) => tokens.find((t) => t.id === id)?.value)
+      .filter((v): v is number => typeof v === "number");
+
+  const snap4 = (v: number) => Math.max(4, Math.round(v / 4) * 4);
+  const nearSlot = (token: StyleSnapToken): boolean => {
+    if (token.type === "spacing") {
+      const snapped = snap4(token.value);
+      return slotValue("space/").some(
+        (v) => Math.abs(v - snapped) <= 4 || Math.abs(v - token.value) <= 4,
+      );
+    }
+    if (token.type === "border-radius") {
+      return slotValue("radius/").some((v) => Math.abs(v - token.value) <= 2);
+    }
+    return false;
+  };
+
   for (const token of tokens) {
     if (!FOUNDATION_TYPES.includes(token.type)) continue;
     if (assignedTokenIds.has(token.id)) continue;
+    if (nearSlot(token)) continue;
     const valueLabel =
       token.type === "shadow" ? "shadow" : `${token.value as number}px ${token.type}`;
     items.push({

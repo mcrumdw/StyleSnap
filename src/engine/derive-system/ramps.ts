@@ -29,14 +29,170 @@ export function deriveRadiusRamp(base: number): Array<{ role: string; value: num
   ];
 }
 
+/** When several radii were captured, map them onto sm/md/lg instead of leaving orphans. */
+export function radiusSlotPlan(
+  captured: Array<{ id: string; value: number }>,
+): Array<{ role: string; value: number; tokenId?: string; method: string }> {
+  const byValue = new Map<number, { id: string; value: number }>();
+  for (const t of captured) {
+    const prev = byValue.get(t.value);
+    if (!prev || t.id < prev.id) byValue.set(t.value, t);
+  }
+  const unique = [...byValue.values()].sort((a, b) => a.value - b.value || (a.id < b.id ? -1 : 1));
+
+  if (unique.length === 0) return [];
+  if (unique.length === 1) {
+    return deriveRadiusRamp(unique[0].value).map(({ role, value }) => ({
+      role,
+      value,
+      tokenId: value === unique[0].value ? unique[0].id : undefined,
+      method:
+        value === unique[0].value
+          ? "captured value claims the slot"
+          : `radius ramp ×${value / unique[0].value}`,
+    }));
+  }
+
+  const smallest = unique[0];
+  const largest = unique[unique.length - 1];
+  const middle = unique[Math.floor((unique.length - 1) / 2)];
+  const smValue = Math.max(1, Math.round(smallest.value * 0.5));
+  const smToken = captured.find((t) => t.value === smValue);
+
+  return [
+    {
+      role: "radius/sm",
+      value: smValue,
+      tokenId: smToken?.id,
+      method: smToken ? "captured value claims the slot" : `radius ramp ×0.5 from ${smallest.value}px`,
+    },
+    {
+      role: "radius/md",
+      value: smallest.value,
+      tokenId: smallest.id,
+      method: "captured (smaller radius)",
+    },
+    {
+      role: "radius/lg",
+      value: largest.value,
+      tokenId: largest.id,
+      method:
+        largest.id === middle.id && unique.length > 2
+          ? "captured (largest radius)"
+          : unique.length === 2
+            ? "captured (second radius)"
+            : "captured (largest radius)",
+    },
+  ];
+}
+
+/** Rank a captured shadow by its largest layer geometry. */
+export function shadowMagnitude(value: ShadowValue): number {
+  return Math.max(...value.map((l) => l.offsetY + l.blur));
+}
+
+/** Map 1–3 captured shadows onto sm/md/lg; synthesize missing steps. */
+export function shadowSlotPlan(
+  captured: Array<{ id: string; value: ShadowValue }>,
+  fallbackColor: string,
+  fallbackOpacity: number,
+  shadowStyle: ShadowStyle = "soft",
+): Array<{ role: string; value: ShadowValue; tokenId?: string; method: string }> {
+  const layer = (offsetY: number, blur: number, spread: number, color: string, opacity: number) =>
+    [{ inset: false, offsetX: 0, offsetY, blur, spread, color, opacity }] as ShadowValue;
+
+  const sorted = [...captured].sort(
+    (a, b) => shadowMagnitude(a.value) - shadowMagnitude(b.value) || (a.id < b.id ? -1 : 1),
+  );
+
+  if (sorted.length === 0) {
+    return deriveShadowRamp(fallbackColor, fallbackOpacity, shadowStyle).map(({ role, value }) => ({
+      role,
+      value,
+      method: `shadow ramp (${shadowStyle}, neutral ink @ 8%)`,
+    }));
+  }
+
+  if (sorted.length === 1) {
+    const seed = sorted[0].value[0];
+    const color = seed.color;
+    const opacity = seed.opacity;
+    return [
+      { role: "shadow/sm", value: layer(1, 2, 0, color, opacity), method: "shadow ramp (sm)" },
+      {
+        role: "shadow/md",
+        value: sorted[0].value,
+        tokenId: sorted[0].id,
+        method: "captured card shadow",
+      },
+      { role: "shadow/lg", value: layer(12, 24, -4, color, opacity), method: "shadow ramp (lg)" },
+    ];
+  }
+
+  if (sorted.length === 2) {
+    return [
+      {
+        role: "shadow/sm",
+        value: sorted[0].value,
+        tokenId: sorted[0].id,
+        method: "captured (lighter shadow)",
+      },
+      {
+        role: "shadow/md",
+        value: sorted[1].value,
+        tokenId: sorted[1].id,
+        method: "captured (heavier shadow)",
+      },
+      {
+        role: "shadow/lg",
+        value: layer(12, 24, -4, sorted[1].value[0].color, sorted[1].value[0].opacity),
+        method: "shadow ramp (lg)",
+      },
+    ];
+  }
+
+  const pick = (index: number) => sorted[Math.min(index, sorted.length - 1)];
+  return [
+    { role: "shadow/sm", value: pick(0).value, tokenId: pick(0).id, method: "captured (smallest shadow)" },
+    {
+      role: "shadow/md",
+      value: pick(Math.floor((sorted.length - 1) / 2)).value,
+      tokenId: pick(Math.floor((sorted.length - 1) / 2)).id,
+      method: "captured (mid shadow)",
+    },
+    { role: "shadow/lg", value: pick(sorted.length - 1).value, tokenId: pick(sorted.length - 1).id, method: "captured (largest shadow)" },
+  ];
+}
+
 /** C.7 shadow geometry ramp; color/opacity reuse the captured shadow (or ink @ 8%). */
+export type ShadowStyle = "soft" | "hard" | "minimal";
+
 export function deriveShadowRamp(
   color: string,
   opacity: number,
+  style: ShadowStyle = "soft",
 ): Array<{ role: string; value: ShadowValue }> {
   const layer = (offsetY: number, blur: number, spread: number): ShadowValue => [
     { inset: false, offsetX: 0, offsetY, blur, spread, color, opacity },
   ];
+  if (style === "hard") {
+    return [
+      { role: "shadow/sm", value: layer(2, 0, 0) },
+      { role: "shadow/md", value: layer(4, 0, 0) },
+      { role: "shadow/lg", value: layer(6, 0, 0) },
+    ];
+  }
+  if (style === "minimal") {
+    const faint = Math.min(opacity, 0.06);
+    return [
+      { role: "shadow/sm", value: layer(1, 2, 0) },
+      { role: "shadow/md", value: layer(2, 4, 0) },
+      { role: "shadow/lg", value: layer(4, 8, -1) },
+    ].map(({ role, value }) => ({
+      role,
+      value: value.map((l) => ({ ...l, opacity: faint })),
+    }));
+  }
   return [
     { role: "shadow/sm", value: layer(1, 2, 0) },
     { role: "shadow/md", value: layer(4, 8, -2) },
