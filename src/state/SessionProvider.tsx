@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import type { StyleSnapToken } from "../contract/types";
 import { AdjectivePicker } from "../components/AdjectivePicker";
 import { Button } from "../components/Button";
 import { CreateSystemDialog } from "../components/CreateSystemDialog";
@@ -11,6 +12,12 @@ type Session = ReturnType<typeof usePool> & {
   vm: ReturnType<typeof useSessionViewModel>;
   hasTokens: boolean;
   setToast: (message: string, options?: { undo?: () => void }) => void;
+  /**
+   * Edit a derived role value and raise the "Updated … · Undo" toast — the one
+   * place this pattern lives, so the toast-undo wiring can't drift per call
+   * site (it caused a real fire-immediately bug once).
+   */
+  editWithUndoToast: (role: string, token: StyleSnapToken) => void;
   /** FR-19b gate: create/copy/download all pass through here — nothing ships incomplete. */
   requestCreate: () => void;
   requestCopyDesignMd: () => void;
@@ -34,7 +41,8 @@ export function useSession(): Session {
  */
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const poolApi = usePool();
-  const { pool, applyTemplate, createSystem, undo, redo, canUndo, canRedo } = poolApi;
+  const { pool, applyTemplate, createSystem, editDerivedValue, undo, redo, canUndo, canRedo } =
+    poolApi;
   const vm = useSessionViewModel(pool);
   const hasTokens = pool.imports.length > 0;
 
@@ -54,6 +62,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setToastAction(() => options?.undo ?? null);
     },
     [],
+  );
+
+  const editWithUndoToast = useCallback(
+    (role: string, token: StyleSnapToken) => {
+      editDerivedValue(role, token);
+      const label =
+        token.type === "color" ? token.value : role.split("/").pop()?.replace(/-/g, " ") ?? role;
+      setToast(`Updated ${label} · Undo`, { undo });
+    },
+    [editDerivedValue, setToast, undo],
   );
 
   useEffect(() => {
@@ -116,6 +134,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         vm,
         hasTokens,
         setToast,
+        editWithUndoToast,
         requestCreate,
         requestCopyDesignMd,
         withCompleteSystem,

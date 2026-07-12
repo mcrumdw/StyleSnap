@@ -18,10 +18,9 @@ export function SystemOverview() {
     startOver,
     setProjectName,
     setAccent,
-    editDerivedValue,
+    editWithUndoToast,
     resetDerivedValue,
     setToast,
-    undo,
   } = useSession();
 
   const resumeRef = useRef(true);
@@ -90,12 +89,7 @@ export function SystemOverview() {
         accentHarmony={pool.accentChoice?.harmony}
         onAccentHarmony={(harmony) => setAccent({ harmony })}
         onAccentDismiss={() => setAccent({ dismissed: true })}
-        onEditDerived={(role, token) => {
-          editDerivedValue(role, token);
-          const label =
-            token.type === "color" ? token.value : role.split("/").pop()?.replace(/-/g, " ") ?? role;
-          setToast(`Updated ${label} · Undo`, { undo });
-        }}
+        onEditDerived={editWithUndoToast}
         onResetDerived={resetDerivedValue}
         onGoToGaps={goToGaps}
       />

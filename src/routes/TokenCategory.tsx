@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { StyleSnapToken, TokenType } from "../contract/types";
+import type { TokenType } from "../contract/types";
 import { AddTokenDialog } from "../components/AddTokenDialog";
 import { AnchorsStep } from "../components/AnchorsStep";
 import { TypeAnchorStep } from "../components/TypeAnchorStep";
@@ -9,6 +9,7 @@ import { GiveMeaningStep } from "../components/GiveMeaningStep";
 import { isTokenCategory } from "../components/shell/SideNav";
 import { DEFAULT_ROUTE } from "./AppShell";
 import { useSession } from "../state/SessionProvider";
+import { resolveAssignments } from "../state/pool";
 import { routeForAddToken, routeForRole } from "./nav";
 
 import type { TokenCategory } from "../components/shell/SideNav";
@@ -21,7 +22,7 @@ const ROLE_PREFIX: Record<
   spacing: "space/",
   radius: "radius/",
   borders: "border-width/",
-  shadows: "shadow/",
+  effects: "shadow/",
 };
 
 const CATEGORY_TITLES: Record<TokenCategory, string> = {
@@ -30,7 +31,7 @@ const CATEGORY_TITLES: Record<TokenCategory, string> = {
   spacing: "Spacing",
   radius: "Radius",
   borders: "Borders",
-  shadows: "Shadows",
+  effects: "Effects",
 };
 
 type AddTokenPreset = { tokenType: TokenType; role?: string };
@@ -43,7 +44,7 @@ export function TokenCategory() {
   const location = useLocation();
   const focusRoleId = searchParams.get("focus") ?? undefined;
 
-  const { pool, vm, setAnchor, assign, unassign, addManual, editDerivedValue, resetDerivedValue, setAccent, setToast, undo } =
+  const { pool, vm, setAnchor, assign, unassign, addManual, editWithUndoToast, resetDerivedValue, setAccent, setToast } =
     useSession();
 
   const secondaryFill = vm.draftFills.find((f) => f.role === "color/action/secondary");
@@ -59,11 +60,12 @@ export function TokenCategory() {
     [vm.draftFills],
   );
 
-  const handleEditDerived = (role: string, token: StyleSnapToken) => {
-    editDerivedValue(role, token);
-    const label = token.type === "color" ? token.value : role.split("/").pop()?.replace(/-/g, " ") ?? role;
-    setToast(`Updated ${label} · Undo`, { undo });
-  };
+  const userAssignments = useMemo(
+    () => resolveAssignments(pool.assignments, pool.merges),
+    [pool.assignments, pool.merges],
+  );
+
+  const handleEditDerived = editWithUndoToast;
 
   const locationPreset = (location.state as { addTokenPreset?: AddTokenPreset } | null)
     ?.addTokenPreset;
@@ -104,6 +106,9 @@ export function TokenCategory() {
   if (category === "anchors" || category === "captured") {
     return <Navigate to={DEFAULT_ROUTE} replace />;
   }
+  if (category === "shadows") {
+    return <Navigate to={`/tokens/effects${location.search}`} replace />;
+  }
 
   if (!isTokenCategory(category)) return <Navigate to={DEFAULT_ROUTE} replace />;
 
@@ -123,7 +128,28 @@ export function TokenCategory() {
             Your text style anchor — then assign every type role in the system.
           </p>
         )}
-        {rolePrefix && category !== "typography" && (
+        {category === "spacing" && (
+          <p className="text-caption text-text-muted">
+            Gaps and padding between elements — preview shows how much space this value adds.
+          </p>
+        )}
+        {category === "radius" && (
+          <p className="text-caption text-text-muted">
+            Corner rounding on cards, buttons, and inputs — preview shows the curve on a square.
+          </p>
+        )}
+        {category === "borders" && (
+          <p className="text-caption text-text-muted">
+            Stroke thickness for outlines and dividers — preview shows the border on a card.
+          </p>
+        )}
+        {category === "effects" && (
+          <p className="text-caption text-text-muted">
+            Elevation and depth — drop shadows, inner shadows, and (when captured) blur and similar
+            treatments. One effect can fill several roles.
+          </p>
+        )}
+        {rolePrefix && category !== "typography" && category !== "effects" && (
           <p className="text-caption text-text-muted">
             Assign semantic roles for this category. One primitive can fill several roles.
           </p>
@@ -151,11 +177,13 @@ export function TokenCategory() {
             assignments={vm.resolvedAssignments}
             systemTokens={vm.systemTokens}
             draftFills={vm.draftFills}
+            roleDisplayTokens={vm.roleDisplayTokens}
             fills={fills}
             focusRoleId={focusRoleId}
             rolePrefix="color/"
             onAssign={assign}
             onUnassign={unassign}
+            userAssignments={userAssignments}
             onEditDerived={handleEditDerived}
             onResetDerived={resetDerivedValue}
           />
@@ -187,11 +215,13 @@ export function TokenCategory() {
             assignments={vm.resolvedAssignments}
             systemTokens={vm.systemTokens}
             draftFills={vm.draftFills}
+            roleDisplayTokens={vm.roleDisplayTokens}
             fills={fills}
             focusRoleId={focusRoleId}
             rolePrefix="type/"
             onAssign={assign}
             onUnassign={unassign}
+            userAssignments={userAssignments}
             onEditDerived={handleEditDerived}
             onResetDerived={resetDerivedValue}
           />
@@ -206,11 +236,13 @@ export function TokenCategory() {
           assignments={vm.resolvedAssignments}
           systemTokens={vm.systemTokens}
           draftFills={vm.draftFills}
+          roleDisplayTokens={vm.roleDisplayTokens}
           fills={fills}
           focusRoleId={focusRoleId}
           rolePrefix={rolePrefix}
           onAssign={assign}
           onUnassign={unassign}
+          userAssignments={userAssignments}
           onEditDerived={handleEditDerived}
           onResetDerived={resetDerivedValue}
         />
