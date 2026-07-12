@@ -1,15 +1,19 @@
 # Deploy StyleSnap to Vercel on every push to main.
 #
-# One-time setup (GitHub repo → Settings → Secrets and variables → Actions):
-#   VERCEL_TOKEN — create at https://vercel.com/account/tokens
+# One-time setup (GitHub → StyleSnap → Settings → Secrets → Actions):
+#   Repository secret named exactly: VERCEL_TOKEN
+#   Value: token from https://vercel.com/account/tokens
 #
-# Org/project IDs are public; only the token is secret.
+# If you also connected the repo in Vercel's dashboard, that's fine —
+# this workflow is the reliable path; disable duplicate deploys in Vercel
+# Git settings if both fire.
 
 name: Deploy to Vercel
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: vercel-production
@@ -18,8 +22,21 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
+      VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check VERCEL_TOKEN is set
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN repository secret is missing or empty."
+            echo "Add it at: Settings → Secrets and variables → Actions → Repository secrets"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -30,19 +47,10 @@ jobs:
         run: npm install -g vercel@55
 
       - name: Pull Vercel env
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
-          VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
-          VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
+        run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy to production
-        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: team_FFlpjNNbMP1pQAXP6fPgqe0W
-          VERCEL_PROJECT_ID: prj_phz3wzNPIIVpvsHrdOuaV2pP4WzC
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
