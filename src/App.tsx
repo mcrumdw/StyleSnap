@@ -39,7 +39,10 @@ export function App() {
               }
             />
             <Route element={<AppShell />}>
-              <Route index element={<Navigate to={DEFAULT_ROUTE} replace />} />
+              {/* No `index` here: it would shadow the explicit "/" Home route
+                  (both match "/"), and with an empty pool AppShell's
+                  !hasTokens redirect to "/" then loops into itself, rendering
+                  a blank page. Home owns "/" and does the in-session redirect. */}
               <Route path="/system" element={<Navigate to={DEFAULT_ROUTE} replace />} />
               <Route path="/export" element={<Navigate to={DEFAULT_ROUTE} replace />} />
               <Route path="/describe" element={<Describe />} />

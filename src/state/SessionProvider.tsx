@@ -46,7 +46,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const setToast = useCallback(
     (message: string, options?: { undo?: () => void }) => {
       setToastState(message);
-      setToastAction(options?.undo ? () => options.undo!() : null);
+      // Storing a FUNCTION in useState needs the updater wrap: passing the
+      // callback directly makes React treat it as a functional updater and
+      // CALL it immediately — which fired `undo()` on every toast and shoved
+      // the just-committed change into the redo stack (the "change only
+      // appears after pressing redo" bug).
+      setToastAction(() => options?.undo ?? null);
     },
     [],
   );
@@ -81,7 +86,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       await navigator.clipboard.writeText(vm.designMd);
       setToastState("design.md copied — paste it into your AI coding tool.");
     } catch {
-      setToastState("Couldn't reach the clipboard — use Download in the footer.");
+      setToastState("Couldn't reach the clipboard — use Download instead.");
     }
   }, [vm.designMd]);
 
