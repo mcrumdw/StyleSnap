@@ -5,8 +5,9 @@ import { parseStyleSnapExport } from "../contract/schema";
 import { applyMerges } from "../engine/dedup";
 import { deriveSystem } from "../engine/derive-system";
 import { editDerived, poolTokens, type TokenPool } from "./pool";
-import { emptyHistory, type HistoryState } from "./history";
+import { emptyHistory, type HistoryState, canRedoHistory, canUndoHistory } from "./history";
 import { poolReducer } from "./usePool";
+import { buildRoleDisplayTokens, type DraftFill } from "./useSessionViewModel";
 import { poolEntries } from "./workspace";
 
 function poolFromFixture(name: string): TokenPool {
@@ -155,5 +156,43 @@ describe("derivedEdits overlay", () => {
     expect(colors.draft).toBe("#A1B2C3");
     expect(colors.roleToken).toBe("#A1B2C3");
     expect(colors.system).toBe("#A1B2C3");
+  });
+
+  it("color/text/primary edit is visible via roleDisplayTokens immediately after commit", () => {
+    const role = "color/text/primary";
+    const pool = poolFromFixture("capture-ember-app.json");
+    const entries = poolEntries(pool);
+    const tokens = applyMerges(entries, pool.merges).map((e) => e.token);
+    const rawById = new Map(poolTokens(pool).map((t) => [t.id, t]));
+    const draft = deriveSystem({ tokens, rawById, assignments: new Map() });
+    const token = draft.fills.find((f) => f.role === role)!.token as ColorToken;
+
+    let state: { pool: TokenPool; history: HistoryState } = {
+      pool,
+      history: emptyHistory(),
+    };
+    state = poolReducer(state, {
+      type: "commit",
+      updater: (current) =>
+        editDerived(current, role, { ...token, value: "#112233" }, "2026-07-10T12:00:00Z"),
+      label: "edit text primary",
+      affectsMerges: false,
+    });
+
+    const colors = roleColor(state.pool, role);
+    expect(colors.system).toBe("#112233");
+    expect(canUndoHistory(state.history, false)).toBe(true);
+    expect(canRedoHistory(state.history, false)).toBe(false);
+
+    const draftFills: DraftFill[] = draft.fills.map((fill) => {
+      const edit = state.pool.derivedEdits?.[fill.role];
+      if (edit) {
+        return { ...fill, token: edit.token, origin: "edited" as const };
+      }
+      const synthetic = fill.token.id.startsWith("derived_");
+      return { ...fill, origin: synthetic ? ("derived" as const) : ("captured" as const) };
+    });
+    const display = buildRoleDisplayTokens(draftFills, state.pool.derivedEdits);
+    expect(display.get(role)?.value).toBe("#112233");
   });
 });

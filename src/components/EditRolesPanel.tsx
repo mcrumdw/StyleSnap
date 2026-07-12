@@ -7,8 +7,9 @@ import {
   TYPE_ROLES,
   type RoleDefinition,
 } from "../engine/roles";
-import { formatValue } from "../state/workspace";
+import { buildPreviewContext } from "../state/token-display";
 import type { FillInfo } from "../state/useSessionViewModel";
+import { formatValue } from "../state/workspace";
 import { RoleFilledRow } from "./RoleValueEditor";
 import { RoleChip } from "./RoleChip";
 
@@ -117,23 +118,6 @@ function PrimitiveThumb({ token }: { token: StyleSnapToken }) {
         </span>
       );
   }
-}
-
-function Swatch({ token, size = "h-8 w-8" }: { token: StyleSnapToken; size?: string }) {
-  if (token.type !== "color") return <PrimitiveThumb token={token} />;
-  return (
-    <span className={`${size} shrink-0 overflow-hidden rounded-sm border-2 border-border-default`}>
-      <span
-        className="block h-full w-full"
-        style={
-          token.opacity < 1
-            ? { ...CHECKERBOARD, backgroundColor: token.value, opacity: token.opacity }
-            : { backgroundColor: token.value, opacity: token.opacity }
-        }
-        aria-hidden
-      />
-    </span>
-  );
 }
 
 const nameOf = (token: StyleSnapToken) => token.name ?? fallbackName(token);
@@ -314,10 +298,14 @@ interface EditRolesPanelProps {
   /** role → top suggested token id */
   /** role → display token (draftFills overlay — includes derivedEdits). */
   roleTokens?: Map<string, StyleSnapToken>;
+  /** role → display token; derivedEdits always win (preferred for filled rows). */
+  roleDisplayTokens?: Map<string, StyleSnapToken>;
   suggestedByRole: Map<string, string>;
   holderLabel: (role: string) => string | undefined;
   onAssign: (role: string, tokenId: string) => void;
   onUnassign: (role: string) => void;
+  /** Roles explicitly assigned by the user — derived auto-fills are not removable. */
+  userAssignments?: Record<string, string>;
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
   focusRoleId?: string;
@@ -334,10 +322,12 @@ export function EditRolesPanel({
   assignments,
   fills = {},
   roleTokens,
+  roleDisplayTokens,
   suggestedByRole,
   holderLabel,
   onAssign,
   onUnassign,
+  userAssignments,
   onEditDerived,
   onResetDerived,
   focusRoleId,
@@ -347,18 +337,28 @@ export function EditRolesPanel({
 
   const roleEntries = useMemo(() => {
     const map = new Map<string, StyleSnapToken>();
+    const display = roleDisplayTokens ?? roleTokens;
+    if (display) {
+      for (const [role, token] of display) {
+        map.set(role, token);
+      }
+    }
     for (const [role, id] of Object.entries(assignments)) {
-      const token = roleTokens?.get(role) ?? byId.get(id);
+      if (map.has(role)) continue;
+      const token = byId.get(id);
       if (token) map.set(role, token);
     }
     return map;
-  }, [assignments, byId, roleTokens]);
+  }, [assignments, byId, roleDisplayTokens, roleTokens]);
+
+  const previewContext = useMemo(() => buildPreviewContext(roleEntries), [roleEntries]);
 
   const rowId = (role: string) => `role-${role.replace(/\//g, "-")}`;
 
   const filledRow = (role: string, token: StyleSnapToken) => {
     const fillInfo = fills[role];
     const anchorToken = fillInfo?.derivedFrom ? byId.get(fillInfo.derivedFrom) : undefined;
+    const canUnassign = Boolean(userAssignments && role in userAssignments);
     return (
       <RoleFilledRow
         key={role}
@@ -369,12 +369,11 @@ export function EditRolesPanel({
         anchorToken={anchorToken}
         focusRoleId={focusRoleId}
         rowId={rowId(role)}
-        swatch={<Swatch token={token} />}
         name={nameOf(token)}
-        valueLabel={formatValue(token)}
-        onUnassign={() => onUnassign(role)}
+        onUnassign={canUnassign ? () => onUnassign(role) : undefined}
         onEditDerived={onEditDerived}
         onResetDerived={onResetDerived}
+        previewContext={previewContext}
       />
     );
   };
@@ -485,7 +484,7 @@ export function EditRolesPanel({
       {show("space/") && foundationSection("Spacing", "space/")}
       {show("radius/") && foundationSection("Radius", "radius/")}
       {show("border-width/") && foundationSection("Border width", "border-width/")}
-      {show("shadow/") && foundationSection("Shadow", "shadow/")}
+      {show("shadow/") && foundationSection("Effects", "shadow/")}
     </section>
   );
 }

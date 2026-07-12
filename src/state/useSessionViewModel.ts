@@ -37,6 +37,21 @@ export interface DraftFill {
   method: string;
 }
 
+/** Filled-row tokens — pool.derivedEdits always override draft fills. */
+export function buildRoleDisplayTokens(
+  draftFills: DraftFill[],
+  derivedEdits?: TokenPool["derivedEdits"],
+): Map<string, StyleSnapToken> {
+  const map = new Map<string, StyleSnapToken>();
+  for (const fill of draftFills) {
+    map.set(fill.role, fill.token);
+  }
+  for (const [role, entry] of Object.entries(derivedEdits ?? {})) {
+    map.set(role, entry.token);
+  }
+  return map;
+}
+
 /** Shared session state derived from the pool — one source for the whole page. */
 export function useSessionViewModel(pool: TokenPool) {
   const projectName = pool.projectName ?? defaultProjectName(pool);
@@ -97,6 +112,12 @@ export function useSessionViewModel(pool: TokenPool) {
     return fills;
   }, [draft, pool.derivedEdits]);
 
+  /** Filled-row display tokens — derivedEdits always win over derivation (DECISIONS §2.8). */
+  const roleDisplayTokens = useMemo(
+    () => buildRoleDisplayTokens(draftFills, pool.derivedEdits),
+    [draftFills, pool.derivedEdits],
+  );
+
   const anchors: Anchors = draft.anchors;
   const accent: AccentSuggestion | null = pool.accentChoice?.dismissed ? null : draft.accent;
 
@@ -117,6 +138,10 @@ export function useSessionViewModel(pool: TokenPool) {
         });
       }
     }
+    // Belt-and-suspenders: edits on captured ids must replace the merged view token.
+    for (const entry of Object.values(pool.derivedEdits ?? {})) {
+      tokenById.set(entry.token.id, entry.token);
+    }
 
     const tokens: StyleSnapToken[] = [];
     const seen = new Set<string>();
@@ -132,7 +157,7 @@ export function useSessionViewModel(pool: TokenPool) {
     }
 
     return { assignments, derived, tokens };
-  }, [view, draftFills]);
+  }, [view, draftFills, pool.derivedEdits]);
 
   const exportInput = useMemo((): ExportInput => {
     const raw = poolTokens(pool);
@@ -213,6 +238,7 @@ export function useSessionViewModel(pool: TokenPool) {
     gapCount,
     systemTokens,
     draftFills,
+    roleDisplayTokens,
     anchors,
     accent,
     summary,

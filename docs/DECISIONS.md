@@ -141,9 +141,10 @@ base spacing), merges and un-merges.
 filters, project-name typing, role assignment (Phase B backlog).
 
 **Limits & UX:** cap **50 steps**; standard undo + redo stacks (new action clears
-redo); `⌘Z` / `⌘⇧Z` when not in a text field; Undo/Redo in the bottom bar with
-descriptive tooltips; toasts on color save and merge offer a one-click Undo that
-calls the same stack. **Reset to derived** stays as a semantic shortcut.
+redo); `⌘Z` / `⌘⇧Z` when not in a text field; Undo/Redo controls appear only
+when available (§2.20 — desktop top-right, mobile bottom corners); toasts on
+color save and merge offer a one-click Undo that calls the same stack. **Reset
+to derived** stays as a semantic shortcut.
 
 **Create System gate:** after finalize (FR-23), merge-related history entries are
 skipped on undo/redo — color and anchor edits remain reversible until export.
@@ -188,14 +189,13 @@ the 4-step stepper (dropped in Phase 10d).
 ### 2.13 Responsive session shell + single chrome bar
 Decided 2026-07-12. **No duplicate header on session routes:** the global
 sticky header (logo only) appears on the landing page only; inside the shell,
-the wordmark lives in `SessionNav` (top on mobile, left rail on desktop) and
-actions stay in the sticky **footer** — not both header and footer on session
-pages.
+the wordmark lives in `SessionNav` (top on mobile, left rail on desktop). Export
+and undo/redo placement per **§2.20**; footer holds Create System only.
 
 **Breakpoints (Tailwind defaults):** `sm` 640px · `md` 768px · `lg` 1024px.
-- **&lt; lg:** horizontal scroll tab bar (Description + categories); footer
-  actions wrap to two rows; shorter button labels ("Copy", "JSON").
-- **≥ lg:** vertical left rail unchanged; footer single row.
+- **&lt; lg:** see **§2.20** (logo + Share header, swipeable `NavTitleWheel`).
+- **≥ lg:** vertical left rail + rail-bottom share links; undo/redo top-right
+  when active (§2.20).
 
 **Readable on small screens:** page titles scale `section-header` →
 `page-title` at `sm`; content padding `px-4` → `px-6`; anchor cards and gap
@@ -342,6 +342,69 @@ marker string `Continue to colors`. Fails the job if alias drift recurs.
 on `main`), or promote the latest successful Actions deployment in the Vercel
 dashboard.
 
+### 2.19 Effects page + human-readable role previews
+Decided 2026-07-12 (user testing — raw shadow strings like `0 12 24 -4 #292524 @ 8%`
+were opaque; tiny thumbs on spacing/radius/border rows were unclear).
+
+**Nav rename:** session tab **Shadows** → **Effects** (`/tokens/effects`). Role ids
+stay `shadow/*` (Appendix B taxonomy unchanged). `/tokens/shadows` redirects. Page
+copy acknowledges future capture types (backdrop blur, etc.) — `types.ts` v2.0 still
+only models `shadow` today; blur remains Phase 3 manual-add per §2.14.
+
+**Role row layout:** filled semantic rows use `RoleTokenPreview` — a fixed preview
+panel (card casting real `box-shadow`, spaced blocks, rounded square, border frame)
+plus `humanValueLabel()` plain-language subtitle. Raw `formatValue()` stays in
+search/export; hover `title` on the panel for experts.
+
+**Captured design only (important):** preview strips decorate with **assigned roles
+from the current draft** (`buildPreviewContext()` in `token-display.ts`) — e.g.
+`color/surface/card` for tile fills, `color/surface/page` for strip backdrops,
+`color/action/primary` for spacing bars, `color/border/default` for border-width
+frames, `radius/md` for incidental corner rounding on non-radius rows. They must
+**never** use StyleSnap app chrome (`shadow-card`, `bg-surface-card`,
+`bg-brand-primary`, `text-text-primary`, etc.) — that would show the tool's UI
+skin instead of the imported capture. When a decorating role is still empty,
+neutral preview-only fallbacks apply (not DESIGN.md tokens). The **row chrome**
+(outer card border, nav) stays app-styled; only the left preview strip is
+capture-faithful. Strips are **flush to the row's left edge** with no separate
+`rounded-l-*` — the row's `overflow-hidden rounded-md` clips corners so captured
+backdrop fills the arc (no white wedges).
+
+**Key files:** `src/components/RoleTokenPreview.tsx`, `src/state/token-display.ts`,
+`src/components/RoleValueEditor.tsx` (`RoleFilledRow`).
+
+### 2.20 Share destinations + mobile session chrome (third shell pass)
+Decided 2026-07-12 (mobile nav consumed ~half the viewport; export actions were
+scattered across the footer).
+
+**Share (replaces footer Copy / Download / Save JSON):**
+- **Share with agent** — `design.md` for AI coding tools (Copy or Download modal).
+- **Share with Figma** — cleaned token JSON for the Figma plugin / Tokens Studio
+  (native Variables export remains V3 per PRD).
+- **Desktop:** both links at the bottom of the left rail (`ShareNavSection`).
+- **Mobile:** single **Share** button (header right) → picker → same modals.
+- Completeness gate (§2.9) unchanged — incomplete description still blocks export.
+
+**Footer:** **Create System** (+ completeness hint) only while the system is not
+finalized; footer hidden when export-ready and created. No export buttons in footer.
+
+**Undo/redo (supersedes §2.8 bottom-bar placement):** controls **hidden until
+active** (`canUndo` / `canRedo`). Desktop: top-right (`UndoRedoToolbar`). Mobile:
+floating **Undo** bottom-left, **Redo** bottom-right (`FloatingUndoRedo`). Keyboard
+shortcuts unchanged.
+
+**Mobile nav (&lt; lg):** sticky two-row header — (1) wordmark left, Share right;
+(2) **`NavTitleWheel`** — horizontal scroll-snap carousel; active section title
+stays centered; swipe changes route. Replaces the interim stacked tabs + stacked
+share rows.
+
+**Role-row display fix:** `buildRoleDisplayTokens()` ensures `derivedEdits` appear
+on filled rows immediately after save (pool + UI stay in sync; undo shows after
+edit, not redo).
+
+**Key files:** `ShareMenuButton.tsx`, `ShareExportModal.tsx`, `NavTitleWheel.tsx`,
+`FloatingUndoRedo.tsx`, `SessionNav.tsx`, `BottomBar.tsx`, `useSessionViewModel.ts`.
+
 ---
 
 ### 2.12 Simplified session shell (second pass)
@@ -352,13 +415,13 @@ Anchors (`/tokens/anchors` — merged into **Colors**), and the footer status
 link ("N auto-filled · M gaps").
 
 **Left rail now:** **Description** (`/describe`, renamed from "Describe") +
-six token categories (Colors … Shadows). Colors shows brand-color anchor then
+six token categories (Colors … Effects). Colors shows brand-color anchor then
 color roles; Typography shows text-style anchor then type roles; default route
 is `/tokens/colors`.
 
-**Footer now:** Undo/Redo · Create System (pre-finalize) · Copy design.md ·
-Download design.md · Save JSON — all export actions consolidated here; the
-completeness gate (§2.9) unchanged.
+**Footer now (superseded by §2.20):** was Undo/Redo · Create System · Copy/
+Download design.md · Save JSON. **Current:** Create System only (+ completeness
+hint); share actions in left rail / mobile Share; undo/redo when active per §2.20.
 
 **Migrated from the old Overview page:** project name + import another /
 Start over → **Description**; gap panel → bottom of **Colors**; welcome toast
@@ -454,6 +517,8 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-12 | **Share + mobile chrome** (§2.20): Share with agent / Share with Figma modals; footer slimmed to Create System; mobile `NavTitleWheel` + header Share; undo/redo when-active (desktop top-right, mobile bottom corners); `roleDisplayTokens` immediate edit display. | — |
+| 2026-07-12 | **Effects page + role previews** (§2.19): Shadows → Effects nav; human shadow/spacing/radius/border labels; `RoleTokenPreview` panel on filled rows; **preview strips use captured roles only** (`buildPreviewContext`), not app chrome. | — |
 | 2026-07-12 | **Production deploy single-path** (§2.18): disable duplicate Vercel Git production deploys; post-deploy bundle verification in `deploy.yml`; manual `workflow_dispatch` recovery documented. | — |
 | 2026-07-12 | **Description-first style bias** (§2.17, branch `makram2`): mood family → type ratio, harmony, radius scale, shadow style; import routes to Description; `styleFamily` in draft. | — |
 | 2026-07-12 | **Secondary harmony swap** (§2.16): Secondary Swap → color-theory picker (`harmonyFromPrimary`) + fine-tune hex + capture revert; explicit harmony overrides auto-detected secondary anchor; full-width color-family swatches; anchor/preview info text → hover tooltips. | — |

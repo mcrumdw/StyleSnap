@@ -6,7 +6,7 @@ export const TOKEN_CATEGORIES = [
   { id: "spacing", label: "Spacing" },
   { id: "radius", label: "Radius" },
   { id: "borders", label: "Borders" },
-  { id: "shadows", label: "Shadows" },
+  { id: "effects", label: "Effects" },
 ] as const;
 
 export type TokenCategory = (typeof TOKEN_CATEGORIES)[number]["id"];

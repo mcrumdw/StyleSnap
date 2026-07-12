@@ -9,6 +9,8 @@ import {
 } from "../engine/derive-system/color";
 import { fallbackName } from "../engine/roles";
 import { isNeutral } from "../engine/derive-system/oklch";
+import { humanValueLabel } from "../state/token-display";
+import { RoleTokenPreview } from "./RoleTokenPreview";
 import { Button } from "./Button";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -111,25 +113,66 @@ function ColorFamilyPreview({
 }
 
 function ColorAnchorCard({
-  summary,
+  anchorRole,
+  token,
+  humanLabel,
+  detailLine,
+  tip,
   open,
   onToggle,
   picker,
 }: {
-  summary: React.ReactNode;
+  anchorRole: string;
+  token?: StyleSnapToken & { type: "color"; value: string };
+  humanLabel: string;
+  detailLine?: string;
+  tip?: string;
   open: boolean;
   onToggle: () => void;
   picker: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">{summary}</div>
-        <Button size="sm" variant="secondary" onClick={onToggle} aria-expanded={open}>
-          {open ? "Done" : "Swap"}
-        </Button>
+    <div className="relative flex w-full min-w-0 flex-col gap-3">
+      <div className="box-content flex h-[5.5rem] w-full min-w-0 items-stretch overflow-hidden rounded-md border-2 border-border-default bg-surface-card shadow-card">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex h-full min-w-0 flex-1 items-stretch text-left hover:opacity-95"
+          aria-expanded={open}
+          title={tip}
+        >
+          {token ? (
+            <RoleTokenPreview token={token} role={anchorRole} />
+          ) : (
+            <div
+              className="flex h-full w-[5.5rem] shrink-0 self-stretch border-r-2 border-border-default bg-surface-page"
+              aria-hidden
+            />
+          )}
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2">
+            <span className="truncate font-mono text-caption font-medium text-brand-primary">{anchorRole}</span>
+            <span className="line-clamp-2 text-caption text-text-primary">{humanLabel}</span>
+            {detailLine && (
+              <span className="truncate font-mono text-badge text-text-muted" title={detailLine}>
+                {detailLine}
+              </span>
+            )}
+          </div>
+        </button>
+        <div className="flex h-full shrink-0 items-center border-l-2 border-border-default px-3 sm:px-4">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="whitespace-nowrap font-mono text-caption text-text-muted underline-offset-2 hover:text-brand-primary hover:underline"
+            aria-expanded={open}
+          >
+            {open ? "Done" : "Swap"}
+          </button>
+        </div>
       </div>
-      {open && picker}
+      {open && (
+        <div className="rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">{picker}</div>
+      )}
     </div>
   );
 }
@@ -346,82 +389,38 @@ export function AnchorsStep({
 
   return (
     <section className="flex w-full flex-col gap-8">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         <ColorAnchorCard
+          anchorRole="anchor/primary"
+          token={primary?.type === "color" ? primary : undefined}
+          humanLabel={
+            primary?.type === "color"
+              ? humanValueLabel(primary)
+              : "No color captured yet."
+          }
+          detailLine={
+            primary?.type === "color" ? `${nameOf(primary)} · ${primary.value}` : undefined
+          }
+          tip={PRIMARY_ANCHOR_TIP}
           open={open === "primary"}
           onToggle={() => setOpen(open === "primary" ? null : "primary")}
-          summary={
-            primary && primary.type === "color" ? (
-              <>
-                <span
-                  className="h-10 w-10 shrink-0 rounded-sm border-2 border-border-default"
-                  style={{ backgroundColor: primary.value }}
-                  title={`${nameOf(primary)} · ${primary.value} — ${PRIMARY_ANCHOR_TIP}`}
-                  aria-hidden
-                />
-                <span className="flex min-w-0 flex-col">
-                  <span
-                    className="font-heading text-card-title font-medium"
-                    title={PRIMARY_ANCHOR_TIP}
-                  >
-                    Primary
-                  </span>
-                  <span
-                    className="truncate font-mono text-caption text-text-muted"
-                    title={`${nameOf(primary)} · ${primary.value} — ${PRIMARY_ANCHOR_TIP}`}
-                  >
-                    {nameOf(primary)} · {primary.value}
-                  </span>
-                </span>
-              </>
-            ) : (
-              <span className="text-caption text-text-muted">No color captured yet.</span>
-            )
-          }
           picker={<div className="flex flex-wrap gap-2">{primaryPicker}</div>}
         />
 
         <ColorAnchorCard
+          anchorRole="anchor/secondary"
+          token={secondaryDisplay?.type === "color" ? secondaryDisplay : undefined}
+          humanLabel={
+            secondaryDisplay?.type === "color"
+              ? humanValueLabel(secondaryDisplay)
+              : primary
+                ? "Pick a harmony from primary."
+                : "Set primary first."
+          }
+          detailLine={secondarySummaryLabel ?? undefined}
+          tip={SECONDARY_ANCHOR_TIP}
           open={open === "secondary"}
           onToggle={() => setOpen(open === "secondary" ? null : "secondary")}
-          summary={
-            secondaryDisplay && secondaryDisplay.type === "color" ? (
-              <>
-                <span
-                  className="h-10 w-10 shrink-0 rounded-sm border-2 border-border-default"
-                  style={{ backgroundColor: secondaryDisplay.value }}
-                  title={`${secondarySummaryLabel} — ${SECONDARY_ANCHOR_TIP}`}
-                  aria-hidden
-                />
-                <span className="flex min-w-0 flex-col">
-                  <span
-                    className="font-heading text-card-title font-medium"
-                    title={SECONDARY_ANCHOR_TIP}
-                  >
-                    Secondary
-                  </span>
-                  <span
-                    className="truncate font-mono text-caption text-text-muted"
-                    title={`${secondarySummaryLabel} — ${SECONDARY_ANCHOR_TIP}`}
-                  >
-                    {secondarySummaryLabel}
-                  </span>
-                </span>
-              </>
-            ) : (
-              <span className="flex flex-col">
-                <span
-                  className="font-heading text-card-title font-medium"
-                  title={SECONDARY_ANCHOR_TIP}
-                >
-                  Secondary
-                </span>
-                <span className="text-caption text-text-muted">
-                  {primary ? "Pick a harmony from primary." : "Set primary first."}
-                </span>
-              </span>
-            )
-          }
           picker={
             primary && primary.type === "color" ? (
               <SecondaryHarmonyPicker

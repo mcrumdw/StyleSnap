@@ -8,7 +8,7 @@ export function routeForRole(role: string): string {
   if (role.startsWith("space/")) return `/tokens/spacing${focus}`;
   if (role.startsWith("radius/")) return `/tokens/radius${focus}`;
   if (role.startsWith("border-width/")) return `/tokens/borders${focus}`;
-  if (role.startsWith("shadow/")) return `/tokens/shadows${focus}`;
+  if (role.startsWith("shadow/")) return `/tokens/effects${focus}`;
   return `/tokens/colors`;
 }
 
@@ -27,7 +27,7 @@ export function routeForAddToken(preset: {
     spacing: "/tokens/spacing",
     "border-radius": "/tokens/radius",
     "border-width": "/tokens/borders",
-    shadow: "/tokens/shadows",
+    shadow: "/tokens/effects",
   };
   return {
     pathname: byType[preset.tokenType] ?? "/tokens/colors",

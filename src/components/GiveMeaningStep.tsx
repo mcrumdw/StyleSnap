@@ -17,6 +17,8 @@ interface GiveMeaningStepProps {
   systemTokens: StyleSnapToken[];
   /** Draft fills with derivedEdits overlay — source of truth for row display. */
   draftFills?: Array<{ role: string; token: StyleSnapToken }>;
+  /** role → token for filled rows (derivedEdits always win). */
+  roleDisplayTokens?: Map<string, StyleSnapToken>;
   /** role → fill provenance for value editing. */
   fills?: Record<string, FillInfo>;
   focusRoleId?: string;
@@ -24,6 +26,8 @@ interface GiveMeaningStepProps {
   rolePrefix?: "color/" | "type/" | "space/" | "radius/" | "border-width/" | "shadow/";
   onAssign: (role: string, tokenId: string) => void;
   onUnassign: (role: string) => void;
+  /** Roles the user explicitly assigned (pool.assignments) — only these are removable. */
+  userAssignments?: Record<string, string>;
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
 }
@@ -36,11 +40,13 @@ export function GiveMeaningStep({
   assignments,
   systemTokens,
   draftFills = [],
+  roleDisplayTokens,
   fills,
   focusRoleId,
   rolePrefix,
   onAssign,
   onUnassign,
+  userAssignments,
   onEditDerived,
   onResetDerived,
 }: GiveMeaningStepProps) {
@@ -97,11 +103,13 @@ export function GiveMeaningStep({
         tokens={systemTokens}
         assignments={resolved}
         roleTokens={roleTokens}
+        roleDisplayTokens={roleDisplayTokens}
         fills={fills}
         suggestedByRole={suggestedByRole}
         holderLabel={holderLabel}
         onAssign={onAssign}
         onUnassign={onUnassign}
+        userAssignments={userAssignments}
         onEditDerived={onEditDerived}
         onResetDerived={onResetDerived}
         focusRoleId={focusRoleId}

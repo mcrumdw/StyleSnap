@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import { fallbackName } from "../engine/roles";
 import type { FillInfo, FillOrigin } from "../state/useSessionViewModel";
+import { humanValueLabel, type TokenPreviewContext } from "../state/token-display";
 import { Button } from "./Button";
-import { RoleChip } from "./RoleChip";
+import { RoleTokenPreview } from "./RoleTokenPreview";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -165,7 +166,7 @@ export function RoleValueEditor({
                 Pick
               </Button>
             )}
-            <Button size="sm" disabled={!HEX_RE.test(editHex)} onClick={saveColor}>
+            <Button type="button" size="sm" disabled={!HEX_RE.test(editHex)} onClick={saveColor}>
               Save
             </Button>
           </div>
@@ -186,6 +187,7 @@ export function RoleValueEditor({
               />
               <span className="font-mono text-caption text-text-muted">px</span>
               <Button
+                type="button"
                 size="sm"
                 disabled={!Number.isFinite(Number(editNumber)) || Number(editNumber) < 0}
                 onClick={saveNumber}
@@ -209,6 +211,7 @@ export function RoleValueEditor({
             />
             <span className="font-mono text-caption text-text-muted">px</span>
             <Button
+              type="button"
               size="sm"
               disabled={!Number.isFinite(Number(editFontSize)) || Number(editFontSize) <= 0}
               onClick={saveFontSize}
@@ -236,12 +239,11 @@ interface RoleFilledRowProps {
   anchorToken?: StyleSnapToken;
   focusRoleId?: string;
   rowId: string;
-  swatch: React.ReactNode;
   name: string;
-  valueLabel: string;
-  onUnassign: () => void;
+  onUnassign?: () => void;
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
+  previewContext: TokenPreviewContext;
 }
 
 export function RoleFilledRow({
@@ -252,12 +254,11 @@ export function RoleFilledRow({
   anchorToken,
   focusRoleId,
   rowId,
-  swatch,
   name,
-  valueLabel,
   onUnassign,
   onEditDerived,
   onResetDerived,
+  previewContext,
 }: RoleFilledRowProps) {
   const [open, setOpen] = useState(false);
   const origin = fillInfo?.origin ?? (token.id.startsWith("derived_") ? "derived" : "assigned");
@@ -270,25 +271,25 @@ export function RoleFilledRow({
         focusRoleId === role ? "rounded-md ring-2 ring-brand-primary ring-offset-2" : ""
       }`}
     >
-      <div className="flex items-center gap-3 rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
+      <div className="box-content flex h-[5.5rem] items-stretch overflow-hidden rounded-md border-2 border-border-default bg-surface-card shadow-card">
         <button
           type="button"
           disabled={!canOpen}
           onClick={() => canOpen && setOpen((o) => !o)}
-          className={`flex min-w-0 flex-1 items-center gap-3 text-left ${
-            canOpen ? "cursor-pointer hover:opacity-90" : "cursor-default"
+          className={`flex h-full min-w-0 flex-1 items-stretch text-left ${
+            canOpen ? "cursor-pointer hover:opacity-95" : "cursor-default"
           }`}
           aria-expanded={open}
           aria-label={canOpen ? `Edit ${role}` : role}
         >
-          {swatch}
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <RoleTokenPreview token={token} role={role} preview={previewContext} />
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2">
             <span className="truncate font-mono text-caption font-medium text-brand-primary">{role}</span>
-            <span className="truncate font-mono text-caption text-text-primary">{name}</span>
-            <span className="truncate font-mono text-badge text-text-muted">{valueLabel}</span>
+            <span className="line-clamp-2 text-caption text-text-primary">{humanValueLabel(token, role)}</span>
+            <span className="truncate font-mono text-badge text-text-muted">{name}</span>
           </div>
         </button>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 self-center px-4">
           {origin === "derived" && (
             <span className="rounded-sm border border-border-default bg-surface-page px-1.5 py-0.5 font-mono text-badge text-text-muted">
               auto
@@ -301,7 +302,19 @@ export function RoleFilledRow({
               aria-label="edited by you"
             />
           )}
-          <RoleChip role={role} confirmed onRemove={onUnassign} />
+          {onUnassign && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnassign();
+              }}
+              aria-label={`Remove role ${role}`}
+              className="rounded-sm border-2 border-border-default px-1.5 py-0.5 font-mono text-caption leading-none text-text-muted hover:border-brand-primary hover:text-brand-primary"
+            >
+              ×
+            </button>
+          )}
         </div>
       </div>
       <RoleValueEditor

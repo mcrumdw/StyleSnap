@@ -1,5 +1,8 @@
 import { Link, NavLink } from "react-router-dom";
 import { Wordmark } from "../Wordmark";
+import { NavTitleWheel } from "./NavTitleWheel";
+import { ShareMenuButton } from "./ShareMenuButton";
+import { ShareNavSection } from "./ShareNavSection";
 import { TOKEN_CATEGORIES, type TokenCategory } from "./SideNav";
 
 const railLink = (isActive: boolean) =>
@@ -9,60 +12,36 @@ const railLink = (isActive: boolean) =>
       : "border-transparent text-text-muted hover:border-border-default hover:text-text-primary"
   }`;
 
-const tabLink = (isActive: boolean) =>
-  `shrink-0 rounded-sm border-2 px-3 py-2 font-heading text-caption font-bold whitespace-nowrap ${
-    isActive
-      ? "border-border-default bg-surface-card text-text-primary shadow-card"
-      : "border-transparent text-text-muted"
-  }`;
+interface MobileSessionNavProps {
+  notesFilled: number;
+  notesTotal: number;
+}
 
-interface SessionNavProps {
+interface DesktopSessionRailProps {
   hints?: Partial<Record<TokenCategory, string>>;
   notesFilled: number;
   notesTotal: number;
 }
 
-/** Phone / tablet: wordmark + horizontally scrollable section tabs. */
-export function MobileSessionNav({ hints, notesFilled, notesTotal }: SessionNavProps) {
+/** Phone / tablet: logo + share, then swipeable section title wheel. */
+export function MobileSessionNav({ notesFilled, notesTotal }: MobileSessionNavProps) {
   return (
-    <div className="flex flex-col gap-3 border-b-2 border-border-default px-4 py-3 lg:hidden">
-      <Link to="/" aria-label="StyleSnap home" className="w-fit">
-        <Wordmark />
-      </Link>
-      <nav aria-label="Session" className="-mx-1 overflow-x-auto scrollbar-none">
-        <div className="flex min-w-max gap-2 px-1 pb-1">
-          <NavLink to="/describe" className={({ isActive }) => tabLink(isActive)}>
-            Description
-            {notesFilled < notesTotal && (
-              <span className="ml-1 font-mono text-badge font-normal text-warning-text">
-                {notesFilled}/{notesTotal}
-              </span>
-            )}
-          </NavLink>
-          {TOKEN_CATEGORIES.map(({ id, label }) => (
-            <NavLink
-              key={id}
-              to={`/tokens/${id}`}
-              className={({ isActive }) => tabLink(isActive)}
-            >
-              {label}
-              {hints?.[id] && (
-                <span className="ml-1 font-mono text-badge font-normal text-text-muted">
-                  {hints[id]}
-                </span>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
-    </div>
+    <header className="sticky top-0 z-sticky bg-surface-page lg:hidden">
+      <div className="flex items-center justify-between gap-3 border-b-2 border-border-default px-4 py-3">
+        <Link to="/" aria-label="StyleSnap home" className="min-w-0 shrink">
+          <Wordmark />
+        </Link>
+        <ShareMenuButton />
+      </div>
+      <NavTitleWheel notesFilled={notesFilled} notesTotal={notesTotal} />
+    </header>
   );
 }
 
-/** Desktop: vertical left rail with wordmark. */
-export function DesktopSessionRail({ hints, notesFilled, notesTotal }: SessionNavProps) {
+/** Desktop: vertical left rail with wordmark + share. */
+export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSessionRailProps) {
   return (
-    <aside className="hidden w-44 shrink-0 flex-col gap-4 lg:flex">
+    <aside className="hidden w-44 shrink-0 flex-col gap-4 self-stretch lg:flex">
       <Link to="/" aria-label="StyleSnap home" className="px-1">
         <Wordmark />
       </Link>
@@ -96,6 +75,7 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: SessionNa
           </NavLink>
         ))}
       </nav>
+      <ShareNavSection className="mt-auto border-t-2 border-border-default pt-4" />
     </aside>
   );
 }

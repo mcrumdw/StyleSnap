@@ -54,7 +54,7 @@ const MERGE_NOUNS: Record<TokenType, string> = {
   spacing: "spacing values",
   "border-radius": "radii",
   "border-width": "border widths",
-  shadow: "shadows",
+  shadow: "effects",
 };
 
 interface CleanupStepProps {

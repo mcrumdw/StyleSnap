@@ -69,9 +69,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       editDerivedValue(role, token);
       const label =
         token.type === "color" ? token.value : role.split("/").pop()?.replace(/-/g, " ") ?? role;
-      setToast(`Updated ${label} · Undo`, { undo });
+      setToast(`Updated ${label}`);
     },
-    [editDerivedValue, setToast, undo],
+    [editDerivedValue, setToast],
   );
 
   useEffect(() => {
@@ -216,7 +216,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             setToastState(null);
             setToastAction(null);
           }}
-          action={toastAction ? { label: "Undo", onClick: toastAction } : undefined}
+          action={
+            toastAction && !canUndo
+              ? { label: "Undo", onClick: toastAction }
+              : undefined
+          }
         />
       )}
     </SessionContext.Provider>

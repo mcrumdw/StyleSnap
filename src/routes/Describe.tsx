@@ -22,7 +22,6 @@ export function Describe() {
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
       <header className="flex flex-col gap-2">
-        <h1 className="font-heading text-section-header font-bold sm:text-page-title">Description</h1>
         <p className="text-caption text-text-muted">
           Set the vibe first — your picks tune auto-filled type scale, secondary harmony, radius, and
           shadows. Captured values stay yours; only derived gaps feel the style. Edit anytime; notes
