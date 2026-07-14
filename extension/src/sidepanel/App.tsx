@@ -1,15 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import type {
-  PickerMessage,
-  CapturedElement,
-  ElementRole,
-  StyleSnapExport,
-} from "../shared/types";
-import { ElementList } from "./ElementList";
+import type { PickerMessage, Capture, StyleSnapExport } from "../shared/types";
+import { CaptureList } from "./CaptureList";
 
 export function App() {
   const [active, setActive] = useState(false);
-  const [elements, setElements] = useState<CapturedElement[]>([]);
+  const [captures, setCaptures] = useState<Capture[]>([]);
   const [pageUrl, setPageUrl] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
 
@@ -17,7 +12,7 @@ export function App() {
   useEffect(() => {
     const handler = (msg: PickerMessage) => {
       if (msg.kind === "picker/captured") {
-        setElements((prev) => [...prev, msg.element]);
+        setCaptures((prev) => [...prev, msg.capture]);
         setPageUrl(msg.pageUrl);
       } else if (msg.kind === "picker/state") {
         setActive(msg.active);
@@ -29,7 +24,7 @@ export function App() {
 
   const flash = (text: string) => {
     setToast(text);
-    setTimeout(() => setToast(null), 2200);
+    setTimeout(() => setToast(null), 2600);
   };
 
   const togglePick = useCallback(async () => {
@@ -46,17 +41,13 @@ export function App() {
     }
   }, [active]);
 
-  const removeElement = (id: string) =>
-    setElements((prev) => prev.filter((el) => el.id !== id));
+  const removeCapture = (captureId: string) =>
+    setCaptures((prev) => prev.filter((c) => c.captureId !== captureId));
 
-  const setRole = (id: string, role: ElementRole) =>
-    setElements((prev) =>
-      prev.map((el) => (el.id === id ? { ...el, role } : el))
-    );
+  const clearAll = () => setCaptures([]);
 
-  const clearAll = () => setElements([]);
-
-  const tokenCount = elements.reduce((n, el) => n + el.tokens.length, 0);
+  const tokens = captures.flatMap((c) => c.tokens);
+  const tokenCount = tokens.length;
 
   const copy = async () => {
     const payload: StyleSnapExport = {
@@ -64,12 +55,24 @@ export function App() {
         source: "browser-extension",
         exportedAt: new Date().toISOString(),
         pageUrl: pageUrl || undefined,
-        version: "1.0",
+        version: "2.0",
       },
-      elements,
+      tokens,
     };
+
+    // Light structural guard. The Webtool is the validating authority — it runs
+    // the full zod schema on import (docs/schema.ts, PRD FR-2) — so we only sanity
+    // check here to fail loudly on an obviously broken export.
+    const invalid = payload.tokens.find(
+      (t) => !t.id || !t.captureId || !t.type
+    );
+    if (payload.tokens.length === 0 || invalid) {
+      flash("Nothing valid to export");
+      return;
+    }
+
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-    flash(`Copied ${elements.length} elements — paste into StyleSnap`);
+    flash(`Copied ${tokenCount} tokens from ${captures.length} elements`);
   };
 
   return (
@@ -88,7 +91,7 @@ export function App() {
       </header>
 
       <main className="body">
-        {elements.length === 0 ? (
+        {captures.length === 0 ? (
           <div className="empty">
             <p className="empty-title">Nothing picked yet</p>
             <p className="empty-sub">
@@ -96,11 +99,7 @@ export function App() {
             </p>
           </div>
         ) : (
-          <ElementList
-            elements={elements}
-            onRemove={removeElement}
-            onSetRole={setRole}
-          />
+          <CaptureList captures={captures} onRemove={removeCapture} />
         )}
       </main>
 
@@ -108,19 +107,19 @@ export function App() {
         <button
           className="primary"
           onClick={copy}
-          disabled={elements.length === 0}
+          disabled={captures.length === 0}
         >
           Copy to StyleSnap
-          {elements.length > 0 && (
+          {captures.length > 0 && (
             <span className="badge-inline">
-              {elements.length} el · {tokenCount} tk
+              {captures.length} el · {tokenCount} tk
             </span>
           )}
         </button>
         <button
           className="ghost"
           onClick={clearAll}
-          disabled={elements.length === 0}
+          disabled={captures.length === 0}
         >
           Clear all
         </button>

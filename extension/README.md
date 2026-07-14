@@ -42,4 +42,7 @@ npm run typecheck
 1. Open the side panel (click the extension icon).
 2. **Start picking** → hover the page (outline + inspector chip preview) → click to capture.
 3. Review/remove tokens in the panel.
-4. **Copy to StyleSnap** → JSON on clipboard with `meta.source = "browser-extension"`.
+4. **Copy to StyleSnap** → schema-v2.0 JSON on clipboard: a flat `tokens[]` list where
+   tokens from the same element share a `captureId` and carry a best-effort `context`
+   (`cssProperty`, `element`, `ariaRole`, `selector`, `authoredName`). `meta.source =
+   "browser-extension"`. The Webtool derives semantic roles from that context.

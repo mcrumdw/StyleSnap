@@ -7,12 +7,13 @@ click any element on any live website and lift its design tokens (color, typogra
 spacing, border-radius, border-width, shadow) into the same `StyleSnapExport` JSON that
 the Figma plugin produces, so both feed one webtool.
 
-**Output model is element-centric.** Each element the user clicks becomes one
-`CapturedElement` carrying a **role** (card / menu / button / …) and the tokens extracted
-from *that* element. The export is a list of elements, not a flat token list — so the
-webtool knows how many elements were picked, what each one is, and which tokens belong to
-which element, and can build a coherent system. The role is auto-guessed from the DOM and
-shown as an editable dropdown the user can correct.
+**Output model (schema v2.0, token-centric).** The export is a flat `tokens[]` list —
+the agreed shared contract (`docs/types.ts`, see `docs/DECISIONS.md` §2.4). Each click on
+an element produces several tokens that share a **`captureId`** (so the Webtool can
+reconstruct which element they came from) and a best-effort **`context`** object
+(`cssProperty`, `element`, `ariaRole`, `selector`, `state`, `authoredName`). Semantic roles
+(card / button / …) are **not** assigned in the extension — the Webtool *derives* them from
+that context. The side panel groups tokens by `captureId` for readability, but exports flat.
 
 > Source of truth for the data shape: [`../docs/types.ts`](../docs/types.ts).
 > Never define token shapes locally — import from there.

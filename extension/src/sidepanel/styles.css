@@ -100,17 +100,20 @@ body {
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
 }
-.role-select {
-  min-height: 30px;
-  border-radius: 7px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 0 6px;
-  text-transform: capitalize;
-  cursor: pointer;
+.el-count {
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  color: var(--muted);
+  flex: none;
+}
+.token-ctx {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  flex: none;
 }
 .el-label {
   flex: 1;
