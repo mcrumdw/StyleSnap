@@ -1,0 +1,548 @@
+# StyleSnap Web App — Build Plan for Claude Code
+
+**Owner:** makram · **Created:** 2026-07-04 · **Target:** MVP per PRD v2.1 §13
+
+Phases 0–7 = the MVP (shipped). Phases 8+ are post-MVP fixes driven by user
+testing. One agent session per phase (Claude Code or Cursor — AGENTS.md rules
+apply to both). Every phase ends with a passing acceptance check and a git
+commit — never start a phase on top of uncommitted work.
+
+**Recommended order for open phases: 10 → 9** (Phase 10 restructures
+navigation; Phase 9's System-notes panel then lands in its final home, step 4).
+
+## How to run each session
+
+1. Start fresh (`/clear`), state the phase: *"Execute Phase N of
+   docs/BUILD_PLAN.md."* CLAUDE.md loads the context automatically.
+2. Let it plan first (plan mode), sanity-check the plan against the PRD
+   sections listed for the phase, then execute.
+3. Before accepting: run the phase's acceptance check yourself.
+4. Commit with `phase-N: <summary>`. Small fix-ups within the phase are fine;
+   new scope is not — put it in the backlog section below.
+
+---
+
+## Phase 0 — Scaffold & design foundation
+
+**Build:** Vite + React + TS(strict) + Tailwind project in repo root. All
+DESIGN.md values as custom tokens in `tailwind.config` (colors incl. `-text`
+variants, radius 8/14/24, hard shadows, fonts via Google Fonts link, 13px
+caption, button heights, z-index scale). Copy `docs/types.ts` +
+`docs/schema.ts` into `src/contract/` (keep docs/ copies canonical). Install
+zod, culori, vitest. Build a `/kitchen-sink` dev route rendering: all 4 button
+variants with press effect, card, input, badges (DUP/SIM/MERGED), role chip,
+empty state.
+
+**Accept:** app runs; kitchen sink visually matches DESIGN.md §5/§5.1 (hard
+offset shadows, 2px borders, Space Grotesk headings); `tsc --noEmit` passes
+(schema sync assertions compile).
+
+## Phase 1 — Import & persistence
+
+**PRD:** §7.1 (FR-1–4), FR-28/29. **Build:** paste zone (primary) + file
+upload + drag-drop per DESIGN.md §5; `parseStyleSnapExport()` wired; friendly
+error banner with per-issue details; version-mismatch warning; multiple
+imports append into one pool (provenance preserved); pool auto-saves to
+localStorage and restores on load; "Start over" clears it.
+
+**Accept:** both good fixtures import (31 + 9 tokens, sources shown);
+malformed fixture → friendly error listing its 4 issues; refresh mid-session
+loses nothing.
+
+## Phase 2 — Token workspace (read-only)
+
+**PRD:** §7.2 (FR-5–8). **Build:** groups by type with counts (empty groups
+hidden); token cards per DESIGN.md §5.1 (swatch/specimen/chip/gradient/shadow
+previews, name-or-unnamed, source, occurrences); search + filters (type,
+source, named/unnamed, flagged); captureId "same element" grouping filter.
+Loading/empty states per DESIGN.md §6.
+
+**Accept:** both fixtures render correctly grouped; the #101828 color at
+opacity 0.5 (Figma scrim) displays distinctly from opacity 1; filter combos
+work.
+
+## Phase 3 — Dedup engine + merge (the core)
+
+**PRD:** §7.3–7.4, Appendix A — implement exactly as specified. **Build:**
+`src/engine/dedup/` pure functions first: leader clustering, per-type
+distances (culori OKLab, numeric gap clustering w/ 4px snap, typography
+composite key incl. lineHeight, shadow/gradient epsilons, opacity ε 0.01).
+**Unit tests before UI**, driven by the fixtures:
+
+- blues → one cluster, canonical #2E6BFF, #2456CC (hover) NOT in it
+- 15px joins 16px as similar; 4 and 8 never cluster
+- body 1.5 vs 1.45 lineHeight → similar, not duplicate
+- uppercase label never clusters with caption
+- ext_006/ext_007 (#101828 ×2) → exact duplicates
+- deterministic: same input → identical cluster output
+
+Then UI: DUP/SIM badges, merge dialog per DESIGN.md §5.1, survivor inherits
+occurrences + contexts (`mergedFrom`), un-merge until Create System,
+sensitivity slider (×0.5/×1/×1.5, re-flags live, never re-merges).
+
+**Accept:** all engine tests green; merging the blues shows "Nice — 4 blues
+just became 1."-style toast; undo restores exactly.
+
+## Phase 4 — Roles & naming
+
+**PRD:** §7.5 (FR-14–17), §7.7, Appendix B. **Build:** taxonomy as data
+(`src/engine/roles/taxonomy.ts` — the B.1–B.3 lists incl. required flags);
+derivation from context per B.4 (authoredName wins; parse Figma-style names
+directly); role chips (dashed = unconfirmed, solid = confirmed); role picker
+(dropdown from taxonomy, searchable); inline name editing with slash-name
+validation; generated fallback names for export.
+
+**Accept:** Figma fixture's `authoredName`s auto-suggest correct roles;
+browser fixture derives `color/surface/page` for #F9FAFB (body bg),
+action/primary for the button blue, hover role for #2456CC; user can override
+everything; nothing finalizes without confirmation.
+
+## Phase 5 — Completeness & manual gap-fill
+
+**PRD:** §7.6 (FR-18–19), Appendix B.5. **Build:** checklist panel computing
+the ✅ requirements against current state, each unmet item an actionable gap;
+manual add/edit token forms (color picker, type fields, numeric); assign
+spacing/radius/shadow slots. Skip AI assist (FR-20 = V2).
+
+**Accept:** after Phase 4 state, checklist flags exactly the gaps listed in
+`design.example.md` §Gaps; adding a focus color clears its gap live.
+
+## Phase 6 — Create System & exports
+
+**PRD:** §7.8 (FR-23–27), §11. **Build:** Create System gate (preview →
+finalize → locks merges); `design.md` generator in `src/engine/export/` as a
+pure function; cleaned-JSON export (`StyleSnapExport`, merged/name populated —
+must re-validate against `schema.ts`); copy-to-clipboard + file download;
+remaining gaps flagged in both exports; deterministic ordering.
+
+**Accept (the oracle test):** import both fixtures → apply the merges/roles/
+names from `docs/examples/design.example.md` → export. Output matches the
+oracle's structure and resolutions (unit test on section order + token set;
+manual diff for prose). Export twice → byte-identical. Cleaned JSON round-trips
+through `parseStyleSnapExport()`.
+
+## Phase 7 — Polish, a11y, demo
+
+**Build:** keyboard focus ring everywhere (§11), `prefers-reduced-motion`,
+error-state audit (no dead ends), microcopy per DESIGN.md §9, empty states,
+favicon/wordmark. Write `docs/DEMO.md`: the golden-path script (paste messy
+fixture → 4 blues → merge → roles → export → paste design.md into Claude Code
+live). Deploy to Vercel.
+
+**Accept:** full golden path in < 10 min by someone who isn't you; keyboard-
+only run-through works; deployed URL works.
+
+---
+
+## Phase 8 — Role-model inversion + System view (post-MVP fix)
+
+**Why (found in user testing, 2026-07-04):** roles are stored as a single
+`role` field per token (`decisions[tokenId].role` in `src/state/pool.ts`) —
+a 1:1 relationship. That's backwards per DECISIONS.md §2.3: **roles point at
+primitives**, and one primitive routinely carries several roles (the merged
+green = `color/action/primary` AND `color/text/link`; ink = text AND border
+AND shadow color). The current model cannot even reproduce the oracle, where
+`color/ink` backs both `color/text/primary` and `color/surface/overlay`.
+Additionally there is no view showing the main primitives with their semantic
+uses.
+
+**8a — Data model (do first, engine/state only):**
+
+- Replace per-token `role` with one map in pool state:
+  `assignments: Partial<Record<Role, string /* tokenId */>>`.
+  Each role → exactly one primitive (map key uniqueness enforces it); a
+  primitive may be referenced by any number of roles. `decisions` keeps only
+  `name`.
+- Migration on localStorage load: `decisions[id].role = r` →
+  `assignments[r] = id`, then strip the old field. Old drafts must load
+  without data loss.
+- Merge interaction: when a merge absorbs token ids (or un-merge restores
+  them), remap `assignments` values pointing at absorbed ids to the survivor
+  (and back on undo). Add unit tests for both directions.
+- `derive.ts` output becomes role-keyed: `Map<Role, Array<{tokenId,
+  confidence}>>` — a token with hints for two roles suggests both.
+- Completeness = required Appendix B keys missing from `assignments`.
+- Export reads the map: primitives listed once; the roles table may reference
+  the same primitive repeatedly. Deterministic sort unchanged (role order =
+  Appendix B).
+
+**8b — UI:**
+
+- **RolePicker → additive.** "Assign role…" adds a chip; a token card shows
+  ALL roles pointing at it; chips removable individually. If the chosen role
+  is already assigned to another token, show "currently → `<name>` — 
+  reassign?" (explicit confirm; never steal silently).
+- **New System view** (nav tab next to the workspace) — the "main variables +
+  their semantic use" screen, grouped by role subcategory:
+  - **Colors first**, subsections in Appendix B order: **Text · Surface ·
+    Action · Border · Feedback**. Each entry = swatch + primitive name + hex +
+    the role it fills. A primitive appearing in several subsections shows the
+    SAME name/swatch each time — visibly "one primitive, many uses," never a
+    suspected duplicate.
+  - A **Primitives strip** on top: every color primitive ordered by
+    occurrences, with count of roles referencing it; role-less primitives
+    visibly flagged ("unused — assign or drop").
+  - Same pattern (lighter) for Type, Spacing, Radius, Shadow.
+  - Unfilled required roles render as gap slots (dashed border, per DESIGN.md
+    drag affordance) linking to the checklist.
+- Workspace token cards: role chip becomes role chips (plural).
+
+**Accept:**
+
+- Merged green carries `color/action/primary` + `color/text/link`
+  simultaneously; removing one leaves the other.
+- Oracle reproduces exactly: `color/ink` referenced by `color/text/primary`
+  AND `color/surface/overlay` from one primitive entry.
+- Reassigning an occupied role asks for confirmation and updates both cards.
+- Merge + un-merge with assigned roles keeps assignments pointing at the
+  right survivor (unit-tested).
+- Old localStorage drafts (pre-Phase-8) migrate losslessly.
+- System view: every color subsection populated from fixtures; a role-less
+  primitive is flagged; no console errors; export unchanged except now
+  reflecting multi-role reality.
+
+---
+
+## Phase 8c — Edit/System UX restructure (post-Phase 8)
+
+**Why (user testing, 2026-07-05):** Phase 8 fixed the data model
+(`assignments: role → primitive`) but the Edit view still presented a flat
+token grid — primitives vs semantics were indistinguishable. The checklist
+rendered as a full-page scroll wall; Create System and Edit/System toggles
+scrolled away; export forced a full design.md preview before confirming.
+
+**Build:**
+
+- **`SessionBar`** — sticky chrome below the wordmark: Edit ↔ System toggle,
+  completeness pill (opens gap drawer), project name, Create System / Copy
+  design.md + Export drawer.
+- **`useSessionViewModel`** — shared derived state (checklist, exportInput,
+  designMd, gapCount) so Home/SessionBar/Edit/System don't duplicate memos.
+- **Edit sub-tabs:** Roles (semantic, `EditRolesPanel`) · Captured (primitive
+  grid, de-emphasized cards) · All (power grid). Gap drawer actions deep-link
+  to `#role-…` slots in Roles.
+- **`GapDrawer`** — gaps only; met items collapsed; no inline checklist in
+  main scroll.
+- **`ExportDrawer`** + lightweight **`CreateSystemDialog`** — summary confirm,
+  lazy JSON stringify; one-click Copy from SessionBar after create.
+- Collapsed "Import another capture" section; keyboard `1`/`2` (Edit/System),
+  `Esc` closes drawers.
+
+**Accept:** Edit visibly separates roles from primitives; SessionBar always
+visible; checklist never inline; Copy design.md works without scrolling;
+System tab read-only mirror unchanged; oracle tests green; `docs/DEMO.md`
+golden path updated.
+
+---
+
+## Phase 8d — Visual primitive picker (post-Phase 8c)
+
+**Why (user testing, 2026-07-05):** `EditRolesPanel`'s `PrimitivePicker` used
+a native `<select>` — browsers render options as text only, so gap rows like
+`color/text/muted` showed a wall of indistinguishable auto-names
+(`color/17a673 (#17A673)`) with no swatch. Users could not tell which color
+they were assigning.
+
+**Build (`src/components/EditRolesPanel.tsx`):**
+
+- Replace `<select>` with a **custom popover** (same pattern as
+  `RolePicker`): trigger button → anchored listbox, Esc / backdrop to close.
+- **Per-row preview:** 24×24 color swatch (checkerboard when opacity < 1);
+  type-aware thumbnails for spacing, radius, border-width, typography, shadow.
+- **Row metadata:** user or fallback name + `formatValue()`; "· N captures"
+  when duplicate values are collapsed to one list entry.
+- **Dedupe by value** for colors (hex + opacity); prefer user-named token as
+  the representative when picking.
+- **Search** at top of popover (filter by name or value).
+- **Suggested** section pinned at top when the engine has a top candidate.
+- One-click suggestion path also shows a swatch beside the confirm chip.
+
+**Accept:** Assigning a color role from a gap slot shows visible swatches for
+every candidate; duplicate hex rows collapse to one entry with capture count;
+non-color foundation roles show type-appropriate thumbnails; no engine or
+export changes.
+
+---
+
+## Phase 9 — Descriptive layers in design.md (post-MVP fix)
+
+**Why (user testing, 2026-07-04):** the export is token tables only. A real
+`design.md` (see this repo's own DESIGN.md) also describes the design — mood,
+component behavior, accessibility, voice. PRD §11 "Descriptive layers" is the
+spec. Depends on Phase 8 (assignments map).
+
+**9a — Computed sections (no user input needed):**
+
+- **Accessibility:** for every assigned text-role/surface-role pair (from
+  `assignments`), compute the WCAG contrast ratio (relative-luminance math —
+  reuse/extend the culori utilities). Emit a table: pair · ratio · AA
+  pass/fail (4.5:1 normal text). Failing pairs also appear in **Gaps** with a
+  warning. Pure function in `src/engine/export/accessibility.ts` + unit tests
+  (assert exact ratios for the fixture palette: ink/white 17.7:1, white on
+  brand-blue 4.5:1, gray-500/white 5.0:1).
+- **Component sketches:** for each `captureId` group containing ≥ 2 assigned
+  tokens, emit one line: element descriptor + its role references ("`button.cta`
+  → bg `color/action/primary` · radius `radius/sm` · hover →
+  `color/action/primary-hover`"). Groups with unassigned tokens list them as
+  raw values with a "(unassigned)" marker.
+
+**9b — "System notes" panel (user-authored):**
+
+- New collapsible panel with optional fields: **Mood / vibe** (textarea),
+  **Component principles** (textarea), **Motion** (duration/easing + notes),
+  **Voice & microcopy** (textarea), **Layout** (container/grid notes). Stored
+  in pool state + localStorage, covered by the draft migration. **Placement
+  (post-Phase 10): step 4 "Review & export", above the export actions.**
+- Export renders each filled field as a section (fixed order, after
+  Foundations, before Gaps). Every empty field adds a Gaps line ("No motion
+  spec — define durations/easing before build"). Deterministic output.
+- Cleaned-JSON export carries the notes under a `notes` key so re-import
+  round-trips them.
+
+**Accept:**
+
+- Fixture flow: accessibility table appears with the exact ratios above;
+  white-on-brand-blue shows "4.5:1 — passes AA with no margin".
+- `cap-btn-1` produces the button sketch line referencing its roles.
+- Filling only Mood: export contains the Mood section AND Gaps lines for the
+  four empty fields; export is deterministic across repeated runs.
+- Notes survive refresh (localStorage) and round-trip through cleaned JSON.
+- Oracle test updated and green against the extended
+  `docs/examples/design.example.md`.
+
+---
+
+## Phase 10 — The simple flow: auto-completed draft + stepper (supersedes 8c chrome)
+
+**Why (user testing, 2026-07-05 + team feedback):** two problems, one
+rebuild. (1) After 8c the UI is a ~10-destination **map** with no indicated
+order, though the product is a **pipeline** (PRD §6). (2) Completion is a
+form-filling chore: the app hands the user a long gap list instead of
+completing the system itself. **Decision (2026-07-05, PRD §7.6 + Appendix
+C): derivation-first completion** — the app auto-drafts every derivable gap
+like solving a puzzle from its corner pieces (anchors); the user reviews a
+*complete* draft and changes only what they disagree with. **8c's plumbing
+survives** (useSessionViewModel, deep links, dialogs, 8d's PrimitivePicker);
+its navigation chrome is replaced.
+
+**10a — Derivation engine first (`src/engine/derive-system/`, pure + tested):**
+
+- **Anchor detection:** primary color (occurrences × context weight; button/
+  action context boosts), body typography (most frequent), base spacing
+  (most frequent 4px-grid value). Anchors are *proposals* the user can swap
+  in step 2.
+- **Palette derivation (OKLCH via culori, rules in PRD Appendix C):**
+  states (ΔL −0.06 hover / −0.12 active; disabled desaturate+lighten),
+  tinted neutrals (brand hue, chroma ≤ 0.02), feedback colors (conventional
+  hues 25°/70°/150°/250° + brand chroma, lightness tuned until AA ≥ 4.5),
+  accent **suggestion** only when no second hue was captured — all three
+  harmony candidates computed (complementary / split-complementary /
+  analogous), default picked by the Appendix C suitability rule.
+- **Type scale:** modular ratio from body anchor (default 1.25; 1.2/1.333
+  selectable) → caption/body/subheading/heading/display, rounded to 0.5px.
+- **Spacing/radius/shadow ramps:** geometric 4px-grid ramp from base
+  spacing; radius sm/md/lg = base ×0.5/×1/×2; shadow sm/md/lg ramp reusing
+  the captured shadow color.
+- **Cascade with dirty flags:** every derived token stores `derivedFrom` +
+  method params. Changing an anchor regenerates its derivatives — **except**
+  values the user edited (`userEdited: true`), which are never touched.
+  Unit tests: exact expected OKLCH/px values from the fixtures; AA
+  enforcement; cascade respects dirty flags both ways.
+- Captured values always win over derived ones for the same role.
+
+**10b — Flow UI: review by exception (home = the result, steps = repair
+shops).** Derivation runs on import using **cluster canonicals** (proposed
+merge survivors) so the draft exists immediately and refines live as merges
+are confirmed/rejected — a proposal built on proposals, consistent with §8.
+
+- **Landing after import = "Your system"** (the complete draft), never a
+  work queue. On top, the **summary strip** — the app's honest confession
+  and the only to-do list: "Built from your capture: **4 proposed merges** ·
+  **3 anchors picked** · **14 values derived**." Each item links to its
+  repair shop. Nothing forces the user through steps in order.
+- **Steps (orientation + repair, keyboard `1`–`4`, freely navigable):**
+  1. **Merges** — proposed merges as a **queue** ("1 of 4", accept/reject/
+     skip, progress shown), not a badge hunt in a grid. "Show everything"
+     filter lives here.
+  2. **Anchors & meaning** — the three anchors presented plainly ("your main
+     color / your text style / your base unit"), swap cascades live (never
+     over user edits); `EditRolesPanel` below for role corrections (8d
+     picker intact).
+  3. **Your system** (home) — every value present. **Progressive
+     disclosure:** three visual states only (captured = solid border ·
+     derived = dashed · edited = corner dot), one-line legend; provenance +
+     derivation formula on click, never inline; sections show final values,
+     details collapsed. Accent suggestion card with harmony-wheel switcher
+     (complementary / split-comp / analogous) + dismiss. Only true gaps
+     (motion, voice — Phase 9 notes fields) appear as open items.
+  4. **Review & export** — `ExportDrawer` inline (single export home);
+     Create System gate + Copy design.md; guardrail reports unconfirmed
+     merges + derived share ("4 merges unreviewed · 14 of 29 values derived
+     — export anyway?"). Export provenance marks derived values
+     ("derived from color/brand-primary, split-complementary").
+
+**10c — Cognitive-load rules (hard constraints for the build):**
+
+- First screen after import: **≤ 3 interactive decisions** visible above the
+  fold (summary-strip items); time-to-first-complete-draft < 5 s.
+- Exactly **one primary CTA** per screen at all times; it always names the
+  next most valuable action.
+- **No jargon in flow copy:** "we created hover colors from your main color"
+  — not "derived interaction-state tokens." Taxonomy terms live in tooltips.
+- Every automated act is **confessed in place** (strip counts, badges,
+  provenance on click) — automation without visibility is how trust dies.
+- Every screen answers "what did the app do, what can I change, what's
+  next?" within one viewport — if a section can't, it collapses.
+- **StepBar replaces SessionBar:** step indicator with per-step progress
+  (1: open DUP/SIM clusters · 2: required roles assigned · 3: open gaps ·
+  4: created ✓), project name, and **one context-aware primary CTA**:
+  "Next: give your colors meaning" → "Next: fill the gaps" → "Review &
+  export" → "Copy design.md". The completeness pill folds into step 3's
+  indicator.
+- **Vocabulary pass (user-facing labels only):** steps named as above;
+  jargon ("primitive", "semantic role") moves to tooltips/captions that
+  *teach* ("a primitive is a raw value — roles say what it's for"). Engine
+  and export terminology unchanged.
+- **Celebrate transitions** per DESIGN.md §9 voice ("Nice — 4 blues just
+  became 1. Next: give them meaning.").
+- Keep: Esc behavior, focus traps, toasts, collapsed "Import another
+  capture", localStorage (persist current step too). Update `docs/DEMO.md`
+  to the step flow.
+- **Export guardrail (UX_RESEARCH.md P2):** the copy/export CTA reflects
+  quality state; exporting with unmerged clusters / unassigned required roles
+  shows a one-time interstitial ("12 unnamed · 4 clusters · 5 gaps — export
+  anyway, or fix the big ones?"). Never blocks — informs once.
+- **Resume orientation (P9):** on draft restore, land on the furthest
+  incomplete step + toast ("Welcome back — 3 gaps left").
+- **Stepper a11y (P11):** roving tabindex + arrow keys on the step control.
+
+**Explicitly removed:** Edit ↔ System toggle · Roles/Captured/All sub-tabs ·
+GapDrawer and ExportDrawer as overlays (content reused inline) · "Copy
+design.md" + "Export…" + "Create System" as three separate always-visible
+buttons.
+
+**Accept:**
+
+- **Thin-capture test (the point of it all):** import the 6-token limited
+  capture → step 3 shows a *complete* system (states, feedback, neutrals,
+  type scale, spacing ramp all derived + badged) with zero forms filled.
+  UX_RESEARCH S5 drops from ~70 clicks to < 15.
+- Derivation engine tests green: exact expected values from fixtures; every
+  derived text/surface pair passes AA; changing the primary anchor
+  regenerates derived colors but never a user-edited one.
+- Feedback colors visibly share the brand's character (chroma) while sitting
+  at conventional hues; accent card offers all three harmonies and can be
+  dismissed; no accent invented when the capture already has a second hue.
+- A first-time tester (no instructions) lands on a complete draft, uses the
+  summary strip to review merges/anchors, and exports — without ever seeing
+  an empty form. Exactly one primary CTA visible at any time (10c).
+- **Sequencing test:** draft renders from cluster canonicals immediately;
+  rejecting a proposed merge in the queue visibly updates the draft and any
+  affected anchor within one interaction.
+- **Speed-run test (UX_RESEARCH S2):** paste → Copy design.md with zero
+  review now yields a complete, AA-passing system (flagged as unreviewed in
+  provenance) — the 2-click path is no longer the worst outcome.
+- Step indicators live-update; 8d picker untouched; keyboard-only run works.
+- Export provenance distinguishes captured/derived/edited; guardrail reports
+  derived share; oracle updated (derived values in the example) and green.
+- `docs/DEMO.md` rewritten; golden path now targets **< 5 min**.
+
+---
+
+## Phase 10d — One page (2026-07-06 fix-up, supersedes 10b stepper)
+
+**Why (user testing, 2026-07-06):** the stepper + merge queue re-introduced
+navigation the derivation engine was meant to eliminate. Goal: **easy design
+system creation** — import → complete draft on one screen; repair shops in
+collapsible sections below.
+
+**Build:**
+
+- **Landing = `SystemView`** — the draft IS the app; header confession +
+  one CTA (Create System / Copy design.md).
+- **Auto-merge at import** (`autoMergeClusters` in `usePool`) — reversible in
+  **Captured tokens** accordion; never re-applied after un-merge.
+- **Removed:** `StepBar`, `MergeQueueStep`, `SummaryStrip`, step keyboard
+  shortcuts, `currentStep` navigation chrome.
+- **Below the fold (collapsed):** Fine-tune (anchors + `EditRolesPanel`) ·
+  Captured tokens (`CleanupStep`) · System notes · Export · Import another.
+- **`GapPanel` inline** — only true gaps (notes, optional roles, unassigned
+  captures); links to fine-tune / captured / notes.
+- **Export guardrail** — one-time interstitial before copy when derived values
+  exist; never blocks.
+
+**Accept:** thin capture → complete draft with zero forms; one primary CTA;
+no step chrome; DEMO.md < 5 min; all tests green.
+
+---
+
+## Phase 12 — AI assistance (FR-20, next)
+
+**Why:** derivation handles *values*; users still write mood, voice, and
+component principles by hand. AI proposes **reviewable** text and naming —
+never silent, layered on the one-page draft.
+
+**12a — Infrastructure:**
+
+- `src/engine/ai/` — pure prompt builders + response parsers (testable with
+  fixtures/mocks); API call in a thin `src/services/anthropic.ts` hook.
+- Env: `VITE_ANTHROPIC_API_KEY` (client-side for course project; document
+  production proxy pattern in DECISIONS).
+- Graceful offline: AI buttons hidden when no key; manual path unchanged.
+
+**12b — First surfaces (highest leverage):**
+
+- **System notes:** "Draft with AI" per field (mood, component principles,
+  motion, voice, layout) — proposes from token palette + capture context;
+  user edits before save.
+- **Naming assist:** suggest slash-names for unnamed captured values (chip
+  on `TokenCard` / inline name).
+- **Gap narration:** one-click "Explain this gap" → short actionable hint
+  (not auto-fill — complements derivation).
+
+**12c — Guardrails (PRD §10):**
+
+- Every output is a proposal chip or pre-filled textarea — confirm to apply.
+- Prompts include assigned tokens + derivation provenance; no inventing hexes
+  outside captured/derived set unless user confirms.
+- Export marks AI-drafted notes in provenance (`source: ai-assisted`).
+
+**Accept:** with API key, thin capture → AI-drafted mood + component notes in
+< 2 clicks each; without key, app identical to 10d; no silent mutations;
+tests mock the API boundary.
+
+---
+
+## Phase 11 — Friction fixes from the usability study (after 10 & 9)
+
+Source: `docs/UX_RESEARCH.md` §4 (validate with real users first — §6).
+
+- **P3 Batch suggestions:** "Accept N high-confidence suggestions" — one
+  review list, one confirm (human-in-the-loop preserved; nothing silent).
+- **P4 Commitment relief:** Create System reframed ("you can reopen until
+  export"); **Reopen for editing** action; **Undo** directly in merge toasts.
+- ~~P5 Scale builders~~ — **absorbed into Phase 10's derivation engine**
+  (2026-07-05): auto-draft generalizes and replaces per-section builders.
+- **P6 Ignore token:** reversible dismiss on captured tokens; hidden behind
+  the show-everything filter; excluded from exports.
+- Quick fixes bundled: two-layer error copy + "get the extension/plugin"
+  link (P10); completeness-pill first-run hint (P13).
+
+**Accept:** S2 speed-run reaches a *decent* export in < 4 min via guardrail +
+batch accept; S5 thin-capture completion drops from ~70 to ~30 clicks; junk
+tokens excluded from export; all prior tests green.
+
+---
+
+## Backlog (do NOT pull into MVP)
+
+Figma Variables export, W3C token output format, component reconstruction,
+accounts, per-source cluster breakdown + persistent filters (P7), custom role
+names within standard categories (P8 — decide with team). **AI assist moved
+to Phase 12.** De-scope order if behind: PRD §13.
+
+## Definition of done (MVP)
+
+All phase acceptance checks green · engine unit tests pass in CI ·
+`design.example.md` oracle test passes · demo script executable end-to-end on
+the deployed URL.

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- StyleSnap favicon  DESIGN.md �10: brand-primary chip, hard offset shadow, bold "S". -->
+  <rect x="10" y="10" width="46" height="46" rx="10" fill="#14121F"/>
+  <rect x="4" y="4" width="46" height="46" rx="10" fill="#5B2EFF" stroke="#14121F" stroke-width="4"/>
+  <text x="27" y="42" text-anchor="middle" font-family="Space Grotesk, Arial, sans-serif" font-size="34" font-weight="700" fill="#FFFFFF">S</text>
+</svg>

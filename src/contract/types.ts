@@ -174,37 +174,6 @@ export type StyleSnapToken =
   | ShadowToken;
 
 // ─────────────────────────────────────────
-// Captured Element (element-centric grouping)
-// ─────────────────────────────────────────
-//
-// Each element the user selects (in the extension) or each component/layer
-// (in the Figma plugin) is one CapturedElement. It carries a semantic role
-// and the tokens that were extracted from that element — so the Webtool knows
-// how many elements were picked, what each one is, and which tokens belong to
-// which element, and can build a coherent system from that.
-
-export type ElementRole =
-  | "button"
-  | "card"
-  | "menu"
-  | "input"
-  | "heading"
-  | "text"
-  | "badge"
-  | "container"
-  | "image"
-  | "link"
-  | "icon"
-  | "other";
-
-export interface CapturedElement {
-  id: string;                 // unique, e.g. "el_001"
-  role: ElementRole;          // what kind of element this is (user-confirmable)
-  label: string;              // human-readable source, e.g. "nav.main" or "Button/Primary"
-  tokens: StyleSnapToken[];   // the tokens extracted from THIS element only
-}
-
-// ─────────────────────────────────────────
 // Root Export (the full JSON structure)
 // ─────────────────────────────────────────
 
@@ -218,5 +187,5 @@ export interface StyleSnapMeta {
 
 export interface StyleSnapExport {
   meta: StyleSnapMeta;
-  elements: CapturedElement[];   // element-centric: count = elements.length
+  tokens: StyleSnapToken[];
 }
