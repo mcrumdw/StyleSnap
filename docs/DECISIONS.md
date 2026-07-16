@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-12
+Last updated: 2026-07-16
 
 ---
 
@@ -154,8 +154,9 @@ bad hex.
 ### 2.9 Note completion via adjective-matched templates (FR-19b)
 Decided 2026-07-10. System notes (mood, component principles, motion, voice,
 layout) are **never-capturable** — leaving them as optional Gaps produced
-low-quality exports (UX_RESEARCH S2/S3). **Nothing ships with missing note
-fields:** Create System, Copy design.md, and download all pass through a
+low-quality exports (UX_RESEARCH S2/S3). **design.md** (Share with agent) is
+blocked until all five note fields are filled; **cleaned JSON** (Share with
+Figma) ships anytime — see §2.21. Copy/download design.md passes through a
 completeness gate in `SessionProvider`.
 
 **How it works (deterministic V1 — no AI):**
@@ -175,7 +176,8 @@ completeness gate in `SessionProvider`.
   remain V2 (FR-20).
 
 **Rejected:** blocking export on unfilled *roles* — roles are auto-derived in
-the Phase 10 draft; only the five note fields gate export.
+the Phase 10 draft; only the five note fields gate **design.md** export
+(§2.21 — Figma / cleaned JSON is never gated).
 
 ### 2.10 Route-based session shell (post–Phase 10d)
 Decided 2026-07-10. The single scrolling Home page (import + full draft +
@@ -383,10 +385,11 @@ scattered across the footer).
   (native Variables export remains V3 per PRD).
 - **Desktop:** both links at the bottom of the left rail (`ShareNavSection`).
 - **Mobile:** single **Share** button (header right) → picker → same modals.
-- Completeness gate (§2.9) unchanged — incomplete description still blocks export.
+- Completeness gate (§2.9) applies to **design.md only** — Figma JSON is
+  never blocked (§2.21).
 
-**Footer:** **Create System** (+ completeness hint) only while the system is not
-finalized; footer hidden when export-ready and created. No export buttons in footer.
+**Footer:** removed (§2.21). No session-wide completeness strip; agent-export
+hints live on Share with agent only.
 
 **Undo/redo (supersedes §2.8 bottom-bar placement):** controls **hidden until
 active** (`canUndo` / `canRedo`). Desktop: top-right (`UndoRedoToolbar`). Mobile:
@@ -403,7 +406,93 @@ on filled rows immediately after save (pool + UI stay in sync; undo shows after
 edit, not redo).
 
 **Key files:** `ShareMenuButton.tsx`, `ShareExportModal.tsx`, `NavTitleWheel.tsx`,
-`FloatingUndoRedo.tsx`, `SessionNav.tsx`, `BottomBar.tsx`, `useSessionViewModel.ts`.
+`FloatingUndoRedo.tsx`, `SessionNav.tsx`, `useSessionViewModel.ts`.
+
+### 2.21 Agent-only export gate (design.md vs Figma)
+Decided 2026-07-13 (UX review — session footer said "Complete description
+before sharing" while users edited tokens; the requirement was unclear and
+applied to both share destinations equally).
+
+**Problem:** System notes (mood, principles, motion, voice, layout) exist so
+**design.md** gives an AI agent context tokens cannot capture. Blocking *all*
+export — including cleaned JSON for Figma — and showing a global footer warning
+on every token page made the gate feel like a workflow step users had to finish
+before reviewing colors.
+
+**Decision — split export gates:**
+- **Share with agent** (`design.md` copy/download): blocked until all five
+  system-note fields are filled (`agentExportReady` = `notesComplete`). Attempt
+  opens the finish-notes dialog (`SessionProvider`) with progress (`X/5`),
+  missing field names, inline `AdjectivePicker` ("Fill & continue"), and
+  **Go to system notes** → `/describe`.
+- **Share with Figma** (cleaned token JSON): **never gated** — no modal, no
+  warning, no disabled state. JSON is the save file; tokens are useful without
+  prose.
+- **Checklist / role gaps** (`GapPanel`, `checklist.complete`): informational
+  only — never block either export path.
+
+**UI changes:**
+- **Removed `BottomBar`** — no session-wide "complete description" footer.
+- **Share with agent** shows optional `X/5` badge in rail + mobile picker when
+  notes incomplete; **Share with Figma** has no badge.
+- **`ShareExportModal`:** warning copy only on the design-md kind.
+- **`ExportSection`:** gate copy/download on the design.md tab only.
+- Copy on `/describe` and `SystemNotesPanel`: notes required for design.md,
+  optional for Figma.
+
+**Rejected:** global footer nag; gating Figma JSON; conflating token checklist
+gaps with the design.md notes requirement.
+
+**Key files:** `src/state/agentExportBlockers.ts`, `SessionProvider.tsx`
+(`withAgentExportReady`), `useSessionViewModel.ts` (`agentExportReady`),
+`ShareExportModal.tsx`, `ShareNavSection.tsx`, `ShareMenuButton.tsx`,
+`ExportSection.tsx`.
+
+### 2.22 Feedback color harvest + derivation (C.4 three-tier)
+Decided 2026-07-13. Semantic feedback colors (`color/feedback/*`) are required
+for a complete system (PRD B.5) but rarely appear in full in browser captures.
+The original C.4 rule derived all four from the primary anchor using
+**conventional OKLCH hues** (error 25°, warning 70°, success 150°, info 250°)
+with the brand's chroma (`max(0.08, min(brand C, 0.18))`) and AA tuning — not
+fixed hexes, but **primary hue was ignored**, so two vivid brands could share
+identical warning colors.
+
+**Three-tier precedence (per role):**
+1. **Captured + assigned** — e.g. `[role=alert]` → error; never derived over.
+2. **Harvest** (`feedback-harvest.ts`) — unassigned colors matched by authored
+   name, keywords, expanded B.4 context (`status` → success, `note` → info,
+   `.alert-warning`, etc.), then OKLCH hue bands. Hue-only matches skip when
+   within 15° of primary unless a keyword names the role.
+3. **Derive** (`deriveFeedback`) — conventional-hue fallback with collision
+   guard (shift start L −0.08 when primary hue within 20° of feedback hue).
+
+**Why not always the same colors:** chroma comes from the primary; lightness is
+AA-tuned per role; harvest uses real capture values when present. Figma JSON
+export is unaffected — this is token completeness only.
+
+**Rejected:** AI feedback palettes (FR-20 V2); global fixed hex palette;
+deriving feedback from primary *hue* (would break learned semantics).
+
+**Key files:** `src/engine/derive-system/feedback-harvest.ts`,
+`src/engine/derive-system/color.ts`, `src/engine/derive-system/index.ts`,
+`src/engine/roles/derive.ts`.
+
+### 2.23 Modal portals escape sticky shell stacking
+Decided 2026-07-16. Share with agent / Share with Figma dialogs were painted
+*under* token cards on the main column: the overlays lived inside the sticky
+left rail (`DesktopSessionRail`), so `position: fixed` + `z-modal` still
+competed inside that ancestor's stacking context.
+
+**Decision:** mount session modals with `createPortal(…, document.body)` via
+`ModalPortal`. Share export modal and the mobile share picker use it; other
+shell dialogs should follow the same pattern when they open from sticky
+chrome.
+
+**Rejected:** raising `z-modal` alone (does not escape a nested stacking
+context); removing `lg:sticky` from the rail (breaks viewport-tall nav).
+
+**Key files:** `src/components/ModalPortal.tsx`, `ShareExportModal.tsx`,
+`ShareMenuButton.tsx`.
 
 ---
 
@@ -517,6 +606,9 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-16 | **Modal portals** (§2.23): `ModalPortal` mounts Share dialogs on `document.body` so sticky rail stacking no longer covers them with token cards. | — |
+| 2026-07-13 | **Feedback color harvest** (§2.22): three-tier precedence (captured → harvest → C.4 derive); `feedback-harvest.ts`; collision guard + chroma floor in `deriveFeedback`; expanded B.4 context for success/warning/info. | — |
+| 2026-07-13 | **Agent-only export gate** (§2.21): system notes gate design.md only; Figma JSON always exportable; removed global `BottomBar`; `withAgentExportReady` + `agentExportBlockers.ts`; Share with agent shows `X/5` badge; checklist gaps informational only. | — |
 | 2026-07-12 | **Share + mobile chrome** (§2.20): Share with agent / Share with Figma modals; footer slimmed to Create System; mobile `NavTitleWheel` + header Share; undo/redo when-active (desktop top-right, mobile bottom corners); `roleDisplayTokens` immediate edit display. | — |
 | 2026-07-12 | **Effects page + role previews** (§2.19): Shadows → Effects nav; human shadow/spacing/radius/border labels; `RoleTokenPreview` panel on filled rows; **preview strips use captured roles only** (`buildPreviewContext`), not app chrome. | — |
 | 2026-07-12 | **Production deploy single-path** (§2.18): disable duplicate Vercel Git production deploys; post-deploy bundle verification in `deploy.yml`; manual `workflow_dispatch` recovery documented. | — |

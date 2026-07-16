@@ -1,16 +1,12 @@
 import { Link, NavLink } from "react-router-dom";
 import { Wordmark } from "../Wordmark";
+import { sessionNavLinkClass } from "./nav-link-styles";
 import { NavTitleWheel } from "./NavTitleWheel";
+import { AddCaptureMenuButton, StartOverMenuButton } from "./MobileSessionActions";
 import { ShareMenuButton } from "./ShareMenuButton";
+import { SessionNavSection, StartOverRailButton } from "./SessionNavSection";
 import { ShareNavSection } from "./ShareNavSection";
 import { TOKEN_CATEGORIES, type TokenCategory } from "./SideNav";
-
-const railLink = (isActive: boolean) =>
-  `rounded-sm border-2 px-3 py-2 font-heading text-caption font-bold whitespace-nowrap ${
-    isActive
-      ? "border-border-default bg-surface-card text-text-primary shadow-card"
-      : "border-transparent text-text-muted hover:border-border-default hover:text-text-primary"
-  }`;
 
 interface MobileSessionNavProps {
   notesFilled: number;
@@ -31,22 +27,26 @@ export function MobileSessionNav({ notesFilled, notesTotal }: MobileSessionNavPr
         <Link to="/" aria-label="StyleSnap home" className="min-w-0 shrink">
           <Wordmark />
         </Link>
-        <ShareMenuButton />
+        <div className="flex shrink-0 items-center gap-2">
+          <AddCaptureMenuButton />
+          <StartOverMenuButton />
+          <ShareMenuButton />
+        </div>
       </div>
       <NavTitleWheel notesFilled={notesFilled} notesTotal={notesTotal} />
     </header>
   );
 }
 
-/** Desktop: vertical left rail with wordmark + share. */
+/** Desktop: sticky left rail — viewport-tall; main page scrolls independently. */
 export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSessionRailProps) {
   return (
-    <aside className="hidden w-44 shrink-0 flex-col gap-4 self-stretch lg:flex">
-      <Link to="/" aria-label="StyleSnap home" className="px-1">
+    <aside className="hidden w-44 shrink-0 flex-col gap-4 lg:sticky lg:top-8 lg:flex lg:h-[calc(100dvh-4rem)] lg:max-h-[calc(100dvh-4rem)] lg:self-start">
+      <Link to="/" aria-label="StyleSnap home" className="shrink-0 px-1">
         <Wordmark />
       </Link>
-      <nav aria-label="Session" className="flex flex-col gap-1">
-        <NavLink to="/describe" className={({ isActive }) => railLink(isActive)}>
+      <nav aria-label="Session" className="flex shrink-0 flex-col gap-1">
+        <NavLink to="/describe" className={({ isActive }) => sessionNavLinkClass(isActive, { rail: true })}>
           Description
           {notesFilled < notesTotal && (
             <span className="ml-1 font-mono text-badge font-normal text-warning-text">
@@ -55,27 +55,34 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSe
           )}
         </NavLink>
       </nav>
-      <nav aria-label="Token categories" className="flex flex-col gap-1">
-        {TOKEN_CATEGORIES.map(({ id, label }) => (
-          <NavLink
-            key={id}
-            to={`/tokens/${id}`}
-            className={({ isActive }) =>
-              `flex flex-col rounded-sm border-2 px-3 py-2 ${
-                isActive
-                  ? "border-border-default bg-surface-card text-text-primary shadow-card"
-                  : "border-transparent text-text-muted hover:border-border-default hover:text-text-primary"
-              }`
-            }
-          >
-            <span className="font-heading text-caption font-bold">{label}</span>
-            {hints?.[id] && (
-              <span className="font-mono text-badge text-text-muted">{hints[id]}</span>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-      <ShareNavSection className="mt-auto border-t-2 border-border-default pt-4" />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <nav
+          aria-label="Token categories"
+          className="flex shrink-0 flex-col gap-1 overflow-y-auto scrollbar-none"
+        >
+          {TOKEN_CATEGORIES.map(({ id, label }) => (
+            <NavLink
+              key={id}
+              to={`/tokens/${id}`}
+              className={({ isActive }) =>
+                `flex flex-col ${sessionNavLinkClass(isActive, { rail: true })}`
+              }
+            >
+              <span className="font-heading text-caption font-bold">{label}</span>
+              {hints?.[id] && (
+                <span className="font-mono text-badge text-text-muted">{hints[id]}</span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="flex flex-1 items-center">
+          <SessionNavSection />
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col gap-4">
+        <ShareNavSection />
+        <StartOverRailButton />
+      </div>
     </aside>
   );
 }

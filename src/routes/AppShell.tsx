@@ -1,5 +1,4 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { BottomBar } from "../components/shell/BottomBar";
 import { FloatingUndoRedo } from "../components/shell/FloatingUndoRedo";
 import { DesktopSessionRail, MobileSessionNav } from "../components/shell/SessionNav";
 import { UndoRedoToolbar } from "../components/shell/UndoRedoToolbar";
@@ -36,7 +35,6 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-      <BottomBar />
       <FloatingUndoRedo />
     </div>
   );

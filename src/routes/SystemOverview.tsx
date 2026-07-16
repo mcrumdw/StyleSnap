@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../components/Button";
 import { GapPanel } from "../components/GapPanel";
-import { ImportZone } from "../components/ImportZone";
 import { SystemView, type FillInfo } from "../components/SystemView";
 import { importLabel } from "../state/pool";
 import { useSession } from "../state/SessionProvider";
@@ -14,8 +12,6 @@ export function SystemOverview() {
   const {
     pool,
     vm,
-    addImport,
-    startOver,
     setProjectName,
     setAccent,
     editWithUndoToast,
@@ -107,19 +103,6 @@ export function SystemOverview() {
           />
         </div>
       )}
-
-      <section className="flex flex-col gap-4 border-t-2 border-border-default pt-8">
-        <h2 className="font-heading text-card-title font-bold">Import another capture</h2>
-        <ImportZone onImport={addImport} />
-        <Button
-          variant="destructive"
-          onClick={() => {
-            if (window.confirm("Start over? This clears every imported token.")) startOver();
-          }}
-        >
-          Start over
-        </Button>
-      </section>
     </div>
   );
 }

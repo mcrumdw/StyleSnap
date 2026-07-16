@@ -1,6 +1,5 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/Button";
-import { ImportZone } from "../components/ImportZone";
 import { AdjectivePicker } from "../components/AdjectivePicker";
 import { SystemNotesPanel } from "../components/SystemNotesPanel";
 import { styleProfileFromFamily } from "../engine/style-profile";
@@ -10,7 +9,7 @@ import { useSession } from "../state/SessionProvider";
 
 /** FR-19b — system description, project name, and session management. */
 export function Describe() {
-  const { pool, vm, setNote, applyTemplate, setProjectName, addImport, startOver } = useSession();
+  const { pool, vm, setNote, applyTemplate, setProjectName } = useSession();
   const navigate = useNavigate();
 
   const styleFamily = pool.styleFamily;
@@ -24,8 +23,8 @@ export function Describe() {
       <header className="flex flex-col gap-2">
         <p className="text-caption text-text-muted">
           Set the vibe first — your picks tune auto-filled type scale, secondary harmony, radius, and
-          shadows. Captured values stay yours; only derived gaps feel the style. Edit anytime; notes
-          still gate export.
+          shadows. Captured values stay yours; only derived gaps feel the style. System notes appear
+          in design.md for your AI agent; Figma export works without them.
         </p>
         <label className="flex w-full max-w-xs flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
           <span className="font-mono text-caption text-text-muted">Project</span>
@@ -65,22 +64,6 @@ export function Describe() {
         noteSources={pool.noteSources}
         onChange={setNote}
       />
-
-      <section className="flex flex-col gap-4 border-t-2 border-border-default pt-8">
-        <h2 className="font-heading text-card-title font-bold">Import another capture</h2>
-        <ImportZone onImport={addImport} />
-        <Button
-          variant="destructive"
-          onClick={() => {
-            if (window.confirm("Start over? This clears every imported token.")) {
-              startOver();
-              navigate("/");
-            }
-          }}
-        >
-          Start over
-        </Button>
-      </section>
     </div>
   );
 }

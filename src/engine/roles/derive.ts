@@ -172,6 +172,28 @@ function contextRule(token: StyleSnapToken, ctx: TokenContext): ContextHint | un
     if (ctx.state === "hover") return { role: "color/action/primary-hover" };
     if (ctx.state === "active") return { role: "color/action/primary-active" };
     if (ctx.ariaRole === "alert") return { role: "color/feedback/error" };
+    if (ctx.ariaRole === "status") return { role: "color/feedback/success" };
+    if (ctx.ariaRole === "note") return { role: "color/feedback/info" };
+
+    const sourceBlob = `${token.source} ${ctx.selector ?? ""}`.toLowerCase();
+    if (sourceBlob.includes("alert-warning") || sourceBlob.includes("toast-warning")) {
+      return { role: "color/feedback/warning" };
+    }
+    if (sourceBlob.includes("alert-success") || sourceBlob.includes("toast-success")) {
+      return { role: "color/feedback/success" };
+    }
+    if (sourceBlob.includes("alert-info") || sourceBlob.includes("toast-info")) {
+      return { role: "color/feedback/info" };
+    }
+    if (sourceBlob.includes("warning") || sourceBlob.includes("caution")) {
+      return { role: "color/feedback/warning" };
+    }
+    if (sourceBlob.includes("success") || sourceBlob.includes("confirm")) {
+      return { role: "color/feedback/success" };
+    }
+    if (sourceBlob.includes("info")) {
+      return { role: "color/feedback/info" };
+    }
 
     switch (ctx.cssProperty) {
       case "background-color":

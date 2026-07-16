@@ -218,13 +218,13 @@ export function useSessionViewModel(pool: TokenPool) {
     return { anchorsPicked, derivedCount: draft.derivedCount };
   }, [anchors, draft.derivedCount]);
 
-  // FR-19b — the "no missing elements" gate: every note field filled (user
-  // or template) AND every required checklist item met.
+  // FR-19b — design.md gate: every system-note field filled (user or template).
+  // Cleaned JSON / Figma export is never blocked — see DECISIONS §2.21.
   const notesComplete = useMemo(
     () => NOTE_FIELDS.every((f) => (pool.systemNotes?.[f.key] ?? "").trim().length > 0),
     [pool.systemNotes],
   );
-  const exportReady = checklist.complete && notesComplete;
+  const agentExportReady = notesComplete;
 
   return {
     projectName,
@@ -243,6 +243,6 @@ export function useSessionViewModel(pool: TokenPool) {
     accent,
     summary,
     notesComplete,
-    exportReady,
+    agentExportReady,
   };
 }

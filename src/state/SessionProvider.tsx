@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { StyleSnapToken } from "../contract/types";
 import { AdjectivePicker } from "../components/AdjectivePicker";
 import { Button } from "../components/Button";
-import { CreateSystemDialog } from "../components/CreateSystemDialog";
 import { Toast } from "../components/Toast";
-import { NOTE_FIELDS } from "../engine/export";
+import {
+  agentExportBlockerMessage,
+  getAgentExportBlockers,
+} from "./agentExportBlockers";
 import { usePool } from "./usePool";
 import { useSessionViewModel } from "./useSessionViewModel";
 
@@ -18,11 +21,9 @@ type Session = ReturnType<typeof usePool> & {
    * site (it caused a real fire-immediately bug once).
    */
   editWithUndoToast: (role: string, token: StyleSnapToken) => void;
-  /** FR-19b gate: create/copy/download all pass through here — nothing ships incomplete. */
-  requestCreate: () => void;
   requestCopyDesignMd: () => void;
-  /** Runs `action` immediately if the system is complete, else opens the completion dialog. */
-  withCompleteSystem: (action: () => void) => void;
+  /** Runs `action` immediately if system notes are complete, else opens the design.md gate dialog. */
+  withAgentExportReady: (action: () => void) => void;
 };
 
 const SessionContext = createContext<Session | null>(null);
@@ -35,20 +36,21 @@ export function useSession(): Session {
 
 /**
  * One pool + view model for the whole app shell (tabs are routes now), plus
- * the export-completeness gate (FR-19b): any create/copy/download attempt on
- * an incomplete system opens the "finish your description" dialog instead —
- * one click (starter or Pick-for-me) completes it, then the action proceeds.
+ * the design.md export gate (FR-19b / DECISIONS §2.21): copy/download
+ * design.md opens a finish-system-notes dialog when notes are incomplete —
+ * Figma / cleaned JSON export is never gated.
  */
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const poolApi = usePool();
-  const { pool, applyTemplate, createSystem, editDerivedValue, undo, redo, canUndo, canRedo } =
+  const { pool, applyTemplate, editDerivedValue, undo, redo, canUndo, canRedo } =
     poolApi;
   const vm = useSessionViewModel(pool);
   const hasTokens = pool.imports.length > 0;
+  const navigate = useNavigate();
+  const noteBlockers = getAgentExportBlockers(pool.systemNotes);
 
   const [toast, setToastState] = useState<string | null>(null);
   const [toastAction, setToastAction] = useState<(() => void) | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const setToast = useCallback(
@@ -108,24 +110,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [vm.designMd]);
 
-  const withCompleteSystem = useCallback(
+  const withAgentExportReady = useCallback(
     (action: () => void) => {
-      if (vm.exportReady) action();
+      if (vm.agentExportReady) action();
       else setPendingAction(() => action);
     },
-    [vm.exportReady],
+    [vm.agentExportReady],
   );
 
-  const requestCreate = useCallback(() => {
-    withCompleteSystem(() => setShowCreate(true));
-  }, [withCompleteSystem]);
-
   const requestCopyDesignMd = useCallback(() => {
-    withCompleteSystem(() => void copyDesignMd());
-  }, [withCompleteSystem, copyDesignMd]);
-
-  const missingNotes = NOTE_FIELDS.filter((f) => !(pool.systemNotes?.[f.key] ?? "").trim());
-  const missingRoles = vm.checklist.requiredTotal - vm.checklist.requiredMet;
+    withAgentExportReady(() => void copyDesignMd());
+  }, [withAgentExportReady, copyDesignMd]);
 
   return (
     <SessionContext.Provider
@@ -135,30 +130,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         hasTokens,
         setToast,
         editWithUndoToast,
-        requestCreate,
         requestCopyDesignMd,
-        withCompleteSystem,
+        withAgentExportReady,
       }}
     >
       {children}
-
-      {showCreate && (
-        <CreateSystemDialog
-          projectName={vm.projectName}
-          reviewedCount={vm.exportInput.tokens.length}
-          rawCount={vm.exportInput.rawTokenCount}
-          mergeCount={vm.exportInput.mergeCount}
-          checklist={vm.checklist}
-          derivedCount={vm.summary.derivedCount}
-          totalValues={Object.keys(vm.resolvedAssignments).length}
-          onConfirm={() => {
-            createSystem();
-            setShowCreate(false);
-            void copyDesignMd();
-          }}
-          onClose={() => setShowCreate(false)}
-        />
-      )}
 
       {pendingAction && (
         <div
@@ -168,39 +144,44 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           <div
             role="alertdialog"
             aria-modal="true"
-            aria-label="Complete your system first"
+            aria-label="Finish system notes for design.md"
             className="flex max-h-[min(90dvh,100%)] w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-t-lg border-2 border-border-default bg-surface-card p-4 shadow-modal sm:rounded-lg sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col gap-1">
               <h2 className="font-heading text-card-title font-medium">
-                Complete your system first
+                Finish system notes for design.md
               </h2>
               <p className="text-caption text-text-muted">
-                Nothing ships with missing elements.{" "}
-                {missingNotes.length > 0 &&
-                  `${missingNotes.length} description field${missingNotes.length === 1 ? "" : "s"} still empty (${missingNotes.map((f) => f.label).join(", ")}).`}{" "}
-                {missingRoles > 0 && `${missingRoles} required role${missingRoles === 1 ? "" : "s"} unfilled.`}
+                design.md includes mood, motion, voice, and layout — things tokens can&apos;t
+                capture. {agentExportBlockerMessage(noteBlockers)} Figma export works without them.
               </p>
             </div>
 
-            {missingNotes.length > 0 && (
-              <AdjectivePicker
-                tokens={vm.exportInput.tokens}
-                anchors={vm.anchors}
-                initial={pool.adjectives}
-                applyLabel="Fill & continue"
-                onApply={(template, adjectives) => {
-                  applyTemplate(template, adjectives);
-                  const action = pendingAction;
-                  setPendingAction(null);
-                  // Roles are auto-derived; notes were the blocker — proceed.
-                  if (missingRoles === 0 && action) action();
-                }}
-              />
-            )}
+            <AdjectivePicker
+              tokens={vm.exportInput.tokens}
+              anchors={vm.anchors}
+              initial={pool.adjectives}
+              applyLabel="Fill & continue"
+              onApply={(template, adjectives) => {
+                applyTemplate(template, adjectives);
+                const action = pendingAction;
+                setPendingAction(null);
+                if (action) action();
+              }}
+            />
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setPendingAction(null);
+                  navigate("/describe");
+                }}
+              >
+                Go to system notes
+              </Button>
               <Button size="sm" variant="ghost" onClick={() => setPendingAction(null)}>
                 Not now
               </Button>
