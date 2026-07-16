@@ -10,6 +10,7 @@ import type {
   TypographyToken,
 } from "../../contract/types";
 import { detectAnchors, type AnchorOverrides, type Anchors } from "./anchors";
+import { harvestFeedbackColors, FEEDBACK_ROLE_PATHS } from "./feedback-harvest";
 import {
   deriveAccent,
   deriveFeedback,
@@ -132,6 +133,11 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     fill("color/surface/page", syntheticColor("color/surface/page", neutrals.surfacePage), from, neutralMethod("L 0.985"));
     fill("color/surface/card", syntheticColor("color/surface/card", neutrals.surfaceCard), from, "white card surface");
     fill("color/border/default", syntheticColor("color/border/default", neutrals.border), from, neutralMethod("L 0.90"));
+
+    const harvested = harvestFeedbackColors(tokens, assignments, primary.value, rawById);
+    for (const { role, token, method } of harvested) {
+      fill(FEEDBACK_ROLE_PATHS[role], token, token.id, method);
+    }
 
     const feedback = deriveFeedback(primary.value);
     for (const key of ["success", "warning", "error", "info"] as const) {

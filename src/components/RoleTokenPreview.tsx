@@ -5,6 +5,7 @@ import {
   cssShadow,
   humanValueLabel,
   describeShadowValue,
+  previewBorderStrokeColor,
   type TokenPreviewContext,
   EMPTY_PREVIEW_CONTEXT,
 } from "../state/token-display";
@@ -15,12 +16,37 @@ const CHECKERBOARD: React.CSSProperties = {
   backgroundSize: "10px 10px",
 };
 
-/** Flush left strip — no own corner radius; parent row clips with overflow-hidden. */
+/** Flush left strip — StyleSnap backdrop; inner specimen uses captured roles. */
 const STRIP =
-  "flex h-full w-[5.5rem] shrink-0 self-stretch border-r-2 border-border-default overflow-hidden";
+  "flex h-full w-[5.5rem] shrink-0 self-stretch border-r-2 border-border-default overflow-hidden bg-state-disabled-bg";
 
 /** Same square tile for every shadow preview (inset + drop). */
 const SHADOW_TILE = "size-14 shrink-0";
+
+/** Two equal blocks separated by the token gap — fixed 20px tiles, real gap (clip if wide). */
+function SpacingSpecimen({ gapPx, preview }: { gapPx: number; preview: TokenPreviewContext }) {
+  const blockPx = 20;
+  const stroke = previewBorderStrokeColor(preview);
+  const blockStyle: React.CSSProperties = {
+    width: blockPx,
+    height: blockPx,
+    boxSizing: "border-box",
+    backgroundColor: preview.surfaceCard,
+    border: `1px solid ${stroke}`,
+    borderRadius: preview.cardRadiusPx,
+    flexShrink: 0,
+  };
+
+  return (
+    <div className="flex w-full items-center justify-center overflow-hidden px-1">
+      <div className="flex items-center" style={{ gap: gapPx }}>
+        <div style={blockStyle} />
+        <div style={blockStyle} />
+      </div>
+    </div>
+  );
+}
+
 
 function PreviewStrip({
   title,
@@ -43,7 +69,7 @@ function PreviewStrip({
 interface RoleTokenPreviewProps {
   token: StyleSnapToken;
   role?: string;
-  /** Captured design roles — previews must not use StyleSnap app chrome (DECISIONS §2.19). */
+  /** Captured design roles for the specimen inside the strip — not the strip backdrop. */
   preview?: TokenPreviewContext;
 }
 
@@ -80,7 +106,6 @@ export function RoleTokenPreview({ token, role, preview = EMPTY_PREVIEW_CONTEXT 
         <PreviewStrip
           title={title}
           className="items-center justify-center"
-          style={{ backgroundColor: preview.surfacePage }}
         >
           <span
             style={{
@@ -99,29 +124,8 @@ export function RoleTokenPreview({ token, role, preview = EMPTY_PREVIEW_CONTEXT 
     }
     case "spacing":
       return (
-        <PreviewStrip
-          title={title}
-          className="items-center justify-center"
-          style={{ backgroundColor: preview.surfacePage }}
-        >
-          <div className="flex h-[55%] w-[75%] items-center justify-center gap-1">
-            <span
-              className="h-full w-3"
-              style={{ backgroundColor: preview.surfaceCard, borderRadius: preview.cardRadiusPx }}
-            />
-            <span
-              className="h-1 shrink-0"
-              style={{
-                width: `${Math.min(token.value, 48)}px`,
-                backgroundColor: preview.actionPrimary,
-                borderRadius: Math.min(preview.cardRadiusPx, 4),
-              }}
-            />
-            <span
-              className="h-full w-3"
-              style={{ backgroundColor: preview.surfaceCard, borderRadius: preview.cardRadiusPx }}
-            />
-          </div>
+        <PreviewStrip title={title} className="items-center justify-center">
+          <SpacingSpecimen gapPx={token.value} preview={preview} />
         </PreviewStrip>
       );
     case "border-radius":
@@ -129,7 +133,6 @@ export function RoleTokenPreview({ token, role, preview = EMPTY_PREVIEW_CONTEXT 
         <PreviewStrip
           title={title}
           className="items-center justify-center"
-          style={{ backgroundColor: preview.surfacePage }}
         >
           <div
             className="h-[70%] w-[70%]"
@@ -137,31 +140,32 @@ export function RoleTokenPreview({ token, role, preview = EMPTY_PREVIEW_CONTEXT 
           />
         </PreviewStrip>
       );
-    case "border-width":
+    case "border-width": {
+      const width = Math.max(0, token.value);
+      const stroke = previewBorderStrokeColor(preview);
       return (
         <PreviewStrip
-          title={title}
-          className="items-center justify-center p-[18%]"
-          style={{ backgroundColor: preview.surfacePage }}
+          title={`${humanValueLabel(token, role)} · stroke ${preview.borderDefault}`}
+          className="items-center justify-center"
         >
           <div
-            className="h-full w-full"
+            className="box-border"
             style={{
+              width: "70%",
+              height: "70%",
               backgroundColor: preview.surfaceCard,
-              borderColor: preview.borderDefault,
-              borderWidth: token.value,
-              borderStyle: "solid",
+              border: `${width}px solid ${stroke}`,
               borderRadius: preview.cardRadiusPx,
             }}
           />
         </PreviewStrip>
       );
+    }
     case "shadow": {
       return (
         <PreviewStrip
           title={title}
           className="items-center justify-center"
-          style={{ backgroundColor: preview.surfacePage }}
         >
           <div
             className={SHADOW_TILE}

@@ -94,12 +94,24 @@ export function deriveLinkColor(primaryHex: string, surfacePageHex: string): str
 
 export function deriveFeedback(primaryHex: string): Record<FeedbackRole, string> {
   const brand = oklchOf(primaryHex);
-  const chroma = Math.min(brand.c, 0.18);
+  const chroma = Math.max(0.08, Math.min(brand.c, 0.18));
+  const COLLISION_DEG = 20;
+  const SHIFT_L = 0.08;
+
+  const tuneFeedback = (role: FeedbackRole): string => {
+    const hue = FEEDBACK_HUES[role];
+    let startL = 0.64;
+    if (hueDistance(brand.h, hue) < COLLISION_DEG) {
+      startL = Math.max(0.15, startL - SHIFT_L);
+    }
+    return tuneForAA(chroma, hue, startL);
+  };
+
   return {
-    error: tuneForAA(chroma, FEEDBACK_HUES.error),
-    warning: tuneForAA(chroma, FEEDBACK_HUES.warning),
-    success: tuneForAA(chroma, FEEDBACK_HUES.success),
-    info: tuneForAA(chroma, FEEDBACK_HUES.info),
+    error: tuneFeedback("error"),
+    warning: tuneFeedback("warning"),
+    success: tuneFeedback("success"),
+    info: tuneFeedback("info"),
   };
 }
 

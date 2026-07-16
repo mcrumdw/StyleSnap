@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { generateCleanedJson } from "../../engine/export";
 import { downloadCleanedJson, downloadDesignMd } from "../../routes/exportActions";
+import { agentExportBlockerMessage, getAgentExportBlockers } from "../../state/agentExportBlockers";
 import { useSession } from "../../state/SessionProvider";
 import { Button } from "../Button";
+import { ModalPortal } from "../ModalPortal";
 import { useDialog } from "../useDialog";
 
 export type ShareExportKind = "design-md" | "figma";
@@ -14,8 +16,9 @@ interface ShareExportModalProps {
 
 /** Copy or download one export format — opened from the left-rail share buttons. */
 export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
-  const { vm, withCompleteSystem, setToast } = useSession();
+  const { vm, pool, withAgentExportReady, setToast } = useSession();
   const dialogRef = useDialog(onClose);
+  const noteBlockers = getAgentExportBlockers(pool.systemNotes);
 
   const cleanedJson = useMemo(
     () => JSON.stringify(generateCleanedJson(vm.exportInput), null, 2),
@@ -30,8 +33,13 @@ export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
   const content = isDesign ? vm.designMd : cleanedJson;
   const copyLabel = isDesign ? "design.md" : "token JSON";
 
+  const runExport = (action: () => void | Promise<void>) => {
+    if (isDesign) withAgentExportReady(() => void action());
+    else void action();
+  };
+
   const copy = () => {
-    withCompleteSystem(async () => {
+    runExport(async () => {
       try {
         await navigator.clipboard.writeText(content);
         setToast(`${copyLabel} copied — paste it where you need it.`);
@@ -43,7 +51,7 @@ export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
   };
 
   const download = () => {
-    withCompleteSystem(() => {
+    runExport(() => {
       if (isDesign) downloadDesignMd(vm.projectName, vm.designMd);
       else downloadCleanedJson(vm.projectName, vm.exportInput);
       onClose();
@@ -51,10 +59,11 @@ export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-modal flex items-end justify-center bg-text-primary/50 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
-    >
+    <ModalPortal>
+      <div
+        className="fixed inset-0 z-modal flex items-end justify-center bg-text-primary/50 p-0 sm:items-center sm:p-4"
+        onClick={onClose}
+      >
       <div
         ref={dialogRef}
         role="dialog"
@@ -66,8 +75,11 @@ export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
         <div className="flex flex-col gap-1">
           <h2 className="font-heading text-card-title font-bold">{title}</h2>
           <p className="text-caption text-text-muted">{description}</p>
-          {!vm.exportReady && (
-            <p className="font-mono text-badge text-warning-text">Complete your description first.</p>
+          {isDesign && !vm.agentExportReady && (
+            <p className="font-mono text-badge text-warning-text">
+              {agentExportBlockerMessage(noteBlockers)} Finish them on the Description page or use
+              Pick for me when you copy.
+            </p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -83,5 +95,6 @@ export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

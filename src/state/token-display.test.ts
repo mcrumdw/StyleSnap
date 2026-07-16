@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ColorToken, ShadowToken, SpacingToken, StyleSnapToken } from "../contract/types";
-import { buildPreviewContext, describeShadowValue, humanValueLabel } from "./token-display";
+import { buildPreviewContext, describeShadowValue, humanValueLabel, previewBorderStrokeColor } from "./token-display";
 
 describe("humanValueLabel", () => {
   it("describes shadow/lg single-layer drop with ink", () => {
@@ -122,5 +122,33 @@ describe("buildPreviewContext", () => {
     expect(ctx.surfaceCard).toBe("#FFFFFF");
     expect(ctx.actionPrimary).toBe("#EA580C");
     expect(ctx.cardRadiusPx).toBe(10);
+  });
+});
+
+describe("previewBorderStrokeColor", () => {
+  it("keeps captured border ink when it contrasts with card and backdrop", () => {
+    expect(
+      previewBorderStrokeColor({
+        surfaceCard: "#FFFFFF",
+        surfacePage: "#FFFBF5",
+        textPrimary: "#292524",
+        actionPrimary: "#EA580C",
+        borderDefault: "#78716C",
+        cardRadiusPx: 8,
+      }),
+    ).toBe("#78716C");
+  });
+
+  it("falls back to text primary when border ink matches the card fill", () => {
+    expect(
+      previewBorderStrokeColor({
+        surfaceCard: "#FFFFFF",
+        surfacePage: "#EAE4E1",
+        textPrimary: "#292524",
+        actionPrimary: "#EA580C",
+        borderDefault: "#FFFFFF",
+        cardRadiusPx: 8,
+      }),
+    ).toBe("#292524");
   });
 });

@@ -31,7 +31,7 @@ export function SystemNotesPanel({ notes, onChange, noteSources }: SystemNotesPa
             System notes — describe what tokens can't
           </span>
           <span className="text-caption text-text-muted">
-            Mood, principles, motion, voice, layout. Empty fields block export.
+            Mood, principles, motion, voice, layout. Required for design.md; optional for Figma export.
           </span>
         </span>
         <span className="font-mono text-caption text-text-muted">
@@ -61,7 +61,7 @@ export function SystemNotesPanel({ notes, onChange, noteSources }: SystemNotesPa
                 onChange={(e) => onChange(field.key, e.target.value)}
                 rows={2}
                 className="w-full resize-y rounded-sm border-2 border-border-default bg-surface-card p-3 text-base text-text-primary placeholder:text-text-muted"
-                placeholder={`Empty fields block export — "${field.gapText}"`}
+                placeholder={`Required for design.md — "${field.gapText}"`}
               />
             </label>
             );

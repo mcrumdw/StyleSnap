@@ -119,6 +119,52 @@ const PREVIEW_NEUTRALS = {
 
 export const EMPTY_PREVIEW_CONTEXT: TokenPreviewContext = { ...PREVIEW_NEUTRALS, cardRadiusPx: 4 };
 
+const CHECKER_LIGHT = PREVIEW_NEUTRALS.surfaceCard;
+/** StyleSnap strip backdrop (DESIGN.md state-disabled-bg) — not captured surface/page. */
+const STRIP_BACKDROP = "#ECEAF2";
+
+function parseHexRgb(hex: string): [number, number, number] | null {
+  if (!hex.startsWith("#") || hex.length < 7) return null;
+  return [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ];
+}
+
+function relativeLuminance(hex: string): number {
+  const rgb = parseHexRgb(hex);
+  if (!rgb) return 0;
+  const lin = rgb.map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const l1 = relativeLuminance(foreground) + 0.05;
+  const l2 = relativeLuminance(background) + 0.05;
+  return l1 > l2 ? l1 / l2 : l2 / l1;
+}
+
+function isLowContrast(foreground: string, background: string, minRatio = 1.35): boolean {
+  return contrastRatio(foreground, background) < minRatio;
+}
+
+/** Border stroke for width previews — falls back when captured border ink is too faint to see. */
+export function previewBorderStrokeColor(ctx: TokenPreviewContext): string {
+  if (
+    isLowContrast(ctx.borderDefault, ctx.surfaceCard) &&
+    isLowContrast(ctx.borderDefault, ctx.surfacePage) &&
+    isLowContrast(ctx.borderDefault, CHECKER_LIGHT) &&
+    isLowContrast(ctx.borderDefault, STRIP_BACKDROP)
+  ) {
+    return ctx.textPrimary;
+  }
+  return ctx.borderDefault;
+}
+
 export type RoleTokenMap = ReadonlyMap<string, StyleSnapToken>;
 
 function roleColor(map: RoleTokenMap, roles: string[]): string | undefined {

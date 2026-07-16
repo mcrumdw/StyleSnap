@@ -1,11 +1,14 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { TOKEN_CATEGORIES } from "./SideNav";
+import { sessionNavLinkClass } from "./nav-link-styles";
 
-interface WheelItem {
+interface TabItem {
   path: string;
   label: string;
   hint?: string;
+  hintWarning?: boolean;
 }
 
 interface NavTitleWheelProps {
@@ -13,30 +16,25 @@ interface NavTitleWheelProps {
   notesTotal: number;
 }
 
-function wheelTitleClass(distance: number): string {
-  if (distance === 0) {
-    return "font-heading text-card-title font-bold text-text-primary opacity-100 scale-100";
-  }
-  if (distance === 1) {
-    return "font-heading text-caption font-bold text-text-muted opacity-70 scale-95";
-  }
-  return "font-heading text-caption font-bold text-text-muted opacity-40 scale-90";
+interface ScrollEdges {
+  left: boolean;
+  right: boolean;
 }
 
-/** Mobile — swipeable title strip; active section stays centered. */
+/** Mobile — horizontal tab strip; active state follows the route (same tokens as desktop rail). */
 export function NavTitleWheel({ notesFilled, notesTotal }: NavTitleWheelProps) {
   const location = useLocation();
-  const navigate = useNavigate();
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const navigatingRef = useRef(false);
+  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [edges, setEdges] = useState<ScrollEdges>({ left: false, right: false });
 
-  const items = useMemo((): WheelItem[] => {
-    const list: WheelItem[] = [
+  const items = useMemo((): TabItem[] => {
+    const list: TabItem[] = [
       {
         path: "/describe",
         label: "Description",
-        hint: notesFilled < notesTotal ? `${notesFilled}/${notesTotal} notes` : undefined,
+        hint: notesFilled < notesTotal ? `${notesFilled}/${notesTotal}` : undefined,
+        hintWarning: notesFilled < notesTotal,
       },
     ];
     for (const { id, label } of TOKEN_CATEGORIES) {
@@ -54,109 +52,83 @@ export function NavTitleWheel({ notesFilled, notesTotal }: NavTitleWheelProps) {
     return tokenIdx >= 0 ? tokenIdx : 0;
   }, [items, location.pathname]);
 
-  const [focusIndex, setFocusIndex] = useState(activeIndex);
-
-  const scrollToIndex = useCallback((index: number, behavior: ScrollBehavior = "smooth") => {
-    const scroller = scrollerRef.current;
-    const el = itemRefs.current[index];
-    if (!scroller || !el) return;
-    const left = el.offsetLeft - (scroller.clientWidth - el.offsetWidth) / 2;
-    scroller.scrollTo({ left, behavior });
-  }, []);
-
-  useEffect(() => {
-    setFocusIndex(activeIndex);
-    navigatingRef.current = true;
-    scrollToIndex(activeIndex, "auto");
-    const t = window.setTimeout(() => {
-      navigatingRef.current = false;
-    }, 80);
-    return () => window.clearTimeout(t);
-  }, [activeIndex, scrollToIndex]);
-
-  const nearestIndex = useCallback(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return 0;
-    const center = scroller.scrollLeft + scroller.clientWidth / 2;
-    let best = 0;
-    let bestDist = Number.POSITIVE_INFINITY;
-    itemRefs.current.forEach((el, i) => {
-      if (!el) return;
-      const elCenter = el.offsetLeft + el.offsetWidth / 2;
-      const dist = Math.abs(center - elCenter);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = i;
-      }
+  const updateEdges = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setEdges({
+      left: scrollLeft > 2,
+      right: scrollLeft + clientWidth < scrollWidth - 2,
     });
-    return best;
   }, []);
 
   useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const onScroll = () => {
-      setFocusIndex(nearestIndex());
-      if (navigatingRef.current) return;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const idx = nearestIndex();
-        const item = items[idx];
-        if (item && location.pathname !== item.path) navigate(item.path);
-      }, 120);
-    };
-
-    scroller.addEventListener("scroll", onScroll, { passive: true });
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateEdges();
+    el.addEventListener("scroll", updateEdges, { passive: true });
+    const observer = new ResizeObserver(updateEdges);
+    observer.observe(el);
     return () => {
-      clearTimeout(timer);
-      scroller.removeEventListener("scroll", onScroll);
+      el.removeEventListener("scroll", updateEdges);
+      observer.disconnect();
     };
-  }, [items, location.pathname, navigate, nearestIndex]);
+  }, [items, updateEdges]);
+
+  useEffect(() => {
+    itemRefs.current[activeIndex]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [activeIndex]);
 
   return (
-    <nav aria-label="Session sections" className="border-b-2 border-border-default">
+    <nav aria-label="Session sections" className="relative py-2">
+      {edges.left && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center bg-gradient-to-r from-surface-page to-transparent pl-1"
+        >
+          <ChevronLeft className="h-4 w-4 text-text-muted" strokeWidth={2} aria-hidden />
+        </div>
+      )}
+      {edges.right && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-end bg-gradient-to-l from-surface-page to-transparent pr-1"
+        >
+          <ChevronRight className="h-4 w-4 text-text-muted" strokeWidth={2} aria-hidden />
+        </div>
+      )}
       <div
         ref={scrollerRef}
-        className="flex snap-x snap-mandatory items-center gap-0 overflow-x-auto scrollbar-none"
+        className="flex gap-1 overflow-x-auto scrollbar-none px-4"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        {items.map((item, i) => {
-          const active = i === activeIndex;
-          const focused = i === focusIndex;
-          const distance = Math.abs(i - focusIndex);
-          return (
-            <button
-              key={item.path}
-              ref={(el) => {
-                itemRefs.current[i] = el;
-              }}
-              type="button"
-              onClick={() => {
-                navigate(item.path);
-                scrollToIndex(i);
-              }}
-              className="flex min-h-[44px] shrink-0 snap-center flex-col items-center justify-center px-4 transition duration-150 ease-out"
-              aria-current={active ? "page" : undefined}
-            >
-              <span className={`block max-w-[12rem] truncate transition duration-150 ease-out ${wheelTitleClass(distance)}`}>
-                {item.label}
+        {items.map((item, i) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            ref={(el) => {
+              itemRefs.current[i] = el;
+            }}
+            className={({ isActive }) =>
+              `${sessionNavLinkClass(isActive)} shrink-0 whitespace-nowrap`
+            }
+          >
+            {item.label}
+            {item.hint && (
+              <span
+                className={`ml-1 font-mono text-badge font-normal ${
+                  item.hintWarning ? "text-warning-text" : "text-text-muted"
+                }`}
+              >
+                {item.hint}
               </span>
-              {focused && item.hint && (
-                <span
-                  className={`mt-0.5 block truncate font-mono text-badge ${
-                    item.path === "/describe" && notesFilled < notesTotal
-                      ? "text-warning-text"
-                      : "text-text-muted"
-                  }`}
-                >
-                  {item.hint}
-                </span>
-              )}
-            </button>
-          );
-        })}
+            )}
+          </NavLink>
+        ))}
       </div>
     </nav>
   );

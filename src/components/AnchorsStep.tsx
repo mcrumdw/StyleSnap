@@ -46,7 +46,7 @@ const PRIMARY_ANCHOR_TIP =
 const SECONDARY_ANCHOR_TIP =
   "Your secondary color — ghost buttons and alternate CTAs.";
 const COLOR_FAMILY_TIP =
-  "Primary drives neutrals, states, and feedback; secondary fills color/action/secondary — swap either anchor above to rebuild.";
+  "Primary drives neutrals, states, and feedback; secondary fills color/action/secondary — swap either anchor above to rebuild. Missing feedback colors are derived from your primary; captured alerts and semantic colors win.";
 
 const SWATCH_TIPS: Record<string, string> = {
   Primary: "Action buttons, links, and the tinted neutral ramp.",

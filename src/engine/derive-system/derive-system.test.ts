@@ -94,6 +94,15 @@ describe("color derivation (C.2–C.4) — exact values from #17A673", () => {
     expect(fillValue(r, "color/feedback/info").token.value).toBe("#2778C1");
   });
 
+  it("harvests captured feedback colors before deriving the rest (ember alert)", () => {
+    const r = derive(fixtureTokens("capture-ember-app.json"));
+    const error = fillValue(r, "color/feedback/error");
+    expect(error.token.id).toBe("ext_em_12");
+    expect(error.token.value).toBe("#DC2626");
+    expect(error.method).toContain("harvested from capture");
+    expect(fillValue(r, "color/feedback/success").method).toContain("conventional hue");
+  });
+
   it("every derived text/feedback color passes AA on the derived card surface", () => {
     const card = fillValue(r, "color/surface/card").token.value as string;
     for (const role of [

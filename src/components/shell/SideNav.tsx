@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { sessionNavLinkClass } from "./nav-link-styles";
 
 export const TOKEN_CATEGORIES = [
   { id: "colors", label: "Colors" },
@@ -23,13 +24,7 @@ export function SideNav({ hints }: { hints?: Partial<Record<TokenCategory, strin
         <NavLink
           key={id}
           to={`/tokens/${id}`}
-          className={({ isActive }) =>
-            `flex flex-col rounded-sm border-2 px-3 py-2 ${
-              isActive
-                ? "border-border-default bg-surface-card text-text-primary shadow-card"
-                : "border-transparent text-text-muted hover:border-border-default hover:text-text-primary"
-            }`
-          }
+          className={({ isActive }) => `flex flex-col ${sessionNavLinkClass(isActive)}`}
         >
           <span className="font-heading text-caption font-bold">{label}</span>
           {hints?.[id] && <span className="font-mono text-badge text-text-muted">{hints[id]}</span>}

@@ -532,19 +532,36 @@ Brand hue, chroma clamped ≤ 0.02: text-primary `L 0.22`, text-muted `L 0.52`,
 surface-page `L 0.985`, surface-card white, border `L 0.90`. Matches the
 "neutrals that secretly carry the brand hue" pattern.
 
-### C.4 Feedback colors (always derived — convention + brand character)
+### C.4 Feedback colors (capture harvest → convention + brand character)
 
-**Not free color theory** — hues are conventional (learned), the *character*
-is the brand's:
+Three-tier precedence for each feedback role (`success`, `warning`, `error`,
+`info`):
+
+1. **Captured + assigned** — role already filled (e.g. `div[role=alert]` →
+   `color/feedback/error`). Derivation never overwrites.
+2. **Harvest** — scan unassigned color tokens for semantic signals (authored
+   name, keyword in source/selector, expanded B.4 context, then OKLCH hue
+   band). One token per role; tie-break: confidence → occurrences → id.
+   Skip hue-only matches within 15° of primary unless a keyword/authored name
+   names the role explicitly.
+3. **Derive** — conventional hues wearing the brand's chroma (fallback).
+
+**Derived formula** — not free color theory; hues are conventional (learned),
+character is the brand's:
 
 | Role | OKLCH hue | Chroma | Lightness |
 |---|---|---|---|
-| error | 25° | `min(brand C, 0.18)` | tuned until AA ≥ 4.5 vs surface-card |
+| error | 25° | `max(0.08, min(brand C, 0.18))` | tuned until AA ≥ 4.5 vs surface-card |
 | warning | 70° | idem | idem (fill-only if text fails — pair with `-text` variant) |
 | success | 150° | idem | idem |
 | info | 250° | idem | idem |
 
-Skip any role the capture already provides (captured wins).
+**Collision guard:** if `|primary.h − feedbackHue| < 20°`, start lightness
+at `0.56` (ΔL −0.08) before AA tuning so success on a green brand does not
+merge visually with the primary.
+
+Harvest provenance: `harvested from capture — …`. Derivation provenance:
+`feedback {role} (conventional hue, brand chroma, AA-tuned)`.
 
 ### C.5 Accent suggestion (color-wheel theory — suggest, never impose)
 

@@ -10,8 +10,8 @@ interface ExportSectionProps {
   exportInput: ExportInput;
   gapCount: number;
   onCopyDesignMd?: () => void;
-  /** FR-19b — wrap copy/download behind the completeness gate. */
-  withCompleteSystem?: (action: () => void) => void;
+  /** FR-19b — wrap design.md copy/download behind the system-notes gate only. */
+  withAgentExportReady?: (action: () => void) => void;
 }
 
 function download(filename: string, content: string, mime: string) {
@@ -27,7 +27,7 @@ export function ExportSection({
   exportInput,
   gapCount,
   onCopyDesignMd,
-  withCompleteSystem,
+  withAgentExportReady,
 }: ExportSectionProps) {
   const [tab, setTab] = useState<ExportTab>("design");
   const [toast, setToast] = useState<string | null>(null);
@@ -36,6 +36,11 @@ export function ExportSection({
     if (tab !== "json") return "";
     return JSON.stringify(generateCleanedJson(exportInput), null, 2);
   }, [exportInput, tab]);
+
+  const gateIfDesign = (action: () => void | Promise<void>) => {
+    if (tab === "design" && withAgentExportReady) withAgentExportReady(() => void action());
+    else void action();
+  };
 
   const copy = async (content: string, label: string) => {
     const run = async () => {
@@ -47,8 +52,7 @@ export function ExportSection({
         setToast("Couldn't reach the clipboard — use Download instead.");
       }
     };
-    if (withCompleteSystem) withCompleteSystem(() => void run());
-    else void run();
+    gateIfDesign(run);
   };
 
   const slug = projectSlug(projectName);
@@ -61,8 +65,7 @@ export function ExportSection({
         content,
         tab === "design" ? "text/markdown" : "application/json",
       );
-    if (withCompleteSystem) withCompleteSystem(run);
-    else run();
+    gateIfDesign(run);
   };
 
   return (
@@ -71,7 +74,7 @@ export function ExportSection({
         <h3 className="font-heading text-card-title font-bold">Export</h3>
         <p className="text-caption text-text-muted">
           No account — <strong>the JSON export is your save file</strong>.
-          {gapCount > 0 && ` ${gapCount} open gap${gapCount === 1 ? "" : "s"} flagged in both exports.`}
+          {gapCount > 0 && ` ${gapCount} open gap${gapCount === 1 ? "" : "s"} flagged in design.md.`}
         </p>
       </div>
 
