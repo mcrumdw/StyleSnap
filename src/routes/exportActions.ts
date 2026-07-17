@@ -1,0 +1,28 @@
+import { generateCleanedJson, type ExportInput } from "../engine/export";
+
+export function downloadFile(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function projectSlug(projectName: string): string {
+  return projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+export function downloadDesignMd(_projectName: string, designMd: string) {
+  downloadFile("design.md", designMd, "text/markdown");
+}
+
+export function downloadCleanedJson(projectName: string, exportInput: ExportInput) {
+  const slug = projectSlug(projectName);
+  downloadFile(
+    `${slug || "stylesnap"}-tokens.json`,
+    JSON.stringify(generateCleanedJson(exportInput), null, 2),
+    "application/json",
+  );
+}

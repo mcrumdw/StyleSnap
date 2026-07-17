@@ -155,7 +155,16 @@ everything before it is reversible; it produces the finalized, stable set.
 
 ### 7.6 Completeness & completion (core)
 - **FR-18** Evaluate the project against a "complete system" checklist (primitive palette → roles assigned → required foundations: spacing scale, radius, shadow, interaction states, semantic feedback colors, type scale); show status + specific gaps.
-- **FR-19** Let the user **complete gaps manually** — add/edit tokens, build scales (color tonal, type, spacing) by hand. This is core, not optional.
+- **FR-19 (revised 2026-07-05 — derivation-first completion)** The app
+  **auto-drafts every derivable gap deterministically** from anchor tokens
+  (primary color, body typography, base spacing), like completing a puzzle
+  from its corner pieces: interaction states, feedback colors, tinted
+  neutrals, type scale, spacing/radius/shadow ramps (algorithms in
+  **Appendix C**). Derived values are visibly badged and carry provenance;
+  captured values always win over derived; user edits are never overwritten
+  by re-derivation (dirty flags). Manual add/edit remains available but is
+  the *intentional-change* path, not the default chore. Truly underivable
+  layers (motion, voice, breakpoints) remain explicit gaps.
 - **FR-20 (AI accelerator)** Optionally **propose** values for gaps and roles — derive a hover shade from a base color, generate a spacing scale, suggest semantic colors, suggest names. AI **proposes; the human disposes** — every suggestion is reviewable and consistent with captured values. (Requires Anthropic API; layered on top of the manual flow.)
 
 ### 7.7 Naming
@@ -176,7 +185,8 @@ everything before it is reversible; it produces the finalized, stable set.
 ## 8. Design principles (the "confidence pattern")
 
 - **Review is mandatory** — raw captured JSON is untrusted until a human confirms it.
-- **Suggestive, never destructive** — the app flags and proposes; the user decides.
+- **Suggestive, never destructive** — the app flags and proposes; the user decides. Derivation-first completion (FR-19) obeys the same rule: derived values are visibly badged proposals the user can change in one click, never silent inventions — and re-derivation never overwrites a human edit.
+- **Complete by default, edit by intent** — the user reviews a finished draft and changes what they disagree with, instead of filling a long gap list.
 - **Preview before commit** — the user always sees exactly what Create System / Export will produce; actions are reversible until finalized.
 - **AI proposes, human disposes** — no silent automation.
 - **Low-friction entry, clarity over completeness** — a single paste zone to start; never overwhelm.
@@ -495,6 +505,107 @@ shows each unmet ✅ item as a specific, actionable gap ("No `space/*` scale yet
 
 ---
 
-*PRD version: draft v2.1 — review + completion is core. 2026-07-04: typography
-dup key includes `lineHeight` (A.4); Appendix B role taxonomy; naming =
-slash-nested; project name derived + editable (§16).*
+## Appendix C — Derivation algorithms (derivation-first completion, FR-19)
+
+Decided 2026-07-05. All color math in **OKLCH** (culori). Every derived value:
+`derivedFrom` (anchor id) + method params recorded; badged in UI; provenance
+in exports; AA-checked. Deterministic — same anchors, same output.
+
+### C.1 Anchors (the puzzle corners)
+
+| Anchor | Detection | User-swappable |
+|---|---|---|
+| Primary color | max(occurrences × context weight); `background-color` on button/action ×2, `authoredName` mentioning primary/brand ×3 | step 2 |
+| Body typography | most frequent typography token | step 2 |
+| Base spacing | most frequent value snapped to the 4px grid | step 2 |
+
+### C.2 Interaction states (monochromatic — always derived)
+
+From primary (and any accent) in OKLCH: hover `L −0.06`, active `L −0.12`
+(clamp L ≥ 0.15); disabled bg = `C ×0.15, L → 0.92`, disabled text =
+`C ×0.2, L → 0.72`. Focus ring = primary. White-text check: if primary fails
+AA with white, derive `-text-on` guidance instead of pretending.
+
+### C.3 Tinted neutrals (always derived)
+
+Brand hue, chroma clamped ≤ 0.02: text-primary `L 0.22`, text-muted `L 0.52`,
+surface-page `L 0.985`, surface-card white, border `L 0.90`. Matches the
+"neutrals that secretly carry the brand hue" pattern.
+
+### C.4 Feedback colors (capture harvest → convention + brand character)
+
+Three-tier precedence for each feedback role (`success`, `warning`, `error`,
+`info`):
+
+1. **Captured + assigned** — role already filled (e.g. `div[role=alert]` →
+   `color/feedback/error`). Derivation never overwrites.
+2. **Harvest** — scan unassigned color tokens for semantic signals (authored
+   name, keyword in source/selector, expanded B.4 context, then OKLCH hue
+   band). One token per role; tie-break: confidence → occurrences → id.
+   Skip hue-only matches within 15° of primary unless a keyword/authored name
+   names the role explicitly.
+3. **Derive** — conventional hues wearing the brand's chroma (fallback).
+
+**Derived formula** — not free color theory; hues are conventional (learned),
+character is the brand's:
+
+| Role | OKLCH hue | Chroma | Lightness |
+|---|---|---|---|
+| error | 25° | `max(0.08, min(brand C, 0.18))` | tuned until AA ≥ 4.5 vs surface-card |
+| warning | 70° | idem | idem (fill-only if text fails — pair with `-text` variant) |
+| success | 150° | idem | idem |
+| info | 250° | idem | idem |
+
+**Collision guard:** if `|primary.h − feedbackHue| < 20°`, start lightness
+at `0.56` (ΔL −0.08) before AA tuning so success on a green brand does not
+merge visually with the primary.
+
+Harvest provenance: `harvested from capture — …`. Derivation provenance:
+`feedback {role} (conventional hue, brand chroma, AA-tuned)`.
+
+### C.5 Accent suggestion (color-wheel theory — suggest, never impose)
+
+Only when the capture contains **no second hue** (all captured colors within
+±40° of primary). Compute three candidates by hue rotation from primary
+(same C and L, then AA-tuned):
+
+- **Complementary** `+180°` — maximum tension/pop.
+- **Split-complementary** `+150°` (mirror `−150°` as alt) — contrast without
+  clash. **General default.**
+- **Analogous** `+30°` — harmony, low tension.
+
+Suitability rule for the default: brand `C > 0.17` (already vibrant) →
+analogous; brand `C < 0.09` (muted) → complementary; otherwise
+split-complementary. Presented as a dismissible suggestion card with a
+wheel-switcher across all three; never auto-assigned to a role.
+
+### C.6 Type scale (modular)
+
+From body anchor size × ratio (default **1.25**, options 1.2 / 1.333):
+caption `÷ratio`, body `×1`, subheading `×ratio`, heading `×ratio²`, display
+`×ratio³`; round to 0.5px; line-heights 1.4 / 1.5 / 1.3 / 1.2 / 1.1; weights
+from captured (heading weight = max captured, else 700). Captured typography
+claims its slot first; only empty slots derive.
+
+### C.7 Spacing / radius / shadow ramps
+
+- **Spacing:** from base `b` (C.1): `b/2, b, b×1.5, b×2, b×3, b×4` snapped to
+  the 4px grid, deduped against captured values (captured claims its slot).
+- **Radius:** captured base → sm `×0.5`, md `×1`, lg `×2` (round to px).
+- **Shadow:** reuse the captured shadow color/opacity; geometry ramp sm
+  `0 1 2 0`, md `0 4 8 −2`, lg `0 12 24 −4`. No captured shadow → neutral
+  ink at 8% opacity.
+
+### C.8 Cascade rules
+
+Derived tokens regenerate when their anchor changes. `userEdited: true`
+values are **never** regenerated (a "reset to derived" affordance exists per
+value). Captured > edited > derived is the precedence for role slots.
+
+---
+
+*PRD version: draft v2.2 — review + completion is core; completion is
+derivation-first (FR-19, Appendix C). 2026-07-04: typography dup key includes
+`lineHeight` (A.4); Appendix B role taxonomy; naming = slash-nested; project
+name derived + editable (§16). 2026-07-05: FR-19 revised to derivation-first;
+Appendix C added.*

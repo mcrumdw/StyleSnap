@@ -7,7 +7,7 @@ describe("completeness checklist (FR-18 / B.5) — the oracle acceptance", () =>
   const checklist = computeChecklist(oracleView(), ORACLE_ASSIGNMENTS);
   const gaps = checklist.items.filter((i) => i.status === "gap").map((i) => i.id);
 
-  it("flags exactly the gaps in design.example.md §Gaps", () => {
+  it("flags exactly the gaps in design.example.md §Gaps (derivation fills the rest)", () => {
     expect(gaps.sort()).toEqual(
       [
         "color/text/link",
@@ -18,16 +18,13 @@ describe("completeness checklist (FR-18 / B.5) — the oracle acceptance", () =>
         "color/feedback/warning",
         "color/feedback/info",
         "type/mono",
-        "unassigned-ext_021", // the 12px spacing, captured 9×
         "manual-foundations",
       ].sort(),
     );
   });
 
-  it("describes the 12px spacing gap with its occurrences", () => {
-    const item = checklist.items.find((i) => i.id === "unassigned-ext_021")!;
-    expect(item.label).toBe("12px spacing unassigned");
-    expect(item.description).toContain("9×");
+  it("12px spacing near a scale slot is not flagged as an orphan", () => {
+    expect(checklist.items.some((i) => i.id === "unassigned-ext_021")).toBe(false);
   });
 
   it("counts required progress: 4 required gaps (focus + 3 feedback colors)", () => {

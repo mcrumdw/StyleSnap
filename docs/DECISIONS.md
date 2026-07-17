@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-04
+Last updated: 2026-07-16
 
 ---
 
@@ -108,6 +108,441 @@ warns on mismatch (FR-4, `parseStyleSnapExport`). Rule: **any change to
 `types.ts` happens in this repo first** (with a version bump and a row in §3),
 then gets re-copied; never edit a downstream copy directly.
 
+### 2.7 Derivation-first completion ("the puzzle principle")
+Decided 2026-07-05 (team feedback: app still felt complicated; completion was
+a form-filling chore). The Webtool **auto-drafts every derivable gap
+deterministically** from three anchors (primary color, body typography, base
+spacing): interaction states and neutrals by OKLCH lightness/chroma math,
+feedback colors as conventional hues wearing the brand's chroma (AA-enforced),
+accents suggested via color-wheel harmonies (split-complementary default,
+suitability rule in PRD Appendix C), type via modular scale, spacing/radius/
+shadow via ramps. The user reviews a **complete draft** and edits only
+intentionally.
+
+Guardrails that keep this compatible with §2.2/§8 ("suggestive, never
+destructive"): derived values are visibly badged + provenance-marked in every
+export; captured values always beat derived for a role; re-derivation never
+overwrites a human edit (dirty flags); accents are suggestion cards, never
+auto-assigned. This is math, not AI — deterministic and testable; AI variants
+remain V2 (FR-20).
+
+### 2.8 Session undo/redo — decision-level history
+Decided 2026-07-10 (UX_RESEARCH F10/F11; user testing on color edits). The
+Webtool keeps a **session-only undo stack** (`src/state/history.ts`) over the
+`TokenPool` — **not** persisted to localStorage (FR-29 still saves only the
+current state; refresh restores the draft but clears undo history, same as
+Figma/Docs).
+
+**Undoable (one step per committed action):** derived-value edits (`derivedEdits`,
+including "Reset to derived"), anchor overrides (primary color / body type /
+base spacing), merges and un-merges.
+
+**Not undoable:** imports (append-only + auto-merge — use Start over), navigation/
+filters, project-name typing, role assignment (Phase B backlog).
+
+**Limits & UX:** cap **50 steps**; standard undo + redo stacks (new action clears
+redo); `⌘Z` / `⌘⇧Z` when not in a text field; Undo/Redo controls appear only
+when available (§2.20 — desktop top-right, mobile bottom corners); toasts on
+color save and merge offer a one-click Undo that calls the same stack. **Reset
+to derived** stays as a semantic shortcut.
+
+**Create System gate:** after finalize (FR-23), merge-related history entries are
+skipped on undo/redo — color and anchor edits remain reversible until export.
+Aligns with FR-13 (merges lock at Create System) without trapping users in a
+bad hex.
+
+### 2.9 Note completion via adjective-matched templates (FR-19b)
+Decided 2026-07-10. System notes (mood, component principles, motion, voice,
+layout) are **never-capturable** — leaving them as optional Gaps produced
+low-quality exports (UX_RESEARCH S2/S3). **design.md** (Share with agent) is
+blocked until all five note fields are filled; **cleaned JSON** (Share with
+Figma) ships anytime — see §2.21. Copy/download design.md passes through a
+completeness gate in `SessionProvider`.
+
+**How it works (deterministic V1 — no AI):**
+- User picks up to **five adjectives** from a fixed vocabulary (19 terms), or
+  taps **Pick for me** (`autoAdjectives` — heuristics over anchor chroma, hue,
+  radius, shadows; returns five stable picks per fixture).
+- **Sixty field snippets** (12 per field × 5 fields) in
+  `src/engine/templates/` — one mood snippet is scored first; other fields
+  mix-and-match with a **family boost** (+0.25 when the snippet shares the
+  mood winner's family). `assembleDescription` fills **only empty** note
+  fields (`fillNotes` / `refreshNotesFromAssembly`).
+- User-typed text always wins; each field records provenance (`noteSources`:
+  `"user"` or a snippet id like `motion/luxury`). UI shows a **subtle per-field
+  badge** (family label only — no global “best match” preview). Export
+  confesses starter-filled prose (`*(from the "…" starter — edit to taste)*`).
+  Legacy monolithic template ids migrate on draft load. AI-drafted descriptions
+  remain V2 (FR-20).
+
+**Rejected:** blocking export on unfilled *roles* — roles are auto-derived in
+the Phase 10 draft; only the five note fields gate **design.md** export
+(§2.21 — Figma / cleaned JSON is never gated).
+
+### 2.10 Route-based session shell (post–Phase 10d)
+Decided 2026-07-10. The single scrolling Home page (import + full draft +
+captured grid + notes + export) was split into a **Figr-style route shell**:
+left rail (`Overview` · `Describe` · `Export` + per-category token pages at
+`/tokens/:category`), one concern per page, sticky bottom CTA (`BottomBar`).
+`SessionProvider` hoists pool + view-model + export gate for the whole shell.
+Reduces the "10-destination map" problem from UX_RESEARCH without reintroducing
+the 4-step stepper (dropped in Phase 10d).
+
+### 2.13 Responsive session shell + single chrome bar
+Decided 2026-07-12. **No duplicate header on session routes:** the global
+sticky header (logo only) appears on the landing page only; inside the shell,
+the wordmark lives in `SessionNav` (top on mobile, left rail on desktop). Export
+and undo/redo placement per **§2.20**; footer holds Create System only.
+
+**Breakpoints (Tailwind defaults):** `sm` 640px · `md` 768px · `lg` 1024px.
+- **&lt; lg:** see **§2.20** (logo + Share header, swipeable `NavTitleWheel`).
+- **≥ lg:** vertical left rail + rail-bottom share links; undo/redo top-right
+  when active (§2.20).
+
+**Readable on small screens:** page titles scale `section-header` →
+`page-title` at `sm`; content padding `px-4` → `px-6`; anchor cards and gap
+rows stack; completion dialog is bottom-sheet style on phone (`items-end`),
+centered modal on `sm+`; safe-area inset on footer.
+
+### 2.14 Category-first user control (Phase 11)
+Decided 2026-07-12 (user testing — tokens felt locked after §2.12). Editing
+surfaces live on **category pages**, not by restoring Overview/Captured nav.
+
+**Phase 1 (shipped):** click any filled role row on `/tokens/*` →
+`RoleValueEditor` popover. Derived colors, spacing, radius, border-width, and
+derived type sizes are editable; edits go to `derivedEdits` with undo toast.
+Captured assignments are **reassign-only** (popover explains — no direct hex
+edit on capture primitives for now). `auto` / edited-dot badges on rows.
+
+**Locked product choices (later phases):**
+- **Captured values:** reassign-only until a dedicated override path is designed.
+- **Manual shadow add (Phase 3):** three kinds — outer drop, inner inset,
+  background blur — prefilled from existing capture shadows when present.
+- **Merge repair:** full **unmerge on demand** only (no import-time review
+  modal); entry point TBD in Phase 4.
+
+**Still unwired:** type-ratio picker, per-category Add token button, rename/unmerge
+(Phases 2–4). Accent harmony is wired on the Secondary anchor card (§2.16).
+
+### 2.15 Anchor cards split by category
+Decided 2026-07-12. **Colors** shows **Primary** + **Secondary** color anchors
+(`AnchorsStep`); secondary auto-detects a distinct second hue when present, else
+falls back to harmony-derived `color/action/secondary`. **Typography** shows
+text-style anchor (`TypeAnchorStep`). **Base unit** anchor UI removed — spacing
+still auto-detects from capture.
+
+### 2.16 Secondary harmony swap + color-family UX (Colors page)
+Decided 2026-07-12 (user testing on Ember fixture — Secondary **Swap** exposed
+only ~2 captured swatches; anchor cards and color-family preview felt noisy).
+Builds on §2.7 (C.5 accent harmonies), §2.14 (derived-value edits), and §2.15
+(primary + secondary anchors).
+
+**Problem:** Listing captured colors as the only Secondary swap options fails when
+a capture has one dominant hue plus one alert/error accent — users need **color
+theory** to explore a real secondary CTA, not a second raw scrape.
+
+**Secondary Swap (shipped):**
+- **Harmony picker** always offers three theory options derived from the current
+  primary via `harmonyFromPrimary()` (`complementary`, `split-complementary`,
+  `analogous`) — independent of whether `deriveAccent()` returns null (second
+  hue already in capture). Suggested harmony follows PRD Appendix C.5 suitability
+  (high chroma → analogous; low → complementary; else split-complementary).
+- **Fine-tune row:** native color picker + hex field + **Apply** writes
+  `derivedEdits["color/action/secondary"]` (same C.8 precedence as
+  `RoleValueEditor`); **Reset** drops the edit. Picking a new harmony clears
+  the secondary derived edit and any `secondaryColorId` override.
+- **From your capture:** when auto-detection finds a distinct second hue
+  (`anchors.secondaryColorId`), that token appears as an optional one-click
+  revert; choosing it clears `accentChoice.harmony` and secondary derived edits.
+
+**Derivation precedence (updated):**
+1. User edit — `derivedEdits["color/action/secondary"]` (view-model overlay).
+2. Explicit harmony — `pool.accentChoice.harmony` → synthetic
+   `color/action/secondary` from `harmonyFromPrimary(primary)` (AA-tuned).
+3. Captured secondary anchor — auto-detected or user-picked capture token.
+4. Default harmony suggestion — same synthetic path as (2) with suggested harmony.
+
+`setAccentChoice({ harmony })` and `setAnchorOverride({ secondaryColorId })`
+each clear the other's mode plus secondary derived edits so the two paths never
+stack silently.
+
+**Color family preview (shipped):**
+- Six swatches (Primary, Hover, Secondary, Text, Surface, Success) stretch
+  **full width** (`flex-1` per column) instead of fixed 32×32 clusters.
+- Static explanatory paragraphs under anchor cards and under the preview are
+  **removed**; copy moves to native `title` tooltips on hover targets (swatch,
+  anchor name, name·hex line, per-swatch labels). Keeps cards compact; detail on
+  demand.
+
+**Still unwired from the old Overview accent card:** accent **Dismiss** and the
+standalone mono-hue banner — harmony UX now lives inside the Secondary anchor
+card only. Type-ratio picker remains Phase 2 (§2.14).
+
+**Timeline / phase notes:**
+| When | Milestone |
+|---|---|
+| 2026-07-12 §2.15 | Primary + Secondary anchor cards on Colors; secondary auto-detect. |
+| 2026-07-12 §2.16 | Harmony swap + fine-tune + capture revert; engine precedence; full-width preview; tooltip copy. |
+| Phase 2 (§2.14 backlog) | Type-ratio picker on Typography; any remaining accent UI cleanup. |
+
+**Key files:** `src/components/AnchorsStep.tsx`,
+`src/engine/derive-system/color.ts` (`harmonyFromPrimary`),
+`src/engine/derive-system/index.ts` (secondary fill precedence),
+`src/state/pool.ts` (`setAccentChoice`, `setAnchorOverride` cross-clear),
+`src/routes/TokenCategory.tsx` (wires `setAccent`, `editDerivedValue`).
+
+### 2.17 Description-first style bias (adjective → derivation)
+Decided 2026-07-12 (branch `makram2`). Extends §2.9 (adjective snippets) into
+§2.7 (derivation) without replacing capture anchors.
+
+**Intent:** The mood **family** from adjective picks (same winner as snippet
+matching) biases **derived** tokens — not captured primitives. User edits
+(`derivedEdits`, C.8) and captured assignments are untouched.
+
+**Style profile per family** (`src/engine/style-profile.ts`):
+- `typeRatio` — modular scale (C.6)
+- `harmony` — secondary color when no captured secondary anchor (C.5)
+- `radiusScale` — multiplier on derived radius ramp slots only
+- `shadowStyle` — `soft` | `hard` | `minimal` when no captured shadows
+
+Applied in `applyNoteTemplate` / `applyStyleProfile` alongside note snippets.
+Harmony updates on refresh only when not dismissed and harmony was unset (avoids
+wiping secondary picks on every live adjective toggle). `pool.styleFamily`
+persists in the draft.
+
+**Flow:** Import → **Description** (`/describe`) first when no adjectives yet;
+**Continue to colors** → `/tokens/colors`. Returning users with adjectives land
+on Colors. Description stays in nav for later edits.
+
+**Rejected for V1:** Regenerating primary/neutral hex math from adjectives;
+per-adjective token mapping (use family only); blocking Colors until all note
+fields are filled (export gate unchanged).
+
+**Key files:** `src/engine/style-profile.ts`, `src/state/pool.ts`
+(`applyStyleProfile`, `styleFamily`), `src/routes/Home.tsx`, `src/routes/Describe.tsx`,
+`src/engine/derive-system/index.ts` + `ramps.ts`.
+
+### 2.18 Production deploy — single path (GitHub Actions)
+Decided 2026-07-12. **Problem:** After PR #16 merged `makram2` to `main`, GitHub
+Actions built the correct bundle (`index-BqW_PkrE.js`, 414 KB) and aliased
+`stylesnap-lac.vercel.app`, but production kept serving the pre-makram2 bundle
+(`index-6MiPuC3G.js`, 394 KB) — missing `/describe`, style bias, and description-first
+flow. Forensics: PR #15's prebuilt deploy uploaded only 4 KB; production
+`last-modified` shifted ~1 min after the good deploy, consistent with a second
+deploy path overwriting the alias.
+
+**Decision:** GitHub Actions (`.github/workflows/deploy.yml`) is the **only**
+production deploy path. Vercel dashboard Git auto-deploy for production must be
+**disabled** (Settings → Git → uncheck automatic production deployments, or
+disconnect Git deploy entirely). Preview deploys from branches may stay on.
+
+**Guardrail (shipped):** deploy workflow verifies production HTML is not the
+stale `index-6MiPuC3G.js` hash and that the served JS contains the makram2
+marker string `Continue to colors`. Fails the job if alias drift recurs.
+
+**Manual recovery:** Actions → "Deploy to Vercel" → Run workflow (`workflow_dispatch`
+on `main`), or promote the latest successful Actions deployment in the Vercel
+dashboard.
+
+### 2.19 Effects page + human-readable role previews
+Decided 2026-07-12 (user testing — raw shadow strings like `0 12 24 -4 #292524 @ 8%`
+were opaque; tiny thumbs on spacing/radius/border rows were unclear).
+
+**Nav rename:** session tab **Shadows** → **Effects** (`/tokens/effects`). Role ids
+stay `shadow/*` (Appendix B taxonomy unchanged). `/tokens/shadows` redirects. Page
+copy acknowledges future capture types (backdrop blur, etc.) — `types.ts` v2.0 still
+only models `shadow` today; blur remains Phase 3 manual-add per §2.14.
+
+**Role row layout:** filled semantic rows use `RoleTokenPreview` — a fixed preview
+panel (card casting real `box-shadow`, spaced blocks, rounded square, border frame)
+plus `humanValueLabel()` plain-language subtitle. Raw `formatValue()` stays in
+search/export; hover `title` on the panel for experts.
+
+**Captured design only (important):** preview strips decorate with **assigned roles
+from the current draft** (`buildPreviewContext()` in `token-display.ts`) — e.g.
+`color/surface/card` for tile fills, `color/surface/page` for strip backdrops,
+`color/action/primary` for spacing bars, `color/border/default` for border-width
+frames, `radius/md` for incidental corner rounding on non-radius rows. They must
+**never** use StyleSnap app chrome (`shadow-card`, `bg-surface-card`,
+`bg-brand-primary`, `text-text-primary`, etc.) — that would show the tool's UI
+skin instead of the imported capture. When a decorating role is still empty,
+neutral preview-only fallbacks apply (not DESIGN.md tokens). The **row chrome**
+(outer card border, nav) stays app-styled; only the left preview strip is
+capture-faithful. Strips are **flush to the row's left edge** with no separate
+`rounded-l-*` — the row's `overflow-hidden rounded-md` clips corners so captured
+backdrop fills the arc (no white wedges).
+
+**Key files:** `src/components/RoleTokenPreview.tsx`, `src/state/token-display.ts`,
+`src/components/RoleValueEditor.tsx` (`RoleFilledRow`).
+
+### 2.20 Share destinations + mobile session chrome (third shell pass)
+Decided 2026-07-12 (mobile nav consumed ~half the viewport; export actions were
+scattered across the footer).
+
+**Share (replaces footer Copy / Download / Save JSON):**
+- **Share with agent** — `design.md` for AI coding tools (Copy or Download modal).
+- **Share with Figma** — cleaned token JSON for the Figma plugin / Tokens Studio
+  (native Variables export remains V3 per PRD).
+- **Desktop:** both links at the bottom of the left rail (`ShareNavSection`).
+- **Mobile:** single **Share** button (header right) → picker → same modals.
+- Completeness gate (§2.9) applies to **design.md only** — Figma JSON is
+  never blocked (§2.21).
+
+**Footer:** removed (§2.21). No session-wide completeness strip; agent-export
+hints live on Share with agent only.
+
+**Undo/redo (supersedes §2.8 bottom-bar placement):** controls **hidden until
+active** (`canUndo` / `canRedo`). Desktop: top-right (`UndoRedoToolbar`). Mobile:
+floating **Undo** bottom-left, **Redo** bottom-right (`FloatingUndoRedo`). Keyboard
+shortcuts unchanged.
+
+**Mobile nav (&lt; lg):** sticky two-row header — (1) wordmark left, Share right;
+(2) **`NavTitleWheel`** — horizontal scroll-snap carousel; active section title
+stays centered; swipe changes route. Replaces the interim stacked tabs + stacked
+share rows.
+
+**Role-row display fix:** `buildRoleDisplayTokens()` ensures `derivedEdits` appear
+on filled rows immediately after save (pool + UI stay in sync; undo shows after
+edit, not redo).
+
+**Key files:** `ShareMenuButton.tsx`, `ShareExportModal.tsx`, `NavTitleWheel.tsx`,
+`FloatingUndoRedo.tsx`, `SessionNav.tsx`, `useSessionViewModel.ts`.
+
+### 2.21 Agent-only export gate (design.md vs Figma)
+Decided 2026-07-13 (UX review — session footer said "Complete description
+before sharing" while users edited tokens; the requirement was unclear and
+applied to both share destinations equally).
+
+**Problem:** System notes (mood, principles, motion, voice, layout) exist so
+**design.md** gives an AI agent context tokens cannot capture. Blocking *all*
+export — including cleaned JSON for Figma — and showing a global footer warning
+on every token page made the gate feel like a workflow step users had to finish
+before reviewing colors.
+
+**Decision — split export gates:**
+- **Share with agent** (`design.md` copy/download): blocked until all five
+  system-note fields are filled (`agentExportReady` = `notesComplete`). Attempt
+  opens the finish-notes dialog (`SessionProvider`) with progress (`X/5`),
+  missing field names, inline `AdjectivePicker` ("Fill & continue"), and
+  **Go to system notes** → `/describe`.
+- **Share with Figma** (cleaned token JSON): **never gated** — no modal, no
+  warning, no disabled state. JSON is the save file; tokens are useful without
+  prose.
+- **Checklist / role gaps** (`GapPanel`, `checklist.complete`): informational
+  only — never block either export path.
+
+**UI changes:**
+- **Removed `BottomBar`** — no session-wide "complete description" footer.
+- **Share with agent** shows optional `X/5` badge in rail + mobile picker when
+  notes incomplete; **Share with Figma** has no badge.
+- **`ShareExportModal`:** warning copy only on the design-md kind.
+- **`ExportSection`:** gate copy/download on the design.md tab only.
+- Copy on `/describe` and `SystemNotesPanel`: notes required for design.md,
+  optional for Figma.
+
+**Rejected:** global footer nag; gating Figma JSON; conflating token checklist
+gaps with the design.md notes requirement.
+
+**Key files:** `src/state/agentExportBlockers.ts`, `SessionProvider.tsx`
+(`withAgentExportReady`), `useSessionViewModel.ts` (`agentExportReady`),
+`ShareExportModal.tsx`, `ShareNavSection.tsx`, `ShareMenuButton.tsx`,
+`ExportSection.tsx`.
+
+### 2.22 Feedback color harvest + derivation (C.4 three-tier)
+Decided 2026-07-13. Semantic feedback colors (`color/feedback/*`) are required
+for a complete system (PRD B.5) but rarely appear in full in browser captures.
+The original C.4 rule derived all four from the primary anchor using
+**conventional OKLCH hues** (error 25°, warning 70°, success 150°, info 250°)
+with the brand's chroma (`max(0.08, min(brand C, 0.18))`) and AA tuning — not
+fixed hexes, but **primary hue was ignored**, so two vivid brands could share
+identical warning colors.
+
+**Three-tier precedence (per role):**
+1. **Captured + assigned** — e.g. `[role=alert]` → error; never derived over.
+2. **Harvest** (`feedback-harvest.ts`) — unassigned colors matched by authored
+   name, keywords, expanded B.4 context (`status` → success, `note` → info,
+   `.alert-warning`, etc.), then OKLCH hue bands. Hue-only matches skip when
+   within 15° of primary unless a keyword names the role.
+3. **Derive** (`deriveFeedback`) — conventional-hue fallback with collision
+   guard (shift start L −0.08 when primary hue within 20° of feedback hue).
+
+**Why not always the same colors:** chroma comes from the primary; lightness is
+AA-tuned per role; harvest uses real capture values when present. Figma JSON
+export is unaffected — this is token completeness only.
+
+**Rejected:** AI feedback palettes (FR-20 V2); global fixed hex palette;
+deriving feedback from primary *hue* (would break learned semantics).
+
+**Key files:** `src/engine/derive-system/feedback-harvest.ts`,
+`src/engine/derive-system/color.ts`, `src/engine/derive-system/index.ts`,
+`src/engine/roles/derive.ts`.
+
+### 2.23 Modal portals escape sticky shell stacking
+Decided 2026-07-16. Share with agent / Share with Figma dialogs were painted
+*under* token cards on the main column: the overlays lived inside the sticky
+left rail (`DesktopSessionRail`), so `position: fixed` + `z-modal` still
+competed inside that ancestor's stacking context.
+
+**Decision:** mount session modals with `createPortal(…, document.body)` via
+`ModalPortal`. Share export modal and the mobile share picker use it; other
+shell dialogs should follow the same pattern when they open from sticky
+chrome.
+
+**Rejected:** raising `z-modal` alone (does not escape a nested stacking
+context); removing `lg:sticky` from the rail (breaks viewport-tall nav).
+
+**Key files:** `src/components/ModalPortal.tsx`, `ShareExportModal.tsx`,
+`ShareMenuButton.tsx`.
+
+---
+
+### 2.12 Simplified session shell (second pass)
+Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
+
+**Removed from the left rail:** Overview (`/system`), Export (`/export`),
+Anchors (`/tokens/anchors` — merged into **Colors**), and the footer status
+link ("N auto-filled · M gaps").
+
+**Left rail now:** **Description** (`/describe`, renamed from "Describe") +
+six token categories (Colors … Effects). Colors shows brand-color anchor then
+color roles; Typography shows text-style anchor then type roles; default route
+is `/tokens/colors`.
+
+**Footer now (superseded by §2.20):** was Undo/Redo · Create System · Copy/
+Download design.md · Save JSON. **Current:** Create System only (+ completeness
+hint); share actions in left rail / mobile Share; undo/redo when active per §2.20.
+
+**Migrated from the old Overview page:** project name + import another /
+Start over → **Description**; gap panel → bottom of **Colors**; welcome toast
+→ first visit to Colors.
+
+**Legacy redirects:** `/system`, `/export`, `/tokens/anchors`, `/tokens/captured`
+→ `/tokens/colors`.
+
+### 2.11 Hide captured-token workspace from the shell
+Decided 2026-07-12 (derivation-first golden path; user testing). The **Captured
+tokens** page (`CleanupStep` — raw primitive grid, merge queue, rename,
+manual add/remove) is **removed from the route shell**: no side-nav entry, no
+`/tokens/captured` category; legacy URL redirects to `/tokens/colors` (§2.12).
+
+**Why:** Phase 10d + §2.7 already land users on a complete draft; near-duplicate
+merges run **automatically at import** (`autoMergeClusters`). Exposing the full
+raw inventory as a ninth nav destination duplicated Overview and reintroduced
+the "bag of tokens" mental model the route shell was meant to shrink.
+
+**What still works:**
+- Import → auto-merge → derive → review on category pages (§2.12).
+- Per-category role pages (`/tokens/colors`, spacing, type, …) for
+  review-by-exception.
+- Gap **Add token** routes to the matching category via
+  `routeForAddToken()` (`src/routes/nav.ts`) and opens `AddTokenDialog` on
+  that page — not the old captured grid.
+
+**What is no longer user-facing:** merge-queue review, un-merge, primitive
+rename, and "show everything" filters on the captured grid. `CleanupStep.tsx`
+remains in the repo but is unwired; re-expose only if user testing shows
+auto-merge mistakes need a dedicated repair surface (Phase 11 P5/P6 territory).
+
 ---
 
 ## 3. Token schema changes — v1.0 → v2.0 (`docs/types.ts`)
@@ -171,6 +606,27 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-16 | **Modal portals** (§2.23): `ModalPortal` mounts Share dialogs on `document.body` so sticky rail stacking no longer covers them with token cards. | — |
+| 2026-07-13 | **Feedback color harvest** (§2.22): three-tier precedence (captured → harvest → C.4 derive); `feedback-harvest.ts`; collision guard + chroma floor in `deriveFeedback`; expanded B.4 context for success/warning/info. | — |
+| 2026-07-13 | **Agent-only export gate** (§2.21): system notes gate design.md only; Figma JSON always exportable; removed global `BottomBar`; `withAgentExportReady` + `agentExportBlockers.ts`; Share with agent shows `X/5` badge; checklist gaps informational only. | — |
+| 2026-07-12 | **Share + mobile chrome** (§2.20): Share with agent / Share with Figma modals; footer slimmed to Create System; mobile `NavTitleWheel` + header Share; undo/redo when-active (desktop top-right, mobile bottom corners); `roleDisplayTokens` immediate edit display. | — |
+| 2026-07-12 | **Effects page + role previews** (§2.19): Shadows → Effects nav; human shadow/spacing/radius/border labels; `RoleTokenPreview` panel on filled rows; **preview strips use captured roles only** (`buildPreviewContext`), not app chrome. | — |
+| 2026-07-12 | **Production deploy single-path** (§2.18): disable duplicate Vercel Git production deploys; post-deploy bundle verification in `deploy.yml`; manual `workflow_dispatch` recovery documented. | — |
+| 2026-07-12 | **Description-first style bias** (§2.17, branch `makram2`): mood family → type ratio, harmony, radius scale, shadow style; import routes to Description; `styleFamily` in draft. | — |
+| 2026-07-12 | **Secondary harmony swap** (§2.16): Secondary Swap → color-theory picker (`harmonyFromPrimary`) + fine-tune hex + capture revert; explicit harmony overrides auto-detected secondary anchor; full-width color-family swatches; anchor/preview info text → hover tooltips. | — |
+| 2026-07-12 | **Primary + Secondary anchors** (§2.15): Colors page two-card grid; `secondaryColorId` in anchors + derivation for `color/action/secondary`; Typography gets text-style anchor; base-unit UI removed. | — |
+| 2026-07-12 | **Category-first editing** (§2.14 Phase 1): `RoleValueEditor` on category role rows — derived value edit + reset; captured reassign-only; undo toast. | — |
+| 2026-07-12 | **Modular description snippets** (§2.9): 60 field snippets (12×5), five adjective picks, family-boost scoring, per-field badges, `autoAdjectives` returns five; legacy template ids migrate on draft load. | — |
+| 2026-07-12 | **Responsive shell** (§2.13): session routes drop global header; `SessionNav` mobile tabs + desktop rail; footer wraps with safe-area; landing keeps `SiteHeader` only. | — |
+| 2026-07-12 | **Simplified session shell** (§2.12): removed Overview/Export/Anchors from nav; default route `/tokens/colors` (anchors + color roles + gaps); **Description** rename; export actions in footer (Copy/Download design.md, Save JSON); footer status link removed; project name + import/start-over on Description. | — |
+| 2026-07-12 | **Hide captured-token workspace** (§2.11): removed `Captured` from `SideNav`; gap **Add token** uses `routeForAddToken()` → category page + `AddTokenDialog`. Auto-merge on import unchanged; `CleanupStep` unwired. | — |
+| 2026-07-10 | **Undo/redo bugfix:** history entries now store explicit `before`/`after` pool snapshots (redo was restoring the wrong snapshot); `derivedEdits` overlay applies for every role, not only `derived_*` token ids — edits now show immediately on save. | — |
+| 2026-07-10 | **Session undo/redo** (§2.8): `src/state/history.ts` — 50-step decision stack over `TokenPool`, session-only; undoable derived edits, anchor swaps, merges/un-merges; merge undo blocked after Create System; `⌘Z`/`⌘⇧Z`, bottom-bar buttons, toast Undo on color save & merge. `Reset to derived` retained. | — |
+| 2026-07-10 | **FR-19b template completion** (§2.9): adjective picker + 8-starter library (`src/engine/templates/`); `autoAdjectives` heuristics; fills only empty System-notes fields; `noteSources` provenance; export gate in `SessionProvider` — Create/copy/download blocked until all five note fields filled. AI notes remain V2. | — |
+| 2026-07-10 | **Route-based session shell** (§2.10): React Router layout — `/system`, `/describe`, `/export`, `/tokens/:category`; `AppShell` + `SideNav` + `BottomBar`; `SessionProvider` replaces per-page pool wiring. Home is import-only. | — |
+| 2026-07-10 | **Foundation ramps** (PRD Appendix C.7): `deriveSpacingRamp`, `deriveRadiusRamp`, `deriveShadowRamp` in `src/engine/derive-system/ramps.ts` — captured values claim slots; empty spacing/radius/shadow roles derive from anchors; multi-radius captures map to sm/md/lg. | — |
+| 2026-07-10 | Added **`docs/fixtures/capture-ember-app.json`** — warm-orange browser capture (27 tokens, 3-way color dedup cluster, radial hero, states, inset shadow) for manual testing; distinct from lumen / verdantly / thin fixtures. | — |
+| 2026-07-06 | **Phase 10d shipped** (`4a354d1`): one-page draft after import — auto-merge at import time (exact always; near-dup only in clusters of 3+), inline gaps on Overview, 4-step stepper removed, sensitivity/merge queue simplified. Golden path = land on draft, repair by exception. | `4a354d1` |
 | 2026-06-29 | Token schema v1.0 → v2.0 | `b60664a` |
 | 2026-06-29 | Added this decision log | — |
 | 2026-06-29 | DESIGN.md scaffold v1 → v2: added agent-instruction block, foundations (spacing/radius/shadow/layout/breakpoints), color interactive+semantic states, data-states, iconography, motion, accessibility | — |
@@ -178,6 +634,9 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-06-29 | Filled DESIGN.md (bold & expressive direction): electric indigo `#5B2EFF` primary, hot-pink accent, hard offset shadow signature, Space Grotesk/Inter/JetBrains Mono, light-first (dark mode deferred) | — |
 | 2026-06-29 | PRD draft v2: integrated ideas from the earlier v0.1 PRD (North-Star <10min, Maya/Jonas personas + JTBD, paste-first ingest, rule-based dedup with duplicate-vs-"similar", suggestive-never-destructive + reversible merges + Create System gate, deterministic+provenance design.md, in-session MVP architecture, tech stack, risks). **Decision: human review + gap completion (manual core, AI as accelerator) is the product's core value — raw JSON without review is untrusted.** | — |
 | 2026-06-29 | Doc reorg: old v0.1 PRD deleted; root `PRD.md` v2 renamed and moved to **`docs/PRD_webtool_v2.md`** — now the canonical web-app PRD. | — |
+| 2026-07-05 | **Phase 10 UX hardened after re-walkthrough** (UX_RESEARCH §7): flow inverted to **review-by-exception** — land on the complete draft + summary strip ("4 proposed merges · 3 anchors · 14 derived"), steps become repair shops; derivation runs on **cluster canonicals** pre-merge and refines live (fixes the merge→anchor sequencing hole); merge review is a queue, not a badge hunt; **10c cognitive-load rules** added (≤3 decisions above fold, one primary CTA, no-jargon copy, confess-automation-in-place, 3 badge states max). New risks R1–R3 tracked in acceptance. | — |
+| 2026-07-05 | **Derivation-first completion adopted** (§2.7; agreed makram + team feedback): PRD **FR-19 revised** + **Appendix C** (anchor detection, OKLCH state/neutral math, conventional-hue feedback colors with brand chroma, color-wheel accent suggestions w/ suitability rule, modular type scale, foundation ramps, dirty-flag cascade). PRD → v2.2. **Phase 10 rewritten** as "auto-completed draft + stepper": engine first (10a), flow UI (10b) with steps Clean up → Anchors & meaning → Your system → Review & export; Phase 11 P5 absorbed; golden-path target tightened to < 5 min. | — |
+| 2026-07-05 | **Simulated usability study added** (`docs/UX_RESEARCH.md`): 10 scenarios × 12 hypothetical users against the 8c/8d UI; 22 friction points → 13 ranked pain points. Explicitly hypotheses, not data — real 5-user validation recommended before Phase 11. Outcomes: Phase 10 extended with export guardrail (P2), resume-to-step (P9), stepper a11y (P11); **Phase 11 added** (batch suggestion accept, reopen-after-finalize + toast undo, scale builders, ignore-token, error-copy quick fixes); P7/P8 sent to backlog. | — |
 | 2026-07-05 | **Phase 10 spec added** (UX review vs the Maya persona): 8c's two stacked tab levels + drawers presented the pipeline as a ~10-destination map; replaced by a **4-step flow** (Clean up → Give meaning → Fill gaps → Review & export) with one context-aware primary CTA, inline gaps/export (no overlays), user-vocabulary labels, free navigation. 8c plumbing (view-model, deep links, 8d picker) retained. Open-phase order set to **10 → 9**; Phase 9's System-notes panel placed in step 4. | — |
 | 2026-07-04 | **Phase 9 spec added** (user testing): `design.md` export gains **descriptive layers** (PRD §11 extended) — computed Accessibility section (measured WCAG ratios per assigned text/surface pair, failures also listed in Gaps), computed component sketches from `captureId` groups, and a user-authored **System notes** panel (mood, component principles, motion, voice, layout; empty fields become Gaps lines; notes round-trip via cleaned JSON). Oracle `design.example.md` extended accordingly (ratios machine-verified). AI-drafted descriptions deferred to V2/FR-20. | — |
 | 2026-07-04 | **Phase 8 spec added to BUILD_PLAN.md** after user testing of the MVP build: role storage inverted from per-token `role` field (1:1 — couldn't express one primitive holding several roles, contradicting §2.3 and the oracle's dual-use `color/ink`) to an `assignments: role → primitiveId` map; additive multi-role UI; new **System view** grouped by role subcategory (Text/Surface/Action/Border/Feedback) showing primitives with all their semantic uses. Alternative considered and rejected: keeping 1:1 and displaying colors in usage subcategories — would require duplicate same-hex tokens, breaking value-based dedup (Appendix A.6) and the single-source-of-truth property of primitives. | — |

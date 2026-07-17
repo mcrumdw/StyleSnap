@@ -1,11 +1,14 @@
 import { useRef, useState, type DragEvent } from "react";
 import { parseStyleSnapExport } from "../contract/schema";
 import type { StyleSnapExport } from "../contract/types";
+import { sanitizeNotes, type SystemNotes } from "../engine/export";
 import { importLabel } from "../state/pool";
 import { Button } from "./Button";
 
 interface ImportZoneProps {
-  onImport: (data: StyleSnapExport) => void;
+  onImport: (data: StyleSnapExport, notes?: SystemNotes) => void;
+  /** Landing uses create-system wording; session modal adds another capture. */
+  variant?: "create" | "add";
 }
 
 interface ImportError {
@@ -18,7 +21,7 @@ interface ImportError {
  * drag-drop. Parses with `parseStyleSnapExport` — the friendly error banner
  * and the version-mismatch warning render right here, next to the fix.
  */
-export function ImportZone({ onImport }: ImportZoneProps) {
+export function ImportZone({ onImport, variant = "add" }: ImportZoneProps) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<ImportError | null>(null);
@@ -34,9 +37,19 @@ export function ImportZone({ onImport }: ImportZoneProps) {
       setLastImport(null);
       return;
     }
-    onImport(result.data);
+    // Phase 9b round-trip: cleaned JSON carries System notes in an extra
+    // `notes` key the envelope ignores — lift it separately, defensively.
+    let notes: SystemNotes | undefined;
+    try {
+      notes = sanitizeNotes((JSON.parse(raw) as { notes?: unknown }).notes);
+    } catch {
+      notes = undefined; // unreachable after a successful parse; belt & braces
+    }
+    onImport(result.data, notes);
     setLastImport(
-      `Imported ${result.data.tokens.length} token${result.data.tokens.length === 1 ? "" : "s"} from ${importLabel(result.data.meta)}.`,
+      variant === "create"
+        ? `System created — ${result.data.tokens.length} token${result.data.tokens.length === 1 ? "" : "s"} from ${importLabel(result.data.meta)}.`
+        : `Imported ${result.data.tokens.length} token${result.data.tokens.length === 1 ? "" : "s"} from ${importLabel(result.data.meta)}.`,
     );
     setVersionWarning(result.versionWarning ?? null);
     setError(null);
@@ -70,15 +83,18 @@ export function ImportZone({ onImport }: ImportZoneProps) {
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        className={`flex flex-col gap-4 rounded-md border-2 border-dashed p-6 transition ${
+        className={`flex flex-col items-center justify-start gap-4 rounded-md border-2 border-dashed p-6 transition ${
           dragging ? "border-brand-primary bg-brand-primary/10" : "border-border-default bg-surface-card"
         }`}
       >
         <label className="flex flex-col gap-2">
-          <span className="font-heading text-card-title font-medium">Paste a capture</span>
+          <span className="font-heading text-card-title font-medium">
+            {variant === "create" ? "Paste capture JSON" : "Paste a capture"}
+          </span>
           <span className="text-caption text-text-muted">
-            Copy the JSON from the extension or the Figma plugin, paste it here — or drop the file
-            anywhere in this box.
+            {variant === "create"
+              ? "From the browser extension or Figma plugin — or drop a .json file in this box."
+              : "Copy the JSON from the extension or the Figma plugin, paste it here — or drop the file anywhere in this box."}
           </span>
           <textarea
             value={text}
@@ -92,10 +108,10 @@ export function ImportZone({ onImport }: ImportZoneProps) {
 
         <div className="flex items-center gap-4">
           <Button onClick={() => importText(text)} disabled={text.trim().length === 0}>
-            Import tokens
+            {variant === "create" ? "Create system from JSON" : "Import tokens"}
           </Button>
           <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            Upload a file
+            {variant === "create" ? "Create system from file" : "Upload a file"}
           </Button>
           <input
             ref={fileInputRef}
