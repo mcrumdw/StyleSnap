@@ -65,22 +65,24 @@ function mapGradient(paint: GradientPaint): GradientValue | null {
     : { kind, stops };
 }
 
-function mapTypography(node: TextNode): TypographyValue | null {
-  // Mixed-style text (multiple fonts/sizes in one node) → skip; each range
-  // would be its own token and that is out of MVP scope.
-  if (
-    node.fontName === figma.mixed ||
-    node.fontSize === figma.mixed ||
-    node.fontWeight === figma.mixed ||
-    node.lineHeight === figma.mixed
-  ) {
-    return null;
-  }
+// One styled run inside a text node. getStyledTextSegments guarantees every
+// field below is concrete (never figma.mixed) within a single segment.
+interface TextSegment {
+  characters: string;
+  fontName: FontName;
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: LineHeight;
+  letterSpacing: LetterSpacing;
+  textCase: TextCase;
+  textStyleId: string;
+}
 
-  const fontSize = node.fontSize as number;
+function segmentToTypography(seg: TextSegment): TypographyValue {
+  const fontSize = seg.fontSize;
 
   // Normalize Figma lineHeight to a unitless ratio.
-  const lh = node.lineHeight as LineHeight;
+  const lh = seg.lineHeight;
   const lineHeight =
     lh.unit === "PERCENT"
       ? round2(lh.value / 100)
@@ -89,32 +91,56 @@ function mapTypography(node: TextNode): TypographyValue | null {
         : 1.2; // AUTO — Figma's default is ~1.2
 
   const value: TypographyValue = {
-    fontFamily: (node.fontName as FontName).family,
+    fontFamily: seg.fontName.family,
     fontSize,
-    fontWeight: node.fontWeight as number,
+    fontWeight: seg.fontWeight,
     lineHeight,
   };
 
-  if ((node.fontName as FontName).style.toLowerCase().includes("italic")) {
+  if (seg.fontName.style.toLowerCase().includes("italic")) {
     value.fontStyle = "italic";
   }
 
-  if (node.letterSpacing !== figma.mixed) {
-    const ls = node.letterSpacing as LetterSpacing;
-    const px = ls.unit === "PIXELS" ? ls.value : (ls.value / 100) * fontSize;
-    if (px !== 0) value.letterSpacing = round2(px);
-  }
+  const ls = seg.letterSpacing;
+  const px = ls.unit === "PIXELS" ? ls.value : (ls.value / 100) * fontSize;
+  if (px !== 0) value.letterSpacing = round2(px);
 
-  if (node.textCase !== figma.mixed && node.textCase !== "ORIGINAL") {
-    value.textTransform =
-      node.textCase === "UPPER"
-        ? "uppercase"
-        : node.textCase === "LOWER"
-          ? "lowercase"
-          : "capitalize";
-  }
+  if (seg.textCase === "UPPER") value.textTransform = "uppercase";
+  else if (seg.textCase === "LOWER") value.textTransform = "lowercase";
+  else if (seg.textCase === "TITLE") value.textTransform = "capitalize";
 
   return value;
+}
+
+// A text node can mix several styles (e.g. bold words inside a paragraph).
+// Split it into distinct styled runs so each real text style becomes its own
+// token, instead of skipping the whole node. Runs with identical style within
+// the node collapse; whitespace-only runs are ignored.
+function extractTypographySegments(
+  node: TextNode,
+): Array<{ value: TypographyValue; styleId: string | null }> {
+  const segments = node.getStyledTextSegments([
+    "fontName",
+    "fontSize",
+    "fontWeight",
+    "lineHeight",
+    "letterSpacing",
+    "textCase",
+    "textStyleId",
+  ]);
+
+  const seen = new Map<string, { value: TypographyValue; styleId: string | null }>();
+  for (const seg of segments) {
+    if (seg.characters.trim() === "") continue; // skip spaces/newlines between runs
+    const value = segmentToTypography(seg as TextSegment);
+    const key = JSON.stringify(value);
+    if (!seen.has(key)) {
+      const styleId =
+        typeof seg.textStyleId === "string" && seg.textStyleId !== "" ? seg.textStyleId : null;
+      seen.set(key, { value, styleId });
+    }
+  }
+  return [...seen.values()];
 }
 
 function mapShadows(effects: readonly Effect[]): ShadowValue | null {
@@ -181,16 +207,15 @@ async function captureNode(node: SceneNode, out: RawCapture[]): Promise<void> {
     }
   }
 
-  // typography
+  // typography — split mixed-style text into its distinct styled runs
   if (node.type === "TEXT") {
-    const t = mapTypography(node);
-    if (t) {
+    for (const { value, styleId } of extractTypographySegments(node)) {
       out.push({
         type: "typography",
-        value: t,
+        value,
         source,
         captureId,
-        authoredName: await styleName(node.textStyleId),
+        authoredName: await styleName(styleId ?? ""),
       });
     }
   }
