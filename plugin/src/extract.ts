@@ -13,7 +13,7 @@ import type {
   TokenContext,
 } from "../../docs/types";
 
-const MAX_DEPTH = 3;
+const MAX_DEPTH = 6;
 
 // ── id helpers ───────────────────────────────────────────
 

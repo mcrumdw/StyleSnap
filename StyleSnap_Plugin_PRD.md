@@ -128,7 +128,7 @@ The plugin extracts all 6 token types defined in `docs/types.ts`:
 | `shadow` | `node.effects` (DROP_SHADOW + INNER_SHADOW types) | ShadowValue array (one ShadowLayer per effect) |
 
 **Extraction rules:**
-- Only extract from directly selected nodes and their children (no deep recursion beyond 3 levels)
+- Only extract from directly selected nodes and their children (no deep recursion beyond 6 levels)
 - Skip hidden layers (`node.visible === false`)
 - Deduplicate identical values at extraction time (same value + same type = one token); set `occurrences` to the count of duplicates collapsed
 - Generate globally unique IDs: source-prefixed (`fig_` + UUID, e.g. `fig_a1b2c3d4`)
@@ -188,7 +188,7 @@ The plugin outputs and accepts `StyleSnapExport` as defined in `docs/types.ts`. 
 ### Module 2 — Token Extraction Engine
 **Priority: P0**
 
-- Reads selected node tree (max 3 levels deep)
+- Reads selected node tree (max 6 levels deep)
 - Extracts all 7 token types per extraction scope table above (incl. gradient)
 - Maps to `StyleSnapExport` format (docs/types.ts v2.0): source-prefixed IDs, captureId, occurrences, context.authoredName
 - Skips hidden layers, deduplicates identical values
