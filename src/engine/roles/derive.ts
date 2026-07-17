@@ -56,7 +56,7 @@ export type RoleCandidates = Map<string, RoleCandidate[]>;
  */
 export function deriveRoleCandidates(
   tokens: StyleSnapToken[],
-  rawById: Map<string, StyleSnapToken> = new Map(),
+  rawById: ReadonlyMap<string, StyleSnapToken> = new Map(),
 ): RoleCandidates {
   // token id → role → best source for that role.
   const perToken = new Map<string, Map<string, SuggestionSource>>();
@@ -141,7 +141,7 @@ export function topSuggestionsByToken(candidates: RoleCandidates): Map<string, s
 /** The token's own context first, then the absorbed tokens' contexts in order. */
 function candidateContexts(
   token: StyleSnapToken,
-  rawById: Map<string, StyleSnapToken>,
+  rawById: ReadonlyMap<string, StyleSnapToken>,
 ): TokenContext[] {
   const contexts: TokenContext[] = [];
   if (token.context) contexts.push(token.context);

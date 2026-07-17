@@ -30,6 +30,7 @@ import {
   type ShadowStyle,
 } from "./ramps";
 import { scaleRadius, type StyleProfile } from "../style-profile";
+import { deriveRoleCandidates } from "../roles";
 
 export type { AccentSuggestion, Harmony } from "./color";
 export { harmonyFromPrimary } from "./color";
@@ -191,9 +192,42 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   if (body && body.type === "typography") {
     const captured = tokens.filter((t): t is TypographyToken => t.type === "typography");
     const ratio = input.typeRatio ?? DEFAULT_TYPE_RATIO;
+
+    // A captured font that maps to a heading/display slot by its context
+    // (`<h1>` ≥ 40px → display, `<h1..h3>` → heading) or its authoredName
+    // CLAIMS that slot — so a distinct hero or heading typeface from the snap
+    // is used verbatim, not replaced by a derived size of the body font. Only
+    // the still-empty slots derive. Reuses the tested role-derivation rules.
+    const typeCandidates = deriveRoleCandidates(tokens, rawById);
+    const capturedForType = (role: string): TypographyToken | undefined => {
+      for (const cand of typeCandidates.get(role) ?? []) {
+        const tok = byId.get(cand.tokenId);
+        if (
+          tok &&
+          tok.type === "typography" &&
+          !tok.id.startsWith("derived_") &&
+          tok.id !== body.id
+        ) {
+          return tok;
+        }
+      }
+      return undefined;
+    };
+    const claimHint = (tok: TypographyToken): string => {
+      const authored = tok.context?.authoredName;
+      if (authored) return `captured, authored "${authored}"`;
+      const el = tok.context?.element;
+      return el ? `captured on <${el}>` : "captured font";
+    };
+
     for (const slot of deriveTypeScale(body, captured, ratio)) {
       if (slot.role === "type/body") {
         fill(slot.role, body, body.id, "anchor (your text style)");
+        continue;
+      }
+      const claimed = capturedForType(slot.role);
+      if (claimed) {
+        fill(slot.role, claimed, claimed.id, claimHint(claimed));
         continue;
       }
       fill(

@@ -122,7 +122,7 @@ describe("color derivation (C.2–C.4) — exact values from #17A673", () => {
 describe("type scale (C.6) and ramps (C.7)", () => {
   const r = derive(fixtureTokens("capture-thin.json"));
 
-  it("modular scale from the 16px body anchor at ×1.25", () => {
+  it("modular scale from the 16px body anchor at ×1.25 (single-font snap)", () => {
     expect(fillValue(r, "type/body").token.id).toBe("ext_th_04");
     const size = (role: string) =>
       (fillValue(r, role).token as { value: { fontSize: number } }).value.fontSize;
@@ -130,6 +130,36 @@ describe("type scale (C.6) and ramps (C.7)", () => {
     expect(size("type/subheading")).toBe(20);
     expect(size("type/heading")).toBe(25);
     expect(size("type/display")).toBe(31.5);
+    // One font → every non-body slot is DERIVED from it, nothing captured.
+    for (const role of ["type/caption", "type/subheading", "type/heading", "type/display"]) {
+      expect(fillValue(r, role).token.id.startsWith("derived_")).toBe(true);
+    }
+  });
+
+  it("a captured hero/heading font claims its slot verbatim (multi-font snap)", () => {
+    const td = derive(fixtureTokens("capture-test-drive.json"));
+    // The Sora 56px <h1> is used AS the display font, not a derived body size.
+    const display = fillValue(td, "type/display");
+    expect(display.token.id).toBe("ext_td_10");
+    expect(display.token.id.startsWith("derived_")).toBe(false);
+    expect((display.token as { value: { fontFamily: string; fontSize: number } }).value).toMatchObject(
+      { fontFamily: "Sora", fontSize: 56 },
+    );
+    expect(display.method).toContain("captured");
+    // Body is still the most-frequent captured font; heading (no captured
+    // <h2/h3>) still derives from it.
+    expect(fillValue(td, "type/body").token.id).toBe("ext_td_11");
+    expect(fillValue(td, "type/heading").token.id.startsWith("derived_")).toBe(true);
+  });
+
+  it("an authoredName font claims its slot too (Figma type/heading)", () => {
+    const lumen = derive([
+      ...fixtureTokens("capture-browser-messy.json"),
+      ...fixtureTokens("capture-figma-clean.json"),
+    ]);
+    // fig_005 carries authoredName "type/heading"; ext_014 is the <h1> display.
+    expect(fillValue(lumen, "type/heading").token.id).toBe("fig_005");
+    expect(fillValue(lumen, "type/display").token.id).toBe("ext_014");
   });
 
   it("spacing ramp from base 16 on the 4px grid; captured 16 claims its slot", () => {

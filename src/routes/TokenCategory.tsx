@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "
 import type { TokenType } from "../contract/types";
 import { AddTokenDialog } from "../components/AddTokenDialog";
 import { AnchorsStep } from "../components/AnchorsStep";
+import { CapturedFonts } from "../components/CapturedFonts";
 import { TypeAnchorStep } from "../components/TypeAnchorStep";
 import { GapPanel } from "../components/GapPanel";
 import { GiveMeaningStep } from "../components/GiveMeaningStep";
@@ -207,6 +208,11 @@ export function TokenCategory() {
             anchors={vm.anchors}
             tokens={vm.exportInput.tokens}
             onSetAnchor={setAnchor}
+          />
+          <CapturedFonts
+            tokens={vm.exportInput.tokens}
+            assignments={vm.resolvedAssignments}
+            onAssign={assign}
           />
           <GiveMeaningStep
             entries={vm.entries}
