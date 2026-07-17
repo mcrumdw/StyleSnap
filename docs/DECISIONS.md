@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ---
 
@@ -494,6 +494,31 @@ context); removing `lg:sticky` from the rail (breaks viewport-tall nav).
 **Key files:** `src/components/ModalPortal.tsx`, `ShareExportModal.tsx`,
 `ShareMenuButton.tsx`.
 
+### 2.24 Captured fonts claim type slots (multi-family typography)
+Decided 2026-07-17 (Claude Code session). Typography derivation was
+**single-family**: the most-frequent font became `type/body`, and every other
+slot (`heading`, `display`, …) was derived as a modular-scale size of that
+same face. Distinct hero or heading typefaces in the capture were ignored —
+violating C.8 precedence (captured > derived) for type roles.
+
+**Decision — capture claims before scale derive:**
+1. Body anchor detection unchanged (most-frequent typography).
+2. For each other type role, if `deriveRoleCandidates` finds a **captured**
+   token for that role (context: `<h1>` ≥40px → `type/display`, `<h1..h3>` →
+   `type/heading`; or exact `authoredName`), that token **claims the slot
+   verbatim**.
+3. Only still-empty slots fill from the modular type scale (C.6) / mono derive.
+4. **UI:** `CapturedFonts` on `/tokens/typography` lists every captured
+   typeface (specimen + where seen) and a "Use as…" picker so the user can
+   assign any captured font to any `type/*` role — captured always beats
+   derived.
+
+**Rejected:** forcing one family across the system; inventing a second
+"heading family" anchor (context/authoredName claims are enough for V1).
+
+**Key files:** `src/engine/derive-system/index.ts`, `src/engine/roles/derive.ts`,
+`src/components/CapturedFonts.tsx`, `src/routes/TokenCategory.tsx`.
+
 ---
 
 ### 2.12 Simplified session shell (second pass)
@@ -606,6 +631,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-17 | **Captured fonts claim type slots** (§2.24): multi-family typography — context/authoredName captures claim heading/display before modular-scale derive; `CapturedFonts` panel on Typography; single-font snaps unchanged. | `2f6b4d7` |
 | 2026-07-16 | **Modal portals** (§2.23): `ModalPortal` mounts Share dialogs on `document.body` so sticky rail stacking no longer covers them with token cards. | — |
 | 2026-07-13 | **Feedback color harvest** (§2.22): three-tier precedence (captured → harvest → C.4 derive); `feedback-harvest.ts`; collision guard + chroma floor in `deriveFeedback`; expanded B.4 context for success/warning/info. | — |
 | 2026-07-13 | **Agent-only export gate** (§2.21): system notes gate design.md only; Figma JSON always exportable; removed global `BottomBar`; `withAgentExportReady` + `agentExportBlockers.ts`; Share with agent shows `X/5` badge; checklist gaps informational only. | — |
