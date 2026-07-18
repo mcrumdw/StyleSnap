@@ -1,0 +1,19 @@
+{
+  "name": "stylesnap-figma-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StyleSnap Figma Plugin — extract design tokens as JSON, import them back as Styles & Variables",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.2",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  }
+}

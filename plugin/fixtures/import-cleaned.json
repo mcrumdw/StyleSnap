@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "source": "figma",
+    "exportedAt": "2026-07-04T14:46:18.678Z",
+    "figmaFile": "Reachy Mini",
+    "version": "2.0"
+  },
+  "tokens": [
+    {
+      "id": "fig_mr6h6bli_j",
+      "captureId": "cap_mr6h6bl1_2",
+      "source": "div.macro-bar-row",
+      "name": "spacing/xs",
+      "occurrences": 3,
+      "merged": true,
+      "mergedFrom": ["fig_mr6h6bli_k"],
+      "type": "spacing",
+      "value": 6
+    },
+    {
+      "id": "fig_mr6h6bli_m",
+      "captureId": "cap_mr6h6bld_e",
+      "source": "Frame 6",
+      "name": "spacing/xxs",
+      "occurrences": 1,
+      "merged": false,
+      "type": "spacing",
+      "value": 4
+    },
+    {
+      "id": "fig_mr6h6bli_l",
+      "captureId": "cap_mr6h6blb_c",
+      "source": "Ellipse 1",
+      "name": "border/width/thick",
+      "occurrences": 2,
+      "merged": false,
+      "type": "border-width",
+      "value": 10
+    },
+    {
+      "id": "fig_mr6h6bli_n",
+      "captureId": "cap_mr6h6blf_g",
+      "source": "kcal left",
+      "name": "color/text/secondary",
+      "occurrences": 2,
+      "merged": false,
+      "context": { "authoredName": "localhost/Storm Gray" },
+      "type": "color",
+      "value": "#717786",
+      "opacity": 1
+    },
+    {
+      "id": "fig_mr6h6bli_o",
+      "captureId": "cap_mr6h6blf_g",
+      "source": "kcal left",
+      "name": "type/caption",
+      "occurrences": 1,
+      "merged": false,
+      "type": "typography",
+      "value": {
+        "fontFamily": "IBM Plex Sans",
+        "fontSize": 12,
+        "fontWeight": 400,
+        "lineHeight": 1.55
+      }
+    },
+    {
+      "id": "fig_unnamed_1",
+      "captureId": "cap_mr6h6bkx_1",
+      "source": "div.macro-bars-list",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "type": "spacing",
+      "value": 2
+    }
+  ]
+}
