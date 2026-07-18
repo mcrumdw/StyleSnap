@@ -62,6 +62,7 @@ value was captured.
 ## Typography
 
 Font: **Inter** (stack: `Inter, system-ui, sans-serif`) — the only captured family.
+Type scale ratio: **×1.25** from body 16px.
 
 | Role | Size / Weight / Line-height | Extras | Provenance |
 |---|---|---|---|
@@ -74,9 +75,9 @@ Font: **Inter** (stack: `Inter, system-ui, sans-serif`) — the only captured fa
 
 ## Foundations
 
-**Spacing scale** — `space/xs` 4 · `space/sm` 8 · `space/md` 16 · `space/lg` 24 · `space/xl` 32 · `space/2xl` 64. (A 15px capture, 2×, was merged into `space/md` 16. A 12px value, 9×, is captured but **unassigned** — see §Gaps.)
+**Spacing scale** — `space/xs` 4 · `space/sm` 8 · `space/md` 16 · `space/lg` 24 · `space/xl` 32 · `space/2xl` 64. *Scale intelligence: base ~4px.* (A 15px capture, 2×, was merged into `space/md` 16.)
 
-**Radius** — `radius/sm` 8 (`a.btn-primary`, 16×) · `radius/md` 12 (`Card/Default` + `div.card`, 16×) · `radius/lg` 16 (derived from `radius/8` — radius ramp ×2).
+**Radius** — `radius/sm` 8 (`a.btn-primary`, 16×) · `radius/md` 12 (`Card/Default` + `div.card`, 16×) · `radius/lg` 16 (derived from `radius/8` — radius ramp ×2). *Scale intelligence: soft / rounded profile.*
 
 **Border width** — `border-width/default` 1 (`input.field`, 12×).
 

@@ -20,12 +20,15 @@ import {
   defaultProjectName,
   deserializeDraft,
   emptyPool,
+  excludeToken,
+  excludedPoolTokens,
   importLabel,
   isSystemCreated,
   poolTokenCount,
   poolTokens,
   removeManualToken,
   resolveAssignments,
+  restoreToken,
   serializeDraft,
   setDecision,
   setProjectName,
@@ -361,6 +364,24 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.manual;
     expect(deserializeDraft(JSON.stringify(legacy))?.manual).toEqual([]);
+  });
+
+  it("soft-excludes captures from the working set and restores them", () => {
+    let pool = poolWithBothFixtures();
+    const id = pool.imports[0]!.tokens[0]!.id;
+    pool = assignRole(pool, "color/text/primary", id);
+    pool = excludeToken(pool, id);
+    expect(pool.excludedIds).toContain(id);
+    expect(pool.assignments["color/text/primary"]).toBeUndefined();
+    expect(poolTokens(pool).some((t) => t.id === id)).toBe(false);
+    expect(excludedPoolTokens(pool).some((t) => t.id === id)).toBe(true);
+
+    const restored = deserializeDraft(serializeDraft(pool));
+    expect(restored?.excludedIds).toContain(id);
+
+    pool = restoreToken(pool, id);
+    expect(pool.excludedIds ?? []).not.toContain(id);
+    expect(poolTokens(pool).some((t) => t.id === id)).toBe(true);
   });
 
   it("round-trips names + assignments; legacy drafts get empty maps", () => {

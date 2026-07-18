@@ -122,19 +122,40 @@ export function SystemView({
     fills[role]?.origin ?? "assigned";
 
   const rowBorder = (role: string) =>
-    originOf(role) === "derived" ? "border-dashed border-border-default" : "border-border-default";
+    originOf(role) === "derived" || originOf(role) === "default"
+      ? "border-dashed border-border-default"
+      : "border-border-default";
 
-  // Explicit marking (user testing 2026-07-06): an "auto" chip on every
-  // automatically filled value, a dot on hand-edited ones.
+  // Subtle origin chips (§2.25) — snap has no mark.
   const originMark = (role: string) => {
     const origin = originOf(role);
+    if (origin === "seeded") {
+      return (
+        <span
+          className="absolute -right-1.5 -top-2.5 font-mono text-badge text-text-muted"
+          title="Auto-placed from your capture"
+        >
+          auto
+        </span>
+      );
+    }
     if (origin === "derived") {
       return (
         <span
-          className="absolute -right-1.5 -top-2.5 rounded-sm border-2 border-border-default bg-brand-pop px-1 font-mono text-badge font-medium text-text-primary"
-          title="Filled in automatically — click for the story"
+          className="absolute -right-1.5 -top-2.5 font-mono text-badge text-text-muted"
+          title="Computed from your snap colors"
         >
-          auto
+          derived
+        </span>
+      );
+    }
+    if (origin === "default") {
+      return (
+        <span
+          className="absolute -right-1.5 -top-2.5 font-mono text-badge text-text-muted"
+          title="Stock convention — nothing captured"
+        >
+          default
         </span>
       );
     }
@@ -162,17 +183,24 @@ export function SystemView({
   const popover = (role: string, token: StyleSnapToken) => {
     if (openRole !== role) return null;
     const info = fills[role];
-    const editable = info && info.origin !== "captured" && token.type === "color" && onEditDerived;
+    const editable =
+      info &&
+      info.origin !== "snap" &&
+      info.origin !== "seeded" &&
+      token.type === "color" &&
+      onEditDerived;
     const anchorToken = info ? byId.get(info.derivedFrom) : undefined;
     return (
       <div className="absolute left-0 top-full z-dropdown mt-2 w-72 rounded-md border-2 border-border-default bg-surface-card p-3 shadow-modal">
         <p className="text-caption text-text-primary">
           {info
-            ? info.origin === "captured"
-              ? `From your capture — ${info.method}.`
-              : `We made this: ${info.method}${
-                  anchorToken ? ` from ${nameOf(anchorToken)}` : ""
-                }.`
+            ? info.origin === "snap" || info.origin === "seeded"
+              ? `${info.origin === "seeded" ? "Auto-placed from" : "From"} your capture — ${info.method}.`
+              : info.origin === "default"
+                ? `Stock default — ${info.method}.`
+                : `We made this: ${info.method}${
+                    anchorToken ? ` from ${nameOf(anchorToken)}` : ""
+                  }.`
             : `From your capture (${token.source}, ×${token.occurrences}).`}
         </p>
         {editable && (
@@ -334,14 +362,12 @@ export function SystemView({
     <section className="flex w-full flex-col gap-10">
       {/* One-line legend — the only badge vocabulary on this screen (10c). */}
       <p className="text-caption text-text-muted">
-        <span className="mr-1 inline-block h-3 w-3 rounded-sm border-2 border-border-default align-middle" />{" "}
-        from your capture ·{" "}
-        <span className="mr-1 rounded-sm border-2 border-border-default bg-brand-pop px-1 font-mono text-badge font-medium text-text-primary">
-          auto
-        </span>{" "}
-        filled in for you ·{" "}
+        From your snap ·{" "}
+        <span className="font-mono text-badge text-text-muted">auto</span> placed ·{" "}
+        <span className="font-mono text-badge text-text-muted">derived</span> from snap colors ·{" "}
+        <span className="font-mono text-badge text-text-muted">default</span> stock ·{" "}
         <span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand-primary align-middle" />{" "}
-        you changed it — click any value for the story or to change it.
+        you changed — click any value for the story.
       </p>
 
       {/* Accent suggestion (C.5) — a card, never an assignment. */}

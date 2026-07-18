@@ -79,6 +79,12 @@ export interface TokenPool {
   derivedEdits?: Record<string, { token: StyleSnapToken; editedAt: string }>;
   /** Phase 10 — accent suggestion decisions (C.5): harmony pick and/or dismissal. */
   accentChoice?: { harmony?: Harmony; dismissed?: boolean };
+  /**
+   * Design accents — captured color token ids kept "use sparingly".
+   * `undefined` = auto-seed every unassigned non-neutral capture color.
+   * Once the user adds/removes, the list is materialized and persisted.
+   */
+  accentIds?: string[];
   /** Phase 10 — modular type-scale ratio (C.6). Default 1.25. */
   typeRatio?: TypeRatio;
   /** Phase 10 — merge-queue rejections ("keep separate"), by cluster id. */
@@ -89,6 +95,11 @@ export interface TokenPool {
   adjectives?: string[];
   /** FR-19b — mood family driving style bias on derived tokens (§2.17). */
   styleFamily?: Family;
+  /**
+   * Soft-excluded capture token ids (§2.27). Dropped from derivation, roles,
+   * and export; reversible via restore. Manual tokens use removeManual instead.
+   */
+  excludedIds?: string[];
 }
 
 export function emptyPool(): TokenPool {
@@ -342,6 +353,16 @@ export function setAccentChoice(
   return next;
 }
 
+/** Materialize / replace the design-accent id list (undefined restores auto-seed). */
+export function setAccentIds(pool: TokenPool, accentIds: string[] | undefined): TokenPool {
+  if (accentIds === undefined) {
+    const next = { ...pool };
+    delete next.accentIds;
+    return next;
+  }
+  return { ...pool, accentIds: [...accentIds] };
+}
+
 export function setTypeRatio(pool: TokenPool, typeRatio: TypeRatio): TokenPool {
   return { ...pool, typeRatio };
 }
@@ -373,7 +394,8 @@ export function updateManualToken(pool: TokenPool, token: StyleSnapToken): Token
 export function removeManualToken(pool: TokenPool, tokenId: string): TokenPool {
   const decisions = { ...pool.decisions };
   delete decisions[tokenId];
-  return {
+  const excludedIds = (pool.excludedIds ?? []).filter((id) => id !== tokenId);
+  const next: TokenPool = {
     ...pool,
     manual: pool.manual.filter((t) => t.id !== tokenId),
     // A merge it survived is dropped; merges that absorbed it skip it safely.
@@ -383,6 +405,53 @@ export function removeManualToken(pool: TokenPool, tokenId: string): TokenPool {
       Object.entries(pool.assignments).filter(([, id]) => id !== tokenId),
     ),
   };
+  if (excludedIds.length > 0) next.excludedIds = excludedIds;
+  else delete next.excludedIds;
+  return next;
+}
+
+/**
+ * Soft-exclude an imported (or previously restored) token from the working
+ * system. Cleared from assignments / accents / anchors; reversible.
+ */
+export function excludeToken(pool: TokenPool, tokenId: string): TokenPool {
+  if (pool.manual.some((t) => t.id === tokenId)) return pool;
+  const excluded = new Set(pool.excludedIds ?? []);
+  if (excluded.has(tokenId)) return pool;
+  excluded.add(tokenId);
+
+  const assignments = Object.fromEntries(
+    Object.entries(pool.assignments).filter(([, id]) => id !== tokenId),
+  );
+  const accentIds = pool.accentIds?.filter((id) => id !== tokenId);
+  const anchorOverrides = { ...pool.anchorOverrides };
+  if (anchorOverrides.primaryColorId === tokenId) delete anchorOverrides.primaryColorId;
+  if (anchorOverrides.secondaryColorId === tokenId) delete anchorOverrides.secondaryColorId;
+  if (anchorOverrides.bodyTypographyId === tokenId) delete anchorOverrides.bodyTypographyId;
+
+  const next: TokenPool = {
+    ...pool,
+    excludedIds: [...excluded],
+    assignments,
+  };
+  if (accentIds !== undefined) next.accentIds = accentIds;
+  if (Object.keys(anchorOverrides).length > 0) next.anchorOverrides = anchorOverrides;
+  else delete next.anchorOverrides;
+  return next;
+}
+
+/** Restore a soft-excluded token into the working set. */
+export function restoreToken(pool: TokenPool, tokenId: string): TokenPool {
+  const excludedIds = (pool.excludedIds ?? []).filter((id) => id !== tokenId);
+  if (excludedIds.length === (pool.excludedIds ?? []).length) return pool;
+  const next: TokenPool = { ...pool };
+  if (excludedIds.length > 0) next.excludedIds = excludedIds;
+  else delete next.excludedIds;
+  return next;
+}
+
+export function isExcluded(pool: TokenPool, tokenId: string): boolean {
+  return (pool.excludedIds ?? []).includes(tokenId);
 }
 
 // ─────────────────────────────────────────
@@ -417,12 +486,27 @@ export function defaultProjectName(pool: TokenPool): string {
   return "Untitled";
 }
 
-export function poolTokens(pool: TokenPool): StyleSnapToken[] {
+/** All tokens including soft-excluded (for restore UI / raw counts). */
+export function allPoolTokens(pool: TokenPool): StyleSnapToken[] {
   return [...pool.imports.flatMap((imp) => imp.tokens), ...pool.manual];
 }
 
+/** Working-set tokens — soft-excluded ids omitted (§2.27). */
+export function poolTokens(pool: TokenPool): StyleSnapToken[] {
+  const excluded = new Set(pool.excludedIds ?? []);
+  if (excluded.size === 0) return allPoolTokens(pool);
+  return allPoolTokens(pool).filter((t) => !excluded.has(t.id));
+}
+
 export function poolTokenCount(pool: TokenPool): number {
-  return pool.imports.reduce((n, imp) => n + imp.tokens.length, pool.manual.length);
+  return poolTokens(pool).length;
+}
+
+/** Soft-excluded capture tokens still in the session (for restore). */
+export function excludedPoolTokens(pool: TokenPool): StyleSnapToken[] {
+  const excluded = new Set(pool.excludedIds ?? []);
+  if (excluded.size === 0) return [];
+  return allPoolTokens(pool).filter((t) => excluded.has(t.id));
 }
 
 /** Human label for an import's origin, e.g. "lumen.app (browser extension)". */
@@ -613,12 +697,20 @@ export function deserializeDraft(text: string | null): TokenPool | null {
     if (typeof src.dismissed === "boolean") accentChoice.dismissed = src.dismissed;
     if (Object.keys(accentChoice).length > 0) pool.accentChoice = accentChoice;
   }
+  if (Array.isArray(draft.accentIds)) {
+    const accentIds = draft.accentIds.filter((id): id is string => typeof id === "string");
+    pool.accentIds = accentIds;
+  }
   if (draft.typeRatio === 1.2 || draft.typeRatio === 1.25 || draft.typeRatio === 1.333) {
     pool.typeRatio = draft.typeRatio;
   }
   if (Array.isArray(draft.rejectedClusters)) {
     const rejected = draft.rejectedClusters.filter((id): id is string => typeof id === "string");
     if (rejected.length > 0) pool.rejectedClusters = rejected;
+  }
+  if (Array.isArray(draft.excludedIds)) {
+    const excludedIds = draft.excludedIds.filter((id): id is string => typeof id === "string");
+    if (excludedIds.length > 0) pool.excludedIds = excludedIds;
   }
   return pool;
 }

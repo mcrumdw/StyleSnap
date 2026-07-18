@@ -21,6 +21,7 @@ import {
   editDerived,
   resetDerived,
   setAccentChoice as setAccentChoicePure,
+  setAccentIds as setAccentIdsPure,
   setAnchorOverride as setAnchorOverridePure,
   setTypeRatio as setTypeRatioPure,
 } from "./pool";
@@ -32,10 +33,12 @@ import {
   clearDraft,
   createSystem as createSystemPure,
   emptyPool,
+  excludeToken as excludeTokenPure,
   isSystemCreated,
   loadDraft,
   removeManualToken,
   removeMerge,
+  restoreToken as restoreTokenPure,
   saveDraft,
   setCurrentStep as setCurrentStepPure,
   setDecision,
@@ -209,6 +212,13 @@ export function usePool() {
     [silent],
   );
 
+  const setAccentIds = useCallback(
+    (accentIds: string[] | undefined) => {
+      silent((current) => setAccentIdsPure(current, accentIds));
+    },
+    [silent],
+  );
+
   const setRatio = useCallback(
     (ratio: TypeRatio) => {
       silent((current) => setTypeRatioPure(current, ratio));
@@ -282,9 +292,23 @@ export function usePool() {
 
   const removeManual = useCallback(
     (tokenId: string) => {
-      silent((current) => removeManualToken(current, tokenId));
+      commit((current) => removeManualToken(current, tokenId), "Delete manual token");
     },
-    [silent],
+    [commit],
+  );
+
+  const exclude = useCallback(
+    (tokenId: string) => {
+      commit((current) => excludeTokenPure(current, tokenId), "Exclude token from system");
+    },
+    [commit],
+  );
+
+  const restore = useCallback(
+    (tokenId: string) => {
+      commit((current) => restoreTokenPure(current, tokenId), "Restore excluded token");
+    },
+    [commit],
   );
 
   const setProjectName = useCallback(
@@ -322,6 +346,8 @@ export function usePool() {
       addManual,
       updateManual,
       removeManual,
+      exclude,
+      restore,
       setProjectName,
       setNote,
       applyTemplate,
@@ -329,6 +355,7 @@ export function usePool() {
       editDerivedValue,
       resetDerivedValue,
       setAccent,
+      setAccentIds,
       setRatio,
       createSystem,
       setStep,
@@ -351,6 +378,8 @@ export function usePool() {
       addManual,
       updateManual,
       removeManual,
+      exclude,
+      restore,
       setProjectName,
       setNote,
       applyTemplate,
@@ -358,6 +387,7 @@ export function usePool() {
       editDerivedValue,
       resetDerivedValue,
       setAccent,
+      setAccentIds,
       setRatio,
       createSystem,
       setStep,

@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ---
 
@@ -521,6 +521,94 @@ violating C.8 precedence (captured > derived) for type roles.
 
 ---
 
+### 2.25 Captured colors, accents, and subtle origin chips
+Decided 2026-07-17. Multi-capture snaps from the browser extension were losing
+colors: hover preview zeroed `tokenCounter`, so ids restarted at `ext_001` and
+the webtool's `Map(id → token)` clobbered earlier colors. Primary detection on
+all-`occurrences: 1` snaps felt arbitrary. Distinct snap colors (FIFA gold,
+navy) vanished into derivation instead of staying visible.
+
+**M1 — Duplicate ids are malformations:**
+- Extension: `previewLabel` save/restores `tokenCounter` (never zeroes it).
+- Schema: `parseStyleSnapExport` rejects duplicate ids with an FR-2 detail
+  (`token ids must be unique — ext_001 appears N×…`).
+
+**M2 — Primary is a visible choice:** `CapturedColors` on `/tokens/colors`
+lists every captured color with Make primary · Make secondary · Role · Add to
+accents. `setAnchor({ primaryColorId })` re-cascades derivation; dirty edits
+survive (C.8).
+
+**M3 — Accents + 4-way origin vocabulary:**
+- Unassigned non-neutral captured colors auto-seed into "Design accents — use
+  sparingly" (`accentIds` undefined = auto; user touch materializes the list).
+- Origin chips (muted mono `text-badge`, quieter than the old yellow `auto`
+  badge): **snap** (no chip) · **auto** (seeded) · **derived** · **default** ·
+  edited (dot). Mapping: user-assigned capture → snap; auto-placed capture →
+  seeded; synthetic from a token → derived; `derivedFrom: "convention"` →
+  default.
+- `design.md` gains an Accents table; cleaned JSON carries `accents`.
+
+**Rejected:** keeping silent Map overwrite; loud yellow auto badges; forcing
+users to hand-pick every accent before export.
+
+**Key files:** `extension/src/content/extract.ts`, `docs/schema.ts`,
+`src/engine/accents.ts`, `CapturedColors.tsx`, `DesignAccents.tsx`,
+`useSessionViewModel.ts`, `RoleValueEditor.tsx`.
+
+---
+
+### 2.26 Extension: side panel owns unique token ids
+Decided 2026-07-17. After the hover-preview counter fix (§2.25), multi-site
+sessions still exported colliding `ext_001…` ids: the side panel keeps captures
+across navigations, but each page gets a fresh content-script `tokenCounter`.
+Copy then concatenates both → webtool FR-2 reject.
+
+**Fix:** on `picker/captured`, the side panel remaps `token.id` and
+`captureId` to a panel-local sequence (`ext_001…`, `cap-1…`) before storing.
+Content-script ids remain provisional for extraction only.
+
+**Rejected:** clearing the panel on navigation (surprising); assigning ids only
+at copy time without remapping capture groups (harder to reason about in UI).
+
+### 2.27 Three-layer category review (From snap → Primitives → System roles)
+Decided 2026-07-18. Every `/tokens/:category` page is one composition with three
+labeled bands:
+
+1. **From snap** — capture inventory (colors/fonts already had strips; spacing /
+   radius / borders / effects get `CapturedFoundations`).
+2. **Primitives** — named post-merge inventory (`PrimitiveInventory`): rename,
+   un-merge, soft-exclude captures, hard-delete manuals.
+3. **System roles** — Appendix B slots with reassignment pickers on every filled
+   row (including foundations).
+
+**Delete policy:** imported captures are **soft-excluded** (`excludedIds` on the
+pool — reversible, undoable, dropped from derivation/export). Manual tokens are
+hard-deleted via `removeManual`. Matches “suggestive, never destructive.”
+
+**Intelligence without a redundant system:** `src/engine/insights.ts` surfaces
+base spacing unit, radius profile, and type-scale ratio in UI insight strips and
+design.md Foundations/Typography — still only Appendix B roles.
+
+**Rejected / deferred:** resurrecting CleanupStep / `/tokens/captured` as a nav
+destination (§2.11 stays); editing raw capture hex without an override model
+(§2.14); new Appendix B roles.
+
+### 2.28 Layer UX polish — Add labels, collapse, effect kinds, reassign-in-editor
+Decided 2026-07-18. Follow-up to §2.27 / §2.14 Phase 3:
+
+- **Category Add CTAs:** “Add color / type / spacing / radius / border width /
+  effect” (not generic “Add token”).
+- **Layer collapse:** From snap starts **collapsed**; Primitives and System roles
+  start **open**; each band has Show / Collapse. Jump chips expand then scroll.
+- **Effect kinds** without changing `types.ts`: outer drop, inner inset, and
+  **background blur** encoded as a `shadow` token with
+  `context.cssProperty: "backdrop-filter"` + `source: "manual entry:backdrop-blur"`.
+  Display/preview treat it as blur, not box-shadow.
+- **Type add:** font family dropdown from snap-captured families.
+- **Reassign** moved into `RoleValueEditor` (no under-card “Reassign…” strip).
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -631,6 +719,10 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-18 | **Layer UX polish** (§2.28): category Add labels; From snap collapsed by default; effect kinds (drop/inset/backdrop-blur); snap font dropdown; reassign inside RoleValueEditor. | — |
+| 2026-07-18 | **Three-layer token review** (§2.27): From snap → Primitives → System roles on every category; soft-exclude; foundation capture strips; PrimitivePicker reassign; scale intelligence in UI + design.md; shadow Add token. | — |
+| 2026-07-17 | **Extension panel-owned ids** (§2.26): remapping `ext_*` / `cap-*` in the side panel so multi-site sessions export unique ids. | — |
+| 2026-07-17 | **Captured colors + accents + origin chips** (§2.25): fix extension id counter + schema rejects duplicate ids; CapturedColors / DesignAccents panels; subtle snap/auto/derived/default origin vocabulary; FIFA fixture. | — |
 | 2026-07-17 | **Captured fonts claim type slots** (§2.24): multi-family typography — context/authoredName captures claim heading/display before modular-scale derive; `CapturedFonts` panel on Typography; single-font snaps unchanged. | `2f6b4d7` |
 | 2026-07-16 | **Modal portals** (§2.23): `ModalPortal` mounts Share dialogs on `document.body` so sticky rail stacking no longer covers them with token cards. | — |
 | 2026-07-13 | **Feedback color harvest** (§2.22): three-tier precedence (captured → harvest → C.4 derive); `feedback-harvest.ts`; collision guard + chroma floor in `deriveFeedback`; expanded B.4 context for success/warning/info. | — |

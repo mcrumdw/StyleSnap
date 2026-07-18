@@ -16,11 +16,13 @@ import {
 } from "../testing/oracle";
 import { sanitizeNotes } from "./notes";
 import { generateCleanedJson, generateDesignMd, type ExportInput } from "./index";
+import { radiusInsight, spacingInsight, typeInsight } from "../insights";
 
 /** Phase 10 — the export input the app assembles: confirmed review + derivation fills. */
 function oracleExportInput(): ExportInput {
   const raw = oracleRawTokens();
   const effective = oracleEffective();
+  const assignmentsObj = Object.fromEntries(effective.assignments);
   return {
     projectName: "Lumen",
     generatedAt: "2026-07-04T12:00:00Z",
@@ -34,6 +36,9 @@ function oracleExportInput(): ExportInput {
     notes: ORACLE_NOTES,
     derived: effective.derived,
     unreviewedMerges: 0,
+    spacingInsight: spacingInsight(effective.tokens, assignmentsObj),
+    radiusInsight: radiusInsight(effective.tokens, assignmentsObj),
+    typeInsight: typeInsight(effective.tokens, ORACLE_ASSIGNMENTS.get("type/body"), 1.25),
   };
 }
 
@@ -122,6 +127,9 @@ describe("design.md export (FR-24) — the oracle", () => {
     );
     expect(md).toContain("A 15px capture, 2×, was merged into `space/md` 16.");
     expect(md).not.toContain("A 12px value, 9×, is captured but **unassigned**");
+    expect(md).toContain("*Scale intelligence: base ~4px.*");
+    expect(md).toContain("*Scale intelligence: soft / rounded profile.*");
+    expect(md).toContain("Type scale ratio: **×1.25**");
     expect(md).toContain("`radius/sm` 8");
     expect(md).toContain("`radius/md` 12");
     expect(md).toContain("`border-width/default` 1");

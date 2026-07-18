@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import { fallbackName } from "../engine/roles";
 import type { FillInfo, FillOrigin } from "../state/useSessionViewModel";
@@ -20,7 +20,8 @@ export function isRoleValueEditable(
   fills: Record<string, FillInfo>,
 ): boolean {
   const origin = originOf(role, fills);
-  if (origin === "captured" || origin === "assigned") return false;
+  // snap / seeded / assigned = captured provenance — reassign only, don't edit the hex.
+  if (origin === "snap" || origin === "seeded" || origin === "assigned") return false;
   return (
     token.type === "color" ||
     token.type === "spacing" ||
@@ -79,21 +80,24 @@ export function RoleValueEditor({
   if (!open) return null;
 
   const origin = fillInfo?.origin ?? originOf(role, fills);
-  const editable =
-    origin !== "captured" && origin !== "assigned" && isRoleValueEditable(role, token, fills);
+  const fromSnap = origin === "snap" || origin === "seeded" || origin === "assigned";
+  const editable = !fromSnap && isRoleValueEditable(role, token, fills);
 
-  const provenance =
-    origin === "captured" || origin === "assigned"
-      ? `From your capture${fillInfo ? ` — ${fillInfo.method}` : ""}. Reassign a different primitive to change it.`
-      : fillInfo
-        ? origin === "edited"
-          ? `You edited this. Originally: ${fillInfo.method}${
-              anchorToken ? ` from ${nameOf(anchorToken)}` : ""
-            }.`
+  const provenance = fromSnap
+    ? origin === "seeded"
+      ? `Auto-placed from your capture${fillInfo ? ` — ${fillInfo.method}` : ""}. Reassign to change it.`
+      : `From your capture${fillInfo ? ` — ${fillInfo.method}` : ""}. Reassign a different primitive to change it.`
+    : fillInfo
+      ? origin === "edited"
+        ? `You edited this. Originally: ${fillInfo.method}${
+            anchorToken ? ` from ${nameOf(anchorToken)}` : ""
+          }.`
+        : origin === "default"
+          ? `Stock default — nothing captured. ${fillInfo.method}`
           : `We made this: ${fillInfo.method}${
               anchorToken ? ` from ${nameOf(anchorToken)}` : ""
             }.`
-        : `Assigned primitive (${token.source}, ×${token.occurrences}).`;
+      : `Assigned primitive (${token.source}, ×${token.occurrences}).`;
 
   const saveColor = () => {
     if (!onEditDerived || token.type !== "color" || !HEX_RE.test(editHex)) return;
@@ -240,10 +244,13 @@ interface RoleFilledRowProps {
   focusRoleId?: string;
   rowId: string;
   name: string;
+  roleMeaning?: string;
   onUnassign?: () => void;
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
   previewContext: TokenPreviewContext;
+  /** Compact PrimitivePicker for reassignment (foundations + colors). */
+  reassignSlot?: ReactNode;
 }
 
 export function RoleFilledRow({
@@ -255,19 +262,45 @@ export function RoleFilledRow({
   focusRoleId,
   rowId,
   name,
+  roleMeaning,
   onUnassign,
   onEditDerived,
   onResetDerived,
   previewContext,
+  reassignSlot,
 }: RoleFilledRowProps) {
   const [open, setOpen] = useState(false);
   const origin = fillInfo?.origin ?? (token.id.startsWith("derived_") ? "derived" : "assigned");
   const canOpen = Boolean(onEditDerived);
 
+  const originChip =
+    origin === "seeded" ? (
+      <span
+        className="font-mono text-badge text-text-muted"
+        title="Auto-placed from your capture"
+      >
+        auto
+      </span>
+    ) : origin === "derived" ? (
+      <span className="font-mono text-badge text-text-muted" title="Computed from your snap colors">
+        derived
+      </span>
+    ) : origin === "default" ? (
+      <span className="font-mono text-badge text-text-muted" title="Stock convention — nothing captured">
+        default
+      </span>
+    ) : origin === "edited" ? (
+      <span
+        className="h-2 w-2 rounded-full bg-brand-primary"
+        title="You edited this value"
+        aria-label="edited by you"
+      />
+    ) : null;
+
   return (
     <div
       id={rowId}
-      className={`relative ${
+      className={`relative flex flex-col gap-2 ${
         focusRoleId === role ? "rounded-md ring-2 ring-brand-primary ring-offset-2" : ""
       }`}
     >
@@ -284,24 +317,18 @@ export function RoleFilledRow({
         >
           <RoleTokenPreview token={token} role={role} preview={previewContext} />
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2">
-            <span className="truncate font-mono text-caption font-medium text-brand-primary">{role}</span>
+            <span
+              className="truncate font-mono text-caption font-medium text-brand-primary"
+              title={roleMeaning}
+            >
+              {role}
+            </span>
             <span className="line-clamp-2 text-caption text-text-primary">{humanValueLabel(token, role)}</span>
             <span className="truncate font-mono text-badge text-text-muted">{name}</span>
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-2 self-center px-4">
-          {origin === "derived" && (
-            <span className="rounded-sm border border-border-default bg-surface-page px-1.5 py-0.5 font-mono text-badge text-text-muted">
-              auto
-            </span>
-          )}
-          {origin === "edited" && (
-            <span
-              className="h-2 w-2 rounded-full bg-brand-primary"
-              title="You edited this value"
-              aria-label="edited by you"
-            />
-          )}
+          {originChip}
           {onUnassign && (
             <button
               type="button"
@@ -317,6 +344,7 @@ export function RoleFilledRow({
           )}
         </div>
       </div>
+      {reassignSlot && <div className="px-1">{reassignSlot}</div>}
       <RoleValueEditor
         role={role}
         token={token}
