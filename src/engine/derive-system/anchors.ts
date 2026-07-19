@@ -158,10 +158,25 @@ export function detectAnchors(
   // derives — prefer chromatic candidates, allow neutrals only if nothing else.
   if (!anchors.primaryColorId) {
     const candidates = tokens
-      .map((t) => ({ id: t.id, hex: representativeHex(t), occurrences: t.occurrences }))
-      .filter((c): c is { id: string; hex: string; occurrences: number } => c.hex !== undefined);
+      .map((t) => ({
+        id: t.id,
+        hex: representativeHex(t),
+        occurrences: t.occurrences,
+        solid: t.type === "color",
+      }))
+      .filter(
+        (c): c is { id: string; hex: string; occurrences: number; solid: boolean } =>
+          c.hex !== undefined,
+      );
     const chromatic = candidates.filter((c) => !isNeutral(c.hex));
-    const pool = chromatic.length > 0 ? chromatic : candidates;
+    // Precedence: a real captured solid color wins over a gradient's
+    // representative hue, which wins over a neutral. A gradient only becomes
+    // primary when the design has no chromatic solid color at all (as with the
+    // weather app, whose only strong hue lives in its background gradient).
+    // Most-used wins within a tier; token id breaks ties for determinism.
+    const solidChromatic = chromatic.filter((c) => c.solid);
+    const pool =
+      solidChromatic.length > 0 ? solidChromatic : chromatic.length > 0 ? chromatic : candidates;
     let best: (typeof pool)[number] | undefined;
     for (const c of pool) {
       if (
