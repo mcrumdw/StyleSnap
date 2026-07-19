@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { TokenType } from "../contract/types";
+import type { StyleSnapToken, TokenType } from "../contract/types";
 import { AddTokenDialog } from "../components/AddTokenDialog";
+import { Button } from "../components/Button";
 import { AnchorsStep } from "../components/AnchorsStep";
 import { CapturedFonts } from "../components/CapturedFonts";
 import { TypeAnchorStep } from "../components/TypeAnchorStep";
@@ -37,6 +38,31 @@ const CATEGORY_TITLES: Record<TokenCategory, string> = {
 
 type AddTokenPreset = { tokenType: TokenType; role?: string };
 
+/** Which token type a category's custom "Add a value" creates. */
+const CATEGORY_TOKEN_TYPE: Record<TokenCategory, TokenType> = {
+  colors: "color",
+  typography: "typography",
+  spacing: "spacing",
+  radius: "border-radius",
+  borders: "border-width",
+  effects: "shadow",
+};
+
+function manualValueLabel(t: StyleSnapToken): string {
+  switch (t.type) {
+    case "color":
+      return t.value + (t.opacity < 1 ? ` @ ${Math.round(t.opacity * 100)}%` : "");
+    case "typography":
+      return `${t.value.fontFamily} ${t.value.fontSize}/${t.value.lineHeight}`;
+    case "spacing":
+    case "border-radius":
+    case "border-width":
+      return `${t.value}px`;
+    default:
+      return t.name ?? t.id;
+  }
+}
+
 /** One token category per route — anchors are edited on Colors. */
 export function TokenCategory() {
   const { category } = useParams<{ category: string }>();
@@ -45,7 +71,7 @@ export function TokenCategory() {
   const location = useLocation();
   const focusRoleId = searchParams.get("focus") ?? undefined;
 
-  const { pool, vm, setAnchor, assign, unassign, addManual, editWithUndoToast, resetDerivedValue, setAccent, setToast } =
+  const { pool, vm, setAnchor, assign, unassign, addManual, removeManual, editWithUndoToast, resetDerivedValue, setAccent, setToast } =
     useSession();
 
   const secondaryFill = vm.draftFills.find((f) => f.role === "color/action/secondary");
@@ -114,6 +140,11 @@ export function TokenCategory() {
   if (!isTokenCategory(category)) return <Navigate to={DEFAULT_ROUTE} replace />;
 
   const title = CATEGORY_TITLES[category];
+  const categoryType = CATEGORY_TOKEN_TYPE[category];
+  // Custom values you added (not from a capture) — the free "ceiling" on top of
+  // the required roles. Effects/shadows aren't manually addable via the dialog.
+  const canAddValue = category !== "effects";
+  const manualTokens = (pool.manual ?? []).filter((t) => t.type === categoryType);
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
@@ -156,6 +187,60 @@ export function TokenCategory() {
           </p>
         )}
       </header>
+
+      {canAddValue && (
+        <section className="flex flex-col gap-3 rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col gap-0.5">
+              <h4 className="font-heading text-caption font-bold uppercase tracking-wide text-text-muted">
+                Your values
+              </h4>
+              <p className="text-badge text-text-muted">
+                Add as many custom values as you like — required roles stay filled either way.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setAddTokenPreset({ tokenType: categoryType })}
+            >
+              + Add a value
+            </Button>
+          </div>
+          {manualTokens.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {manualTokens.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center gap-2 rounded-sm border-2 border-border-default bg-surface-page px-2 py-1"
+                >
+                  {t.type === "color" && (
+                    <span
+                      className="h-4 w-4 rounded-sm border border-border-default"
+                      style={{ backgroundColor: t.value }}
+                      aria-hidden
+                    />
+                  )}
+                  <span className="font-mono text-badge text-text-primary">
+                    {manualValueLabel(t)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removeManual(t.id);
+                      setToast("Value removed.");
+                    }}
+                    aria-label={`Remove ${manualValueLabel(t)}`}
+                    className="font-mono text-caption leading-none text-text-muted hover:text-error"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {category === "colors" && (
         <>
