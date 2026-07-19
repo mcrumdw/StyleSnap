@@ -321,6 +321,7 @@ export function TokenCategory() {
             onAccentHarmony={(harmony) => setAccent({ harmony })}
             onEditSecondary={handleEditSecondary}
             onResetSecondary={() => resetDerivedValue("color/action/secondary")}
+            roleDisplayTokens={vm.roleDisplayTokens}
           />
           <DesignAccents
             tokens={vm.exportInput.tokens}

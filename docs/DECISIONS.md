@@ -870,6 +870,26 @@ System (when re-wired) remains the lock point.
 
 ---
 
+### 2.42 Extension side panel matches team DESIGN.md `[Change]`
+Decided 2026-07-19. The browser extension's provisional dark side panel
+(neutral surfaces + `#6E56F7` accent) is replaced with the team brand system
+from root `DESIGN.md` / the web app: light `surface-page` canvas, `brand-primary`
+`#5B2EFF`, 2px `border-default`, hard `shadow-card`, Space Grotesk / Inter /
+JetBrains Mono (bundled via `@fontsource`), chunky press buttons, success toast.
+
+**Why:** capture → paste into the webtool should feel like one product. The
+extension's own `DESIGN.md` had deferred to team tokens "once filled"; those
+tokens landed with the web app.
+
+**Kept local:** in-page overlay stays outline + solid dark chip (legible on
+arbitrary host pages); dense 32×32 swatches in the narrow panel (workspace
+token cards remain 48×48).
+
+**Key files:** `extension/src/sidepanel/styles.css`, `App.tsx`, `main.tsx`,
+`content/picker.ts`, `extension/DESIGN.md`.
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -980,6 +1000,8 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-19 | `[Bug fix]` **Color family Hover live update:** strip reads `roleDisplayTokens` (incl. derivedEdits) instead of only re-deriving hover from primary. | — |
+| 2026-07-19 | `[Change]` **Merged primitive cards:** banded layout (identity → merge badge + tags → actions); Colors merged cards `md:col-span-2`. | — |
 | 2026-07-19 | `[Bug fix]` **Un-merge undo** (§2.41): Home no longer auto Create-System on import; clear legacy stamp on draft load; gate merge actions when locked. | — |
 | 2026-07-19 | `[Change]` **From snap inventory-only** (§2.40): no primary/role/exclude/merge actions on capture rows — assign in Primitives / System roles. | — |
 | 2026-07-19 | `[Bug fix]` **Deploy verify** (§2.18): local build marker + retry public alias only (deploy URLs are SSO-protected); Actions on Node 24. | — |
@@ -987,6 +1009,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |
 | 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` **Layer nav under mobile chrome:** sticky `top` = session header height. | `eb38f79` |
+| 2026-07-19 | `[Change]` **Extension UI = team DESIGN.md** (§2.42): light brand side panel + brand-primary pick overlay; dark provisional chrome retired. | — |
 | 2026-07-19 | `[Change]` **Undo in layer nav (desktop):** sticky `CategoryLayerNav`; mobile uses floating undo (§2.39). | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` `[Change]` **Secondary opt-in** (§2.38): no auto-synthetic secondary; Use secondary color; fine-tune uses derivedEdits; harmony unassigns role. | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` **Start over / Import portals** (§2.23 follow-up): `ModalPortal` above sticky-rail token cards. | `eb38f79` |

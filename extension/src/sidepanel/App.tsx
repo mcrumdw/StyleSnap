@@ -96,7 +96,7 @@ export function App() {
     }
 
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-    flash(`Copied ${tokenCount} tokens from ${captures.length} elements`);
+    flash(`Copied ${tokenCount} tokens — paste into StyleSnap`);
   };
 
   return (
@@ -106,7 +106,7 @@ export function App() {
           Style<span className="accent">Snap</span>
         </span>
         <button
-          className={`toggle ${active ? "on" : ""}`}
+          className={`btn btn-secondary toggle ${active ? "on" : ""}`}
           onClick={togglePick}
           aria-pressed={active}
         >
@@ -117,7 +117,7 @@ export function App() {
       <main className="body">
         {captures.length === 0 ? (
           <div className="empty">
-            <p className="empty-title">Nothing picked yet</p>
+            <h2 className="empty-title">Nothing snapped yet</h2>
             <p className="empty-sub">
               Start picking and click any element on the page.
             </p>
@@ -129,7 +129,7 @@ export function App() {
 
       <footer className="footer">
         <button
-          className="primary"
+          className="btn btn-primary"
           onClick={copy}
           disabled={captures.length === 0}
         >
@@ -141,7 +141,7 @@ export function App() {
           )}
         </button>
         <button
-          className="ghost"
+          className="btn btn-ghost"
           onClick={clearAll}
           disabled={captures.length === 0}
         >
@@ -149,7 +149,11 @@ export function App() {
         </button>
       </footer>
 
-      {toast && <div className="toast">{toast}</div>}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

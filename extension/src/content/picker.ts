@@ -5,7 +5,9 @@
 import type { PickerMessage } from "../shared/types";
 import { extractTokens, previewLabel, describeSource } from "./extract";
 
-const ACCENT = "#6E56F7"; // placeholder StyleSnap accent until DESIGN.md lands
+// DESIGN.md brand-primary / success — high-contrast outline over arbitrary pages.
+const ACCENT = "#5B2EFF";
+const SUCCESS = "#1FB877";
 let active = false;
 let hovered: Element | null = null;
 let captureCounter = 0;
@@ -22,21 +24,23 @@ function ensureOverlay() {
     position: "fixed",
     pointerEvents: "none",
     border: `2px solid ${ACCENT}`,
-    borderRadius: "3px",
+    borderRadius: "8px",
     zIndex: "2147483646",
-    transition: "all 60ms ease-out",
-    boxShadow: `0 0 0 2px rgba(110,86,247,0.25)`,
+    transition: "all 150ms ease-out",
+    boxShadow: `4px 4px 0 0 #14121F`,
   } as CSSStyleDeclaration);
 
+  // Solid dark chip stays legible on any site background (not a panel surface).
   chip = document.createElement("div");
   Object.assign(chip.style, {
     position: "fixed",
     pointerEvents: "none",
-    background: "#111317",
-    color: "#fff",
-    font: "12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace",
+    background: "#14121F",
+    color: "#FFFFFF",
+    font: "500 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace",
     padding: "4px 8px",
-    borderRadius: "6px",
+    borderRadius: "8px",
+    border: `2px solid ${ACCENT}`,
     zIndex: "2147483647",
     maxWidth: "320px",
     whiteSpace: "nowrap",
@@ -93,7 +97,7 @@ function onClick(e: MouseEvent) {
   chrome.runtime.sendMessage(msg);
   // brief confirmation pulse
   if (outline) {
-    outline.style.borderColor = "#22C55E";
+    outline.style.borderColor = SUCCESS;
     setTimeout(() => outline && (outline.style.borderColor = ACCENT), 250);
   }
 }
