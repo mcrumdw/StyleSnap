@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { FloatingUndoRedo } from "../components/shell/FloatingUndoRedo";
 import { DesktopSessionRail, MobileSessionNav } from "../components/shell/SessionNav";
 import { UndoRedoToolbar } from "../components/shell/UndoRedoToolbar";
@@ -8,9 +8,12 @@ import { useSession } from "../state/SessionProvider";
 
 export const DEFAULT_ROUTE = "/tokens/colors";
 
-/** Session layout: nav + main + sticky footer (no duplicate global header). */
+/** Session layout: nav + main (no duplicate global header). */
 export function AppShell() {
   const { hasTokens, vm, pool } = useSession();
+  const { pathname } = useLocation();
+  /** Token categories keep Undo/Redo in CategoryLayerNav on desktop only. */
+  const undoInLayerNavDesktop = pathname.startsWith("/tokens/");
 
   if (!hasTokens) return <Navigate to="/" replace />;
 
@@ -25,9 +28,11 @@ export function AppShell() {
 
   return (
     <div className="relative mx-auto flex w-full min-h-dvh max-w-container flex-col">
-      <div className="absolute right-4 top-4 z-sticky hidden lg:block sm:right-6 sm:top-6">
-        <UndoRedoToolbar />
-      </div>
+      {!undoInLayerNavDesktop && (
+        <div className="fixed right-4 top-4 z-toast hidden lg:block sm:right-6 sm:top-6">
+          <UndoRedoToolbar />
+        </div>
+      )}
       <MobileSessionNav {...notesNav} />
       <div className="flex flex-1 flex-col gap-4 px-4 py-4 sm:px-6 sm:py-6 lg:flex-row lg:gap-6 lg:py-8">
         <DesktopSessionRail {...desktopNav} />
@@ -35,6 +40,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      {/* Mobile: always bottom-left so layer chips stay clear. */}
       <FloatingUndoRedo />
     </div>
   );

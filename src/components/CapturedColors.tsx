@@ -163,55 +163,103 @@ export function CapturedColors({
                     onClick={() => setPickerFor(token.id)}
                     title="See merged colors and pick which hex the system keeps"
                   >
-                    {isSurvivor ? "Change merged…" : "Choose as merged…"}
+                    <span className="sm:hidden">{isSurvivor ? "Merged…" : "Pick…"}</span>
+                    <span className="hidden sm:inline">
+                      {isSurvivor ? "Change merged…" : "Choose as merged…"}
+                    </span>
                   </Button>
                 )}
                 {!isPrimary && (
                   <Button size="sm" variant="secondary" onClick={() => onMakePrimary(token.id)}>
-                    Make primary
+                    <span className="sm:hidden">Primary</span>
+                    <span className="hidden sm:inline">Make primary</span>
                   </Button>
                 )}
-                {!isSecondary && (
-                  <Button size="sm" variant="ghost" onClick={() => onMakeSecondary(token.id)}>
-                    Make secondary
-                  </Button>
-                )}
-                {isSurvivor && (
-                  <label className="flex items-center gap-1">
-                    <span className="font-mono text-badge text-text-muted">Role</span>
-                    <select
-                      aria-label={`Assign ${token.value} to a role`}
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) onAssign(e.target.value, token.id);
-                        e.target.value = "";
-                      }}
-                      className="h-btn-sm rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption text-text-primary"
-                    >
-                      <option value="" disabled>
-                        …
-                      </option>
-                      {COLOR_ROLE_LIST.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
+                <div className="hidden flex-wrap items-center gap-2 sm:flex">
+                  {!isSecondary && (
+                    <Button size="sm" variant="ghost" onClick={() => onMakeSecondary(token.id)}>
+                      Make secondary
+                    </Button>
+                  )}
+                  {isSurvivor && (
+                    <label className="flex items-center gap-1">
+                      <span className="font-mono text-badge text-text-muted">Role</span>
+                      <select
+                        aria-label={`Assign ${token.value} to a role`}
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value) onAssign(e.target.value, token.id);
+                          e.target.value = "";
+                        }}
+                        className="h-btn-sm rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption text-text-primary"
+                      >
+                        <option value="" disabled>
+                          …
                         </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {isSurvivor && !inAccents && !isNeutral(token.value) && (
-                  <Button size="sm" variant="ghost" onClick={() => onAddAccent(token.id)}>
-                    Add to accents
-                  </Button>
-                )}
+                        {COLOR_ROLE_LIST.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {isSurvivor && !inAccents && !isNeutral(token.value) && (
+                    <Button size="sm" variant="ghost" onClick={() => onAddAccent(token.id)}>
+                      Add to accents
+                    </Button>
+                  )}
+                </div>
+                <details className="relative sm:hidden">
+                  <summary className="cursor-pointer list-none rounded-sm border-2 border-border-default bg-surface-card px-2 py-1 font-mono text-caption text-text-muted [&::-webkit-details-marker]:hidden">
+                    More
+                  </summary>
+                  <div className="absolute right-0 z-dropdown mt-1 flex min-w-40 flex-col gap-1 rounded-md border-2 border-border-default bg-surface-card p-2 shadow-card">
+                    {!isSecondary && (
+                      <Button size="sm" variant="ghost" onClick={() => onMakeSecondary(token.id)}>
+                        Make secondary
+                      </Button>
+                    )}
+                    {isSurvivor && (
+                      <label className="flex flex-col gap-1 px-1">
+                        <span className="font-mono text-badge text-text-muted">Role</span>
+                        <select
+                          aria-label={`Assign ${token.value} to a role`}
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) onAssign(e.target.value, token.id);
+                            e.target.value = "";
+                          }}
+                          className="h-btn-sm rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption text-text-primary"
+                        >
+                          <option value="" disabled>
+                            …
+                          </option>
+                          {COLOR_ROLE_LIST.map((role) => (
+                            <option key={role} value={role}>
+                              {role}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {isSurvivor && !inAccents && !isNeutral(token.value) && (
+                      <Button size="sm" variant="ghost" onClick={() => onAddAccent(token.id)}>
+                        Add to accents
+                      </Button>
+                    )}
+                  </div>
+                </details>
                 {onExclude && (
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => onExclude(token.id)}
                     title="Exclude from system (undoable)"
+                    aria-label="Exclude"
                   >
-                    Exclude
+                    <span className="sm:hidden">×</span>
+                    <span className="hidden sm:inline">Exclude</span>
                   </Button>
                 )}
               </div>

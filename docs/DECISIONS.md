@@ -6,6 +6,12 @@ in *why* things are the way they are.
 
 Last updated: 2026-07-19
 
+Tags in §6 change history (and on new §2.x when useful):
+
+- **`[Bug fix]`** — corrects broken or incorrect behavior
+- **`[New feature]`** — adds capability that did not exist
+- **`[Change]`** — intentional UX/behavior change (not a bug, not wholly new)
+
 ---
 
 ## 1. System overview
@@ -492,7 +498,8 @@ chrome.
 context); removing `lg:sticky` from the rail (breaks viewport-tall nav).
 
 **Key files:** `src/components/ModalPortal.tsx`, `ShareExportModal.tsx`,
-`ShareMenuButton.tsx`.
+`ShareMenuButton.tsx`. Also applied to `StartOverConfirmModal` and
+`ImportCaptureModal` (2026-07-19) — same sticky-rail trap.
 
 ### 2.24 Captured fonts claim type slots (multi-family typography)
 Decided 2026-07-17 (Claude Code session). Typography derivation was
@@ -763,7 +770,7 @@ on a single Undo.
 
 ---
 
-### 2.37 Role value edit → new linked primitive
+### 2.37 Role value edit → new linked primitive `[New feature]`
 Decided 2026-07-19. Editing a semantic role's value (derived / default / prior
 overlay) no longer only dirty-flags `derivedEdits`. After the user confirms
 **Save as a new primitive?**:
@@ -776,6 +783,51 @@ Cancel aborts with no pool change. Accept is one undoable commit
 (`saveRoleAsPrimitive`). Captured / assigned roles stay reassign-only
 (§2.34 provenance). `editDerived` remains for draft round-trip / legacy
 overlays; the UI save path uses the promote API.
+
+---
+
+### 2.38 Secondary opt-in + fine-tune stays editable `[Bug fix]` `[Change]`
+Decided 2026-07-19. Two related secondary-anchor issues:
+
+1. **Auto-synthetic lock-in:** when no distinct secondary was captured,
+   derivation still filled `color/action/secondary` from the default harmony.
+   Users never chose to add a second CTA color.
+2. **Fine-tune freeze:** Apply routed through `saveRoleAsPrimitive` (§2.37),
+   which *assigned* the role to a manual token. Harmony swaps clear
+   `derivedEdits` / `secondaryColorId` but not assignments — so the slot
+   stayed locked and Fine-tune Apply disabled.
+
+**Decision:**
+- Derivation fills secondary only from a **captured** secondary anchor, or
+  when the user has set `accentChoice.harmony` (opt-in).
+- Empty secondary card → **Use secondary color** sets the suggested harmony
+  (existing picker + fine-tune).
+- Fine-tune writes `derivedEdits` again (§2.16); picking a harmony also
+  **unassigns** `color/action/secondary` so a prior promote cannot stick.
+- Color-family Secondary swatch is dashed/empty until instantiated.
+
+---
+
+### 2.39 Mobile layout + teaching tips `[Bug fix]` `[Change]` `[New feature]`
+Decided 2026-07-19. Small-screen chrome and teaching affordances:
+
+**Bug fixes**
+- Start over / Import capture / Create System / merge dialogs paint above token
+  cards via `ModalPortal` or bottom sheets (§2.23 follow-up).
+- Layer nav sticky `top` = mobile session header height (no overlap with
+  StyleSnap + section wheel).
+- Toast sits above floating Undo on narrow viewports; Home/Create CTAs stack
+  so labels fit.
+
+**Changes**
+- Teaching copy shortened (layers, welcome, Describe, gaps, provenance).
+- Undo/Redo: desktop in sticky layer nav; mobile always `FloatingUndoRedo`.
+- `?` InfoHint lives **inside** each layer chip; tips portal instantly (not
+  native `title` delay).
+- Capture-row actions denser on mobile (“More” menu); shorter Add / wheel labels.
+
+**New**
+- Instant portaled teaching tooltip + brand-pop `?` affordance (`Tooltip.tsx`).
 
 ---
 
@@ -889,21 +941,28 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
-| 2026-07-19 | **Role edit → new primitive** (§2.37): confirm Save as primitive; create manual token + assign role; Cancel aborts. | — |
-| 2026-07-18 | **One-step undo/redo** (§2.36): barrier instead of skip-jump after Create System; assign/accents/rename/manual commit to history; toast Undo when canUndo. | — |
-| 2026-07-18 | **System-created colors** (§2.35): derived colors in collapsed Primitives band; color PrimitivePicker splits From snap / System-created. | — |
-| 2026-07-18 | **Reassign in role popover** (§2.34): Change primitive (+ Remove role) moves into `RoleValueEditor` click dialog; under-card button removed; assign closes popover. | — |
-| 2026-07-18 | **From snap vs merge survivors** (§2.33): CapturedColors lists all raw snap colors; `setMergeSurvivor` + dialog to pick which hex a merge keeps; Make primary promotes absorbed members. | — |
-| 2026-07-18 | **Post-capture welcome modal** (§2.32): orientation dialog after import (summary + 3-step map + trust line); Describe intro → one-liner + InfoHint; `fromImport` from Home / first in-session import. | — |
-| 2026-07-18 | **Type-matched name placeholders** (§2.31): `namePlaceholder(tokenType)` for InlineName / AddTokenDialog — fonts no longer suggest `color/brand-blue`. | — |
-| 2026-07-18 | **Custom semantic roles + CSS border model** (§2.30): Add role under type prefix (e.g. `border-width/card`); `pool.customRoles`; customs export, not completeness; CSS border stays split (width/color/radius); `cssProperty` on foundation capture; customs in Slot dropdowns. | — |
-| 2026-07-18 | **From snap visual differentiation** (§2.29): dashed/page-surface capture band + badge; solid shadowed cards for Primitives/System roles; matching jump-chip treatment. | — |
-| 2026-07-18 | **Layer UX polish** (§2.28): category Add labels; From snap collapsed by default; effect kinds (drop/inset/backdrop-blur); snap font dropdown; reassign inside RoleValueEditor. | — |
-| 2026-07-18 | **Three-layer token review** (§2.27): From snap → Primitives → System roles on every category; soft-exclude; foundation capture strips; PrimitivePicker reassign; scale intelligence in UI + design.md; shadow Add token. | — |
-| 2026-07-17 | **Extension panel-owned ids** (§2.26): remapping `ext_*` / `cap-*` in the side panel so multi-site sessions export unique ids. | — |
-| 2026-07-17 | **Captured colors + accents + origin chips** (§2.25): fix extension id counter + schema rejects duplicate ids; CapturedColors / DesignAccents panels; subtle snap/auto/derived/default origin vocabulary; FIFA fixture. | — |
-| 2026-07-17 | **Captured fonts claim type slots** (§2.24): multi-family typography — context/authoredName captures claim heading/display before modular-scale derive; `CapturedFonts` panel on Typography; single-font snaps unchanged. | `2f6b4d7` |
-| 2026-07-16 | **Modal portals** (§2.23): `ModalPortal` mounts Share dialogs on `document.body` so sticky rail stacking no longer covers them with token cards. | — |
+| 2026-07-19 | `[Bug fix]` `[Change]` `[New feature]` **Mobile layout + teaching tips** (§2.39): chips/`?`/undo chrome; stacked CTAs; toast vs undo; bottom-sheet dialogs; shorter copy. | `eb38f79` |
+| 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |
+| 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | `eb38f79` |
+| 2026-07-19 | `[Bug fix]` **Layer nav under mobile chrome:** sticky `top` = session header height. | `eb38f79` |
+| 2026-07-19 | `[Change]` **Undo in layer nav (desktop):** sticky `CategoryLayerNav`; mobile uses floating undo (§2.39). | `eb38f79` |
+| 2026-07-19 | `[Bug fix]` `[Change]` **Secondary opt-in** (§2.38): no auto-synthetic secondary; Use secondary color; fine-tune uses derivedEdits; harmony unassigns role. | `eb38f79` |
+| 2026-07-19 | `[Bug fix]` **Start over / Import portals** (§2.23 follow-up): `ModalPortal` above sticky-rail token cards. | `eb38f79` |
+| 2026-07-19 | `[New feature]` **Role edit → new primitive** (§2.37): confirm Save as primitive; create manual token + assign role. | `debecac` |
+| 2026-07-18 | `[Bug fix]` **One-step undo/redo** (§2.36): barrier instead of skip-jump after Create System; assign/accents/rename/manual commit to history; toast Undo when canUndo. | — |
+| 2026-07-18 | `[New feature]` **System-created colors** (§2.35): derived colors in collapsed Primitives band; color PrimitivePicker splits From snap / System-created. | — |
+| 2026-07-18 | `[Change]` **Reassign in role popover** (§2.34): Change primitive (+ Remove role) moves into `RoleValueEditor` click dialog; under-card button removed; assign closes popover. | — |
+| 2026-07-18 | `[Change]` **From snap vs merge survivors** (§2.33): CapturedColors lists all raw snap colors; `setMergeSurvivor` + dialog to pick which hex a merge keeps; Make primary promotes absorbed members. | — |
+| 2026-07-18 | `[New feature]` **Post-capture welcome modal** (§2.32): orientation dialog after import (summary + 3-step map + trust line); Describe intro → one-liner + InfoHint; `fromImport` from Home / first in-session import. | — |
+| 2026-07-18 | `[Change]` **Type-matched name placeholders** (§2.31): `namePlaceholder(tokenType)` for InlineName / AddTokenDialog — fonts no longer suggest `color/brand-blue`. | — |
+| 2026-07-18 | `[New feature]` **Custom semantic roles + CSS border model** (§2.30): Add role under type prefix (e.g. `border-width/card`); `pool.customRoles`; customs export, not completeness; CSS border stays split (width/color/radius); `cssProperty` on foundation capture; customs in Slot dropdowns. | — |
+| 2026-07-18 | `[Change]` **From snap visual differentiation** (§2.29): dashed/page-surface capture band + badge; solid shadowed cards for Primitives/System roles; matching jump-chip treatment. | — |
+| 2026-07-18 | `[Change]` **Layer UX polish** (§2.28): category Add labels; From snap collapsed by default; effect kinds (drop/inset/backdrop-blur); snap font dropdown; reassign inside RoleValueEditor. | — |
+| 2026-07-18 | `[New feature]` **Three-layer token review** (§2.27): From snap → Primitives → System roles on every category; soft-exclude; foundation capture strips; PrimitivePicker reassign; scale intelligence in UI + design.md; shadow Add token. | — |
+| 2026-07-17 | `[Bug fix]` **Extension panel-owned ids** (§2.26): remapping `ext_*` / `cap-*` in the side panel so multi-site sessions export unique ids. | — |
+| 2026-07-17 | `[Bug fix]` `[New feature]` **Captured colors + accents + origin chips** (§2.25): fix extension id counter + schema rejects duplicate ids; CapturedColors / DesignAccents panels; subtle snap/auto/derived/default origin vocabulary; FIFA fixture. | — |
+| 2026-07-17 | `[New feature]` **Captured fonts claim type slots** (§2.24): multi-family typography — context/authoredName captures claim heading/display before modular-scale derive; `CapturedFonts` panel on Typography; single-font snaps unchanged. | `2f6b4d7` |
+| 2026-07-16 | `[Bug fix]` **Modal portals** (§2.23): `ModalPortal` mounts Share dialogs on `document.body` so sticky rail stacking no longer covers them with token cards. | — |
 | 2026-07-13 | **Feedback color harvest** (§2.22): three-tier precedence (captured → harvest → C.4 derive); `feedback-harvest.ts`; collision guard + chroma floor in `deriveFeedback`; expanded B.4 context for success/warning/info. | — |
 | 2026-07-13 | **Agent-only export gate** (§2.21): system notes gate design.md only; Figma JSON always exportable; removed global `BottomBar`; `withAgentExportReady` + `agentExportBlockers.ts`; Share with agent shows `X/5` badge; checklist gaps informational only. | — |
 | 2026-07-12 | **Share + mobile chrome** (§2.20): Share with agent / Share with Figma modals; footer slimmed to Create System; mobile `NavTitleWheel` + header Share; undo/redo when-active (desktop top-right, mobile bottom corners); `roleDisplayTokens` immediate edit display. | — |

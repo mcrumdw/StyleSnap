@@ -32,16 +32,24 @@ export function NavTitleWheel({ notesFilled, notesTotal }: NavTitleWheelProps) {
     const list: TabItem[] = [
       {
         path: "/describe",
-        label: "Description",
+        label: "Describe",
         hint: notesFilled < notesTotal ? `${notesFilled}/${notesTotal}` : undefined,
         hintWarning: notesFilled < notesTotal,
       },
     ];
     for (const { id, label } of TOKEN_CATEGORIES) {
-      list.push({ path: `/tokens/${id}`, label });
+      const short =
+        id === "typography" ? "Type" : id === "borders" ? "Borders" : id === "effects" ? "Effects" : label;
+      list.push({ path: `/tokens/${id}`, label: short });
     }
     return list;
   }, [notesFilled, notesTotal]);
+
+  const scrollByDir = (dir: -1 | 1) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(120, el.clientWidth * 0.6), behavior: "smooth" });
+  };
 
   const activeIndex = useMemo(() => {
     const idx = items.findIndex((item) => location.pathname === item.path);
@@ -86,20 +94,24 @@ export function NavTitleWheel({ notesFilled, notesTotal }: NavTitleWheelProps) {
   return (
     <nav aria-label="Session sections" className="relative py-2">
       {edges.left && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center bg-gradient-to-r from-surface-page to-transparent pl-1"
+        <button
+          type="button"
+          aria-label="Scroll sections left"
+          onClick={() => scrollByDir(-1)}
+          className="absolute inset-y-0 left-0 z-10 flex w-10 items-center bg-gradient-to-r from-surface-page to-transparent pl-1"
         >
           <ChevronLeft className="h-4 w-4 text-text-muted" strokeWidth={2} aria-hidden />
-        </div>
+        </button>
       )}
       {edges.right && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-end bg-gradient-to-l from-surface-page to-transparent pr-1"
+        <button
+          type="button"
+          aria-label="Scroll sections right"
+          onClick={() => scrollByDir(1)}
+          className="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-end bg-gradient-to-l from-surface-page to-transparent pr-1"
         >
           <ChevronRight className="h-4 w-4 text-text-muted" strokeWidth={2} aria-hidden />
-        </div>
+        </button>
       )}
       <div
         ref={scrollerRef}

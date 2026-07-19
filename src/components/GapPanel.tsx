@@ -72,12 +72,11 @@ export function GapPanel({ checklist, onAssignRole, onAddToken, onOpenNotes }: G
   if (gaps.length === 0) return null;
 
   return (
-    <section id="gaps-section" className="flex w-full flex-col gap-4 rounded-md border-2 border-border-default bg-surface-page p-6">
+    <section id="gaps-section" className="flex w-full flex-col gap-4 rounded-md border-2 border-border-default bg-surface-page p-4 sm:p-6">
       <div className="flex flex-col gap-1">
         <h2 className="font-heading text-card-title font-bold">Still needs your input</h2>
         <p className="text-caption text-text-muted">
-          Everything else was filled automatically. Only true blockers appear here — describe your
-          system on the Describe page before export.
+          Everything else was filled automatically. Finish these, then Describe before export.
         </p>
       </div>
 

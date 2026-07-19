@@ -69,8 +69,8 @@ export function AdjectivePicker({
         </p>
         <p className="text-caption text-text-muted">
           {livePreview
-            ? "Notes and style bias update as you pick — your own words are never replaced."
-            : "We'll match snippets per field and tune derived tokens — your own words are never replaced."}
+            ? "Notes update as you pick. Your own words are never overwritten."
+            : "We’ll fill notes and tune empty slots. Your own words are never overwritten."}
         </p>
       </div>
 

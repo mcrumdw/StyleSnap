@@ -51,7 +51,7 @@ export function SaveAsPrimitiveConfirm({
   return (
     <ModalPortal>
       <div
-        className="fixed inset-0 z-modal flex items-center justify-center bg-text-primary/50 p-6"
+        className="fixed inset-0 z-modal flex items-end justify-center bg-text-primary/50 p-0 sm:items-center sm:p-4"
         onClick={onCancel}
       >
         <div
@@ -60,23 +60,23 @@ export function SaveAsPrimitiveConfirm({
           aria-modal="true"
           aria-labelledby="save-primitive-title"
           aria-describedby="save-primitive-desc"
-          className="w-full max-w-md rounded-lg border-2 border-border-default bg-surface-card p-6 shadow-modal"
+          className="flex max-h-[min(90dvh,100%)] w-full max-w-md flex-col gap-4 overflow-y-auto rounded-t-lg border-2 border-border-default bg-surface-card p-4 shadow-modal sm:rounded-lg sm:p-6"
           onClick={(e) => e.stopPropagation()}
         >
           <h2 id="save-primitive-title" className="font-heading text-card-title font-medium">
             Save as a new primitive?
           </h2>
           <p id="save-primitive-desc" className="mt-2 text-caption text-text-muted">
-            To change <span className="font-mono text-text-primary">{role}</span>, StyleSnap will
-            add a new primitive (
+            Changing <span className="font-mono text-text-primary">{role}</span> creates a new
+            primitive (
             <span className="font-mono text-text-primary">{humanValueLabel(token, role)}</span>) and
-            link this role to it. The value will appear under Primitives.
+            links this role to it. You’ll see it under Primitives.
           </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={onAccept}>
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+            <Button className="w-full sm:w-auto" type="button" onClick={onAccept}>
               Save as primitive
             </Button>
-            <Button type="button" variant="secondary" onClick={onCancel}>
+            <Button className="w-full sm:w-auto" type="button" variant="secondary" onClick={onCancel}>
               Cancel
             </Button>
           </div>
@@ -152,19 +152,19 @@ export function RoleValueEditor({
 
   const provenance = fromSnap
     ? origin === "seeded"
-      ? `Auto-placed from your capture${fillInfo ? ` — ${fillInfo.method}` : ""}. Reassign to change it.`
-      : `From your capture${fillInfo ? ` — ${fillInfo.method}` : ""}. Reassign a different primitive to change it.`
+      ? `Auto-filled from your snap${fillInfo ? ` (${fillInfo.method})` : ""}. Change the primitive to replace it.`
+      : `From your snap${fillInfo ? ` (${fillInfo.method})` : ""}. Change the primitive to replace it.`
     : fillInfo
       ? origin === "edited"
-        ? `You edited this. Originally: ${fillInfo.method}${
+        ? `You edited this. Was: ${fillInfo.method}${
             anchorToken ? ` from ${nameOf(anchorToken)}` : ""
           }.`
         : origin === "default"
-          ? `Stock default — nothing captured. ${fillInfo.method}`
+          ? `Default — nothing captured. ${fillInfo.method}`
           : `We made this: ${fillInfo.method}${
               anchorToken ? ` from ${nameOf(anchorToken)}` : ""
             }.`
-      : `Assigned primitive (${token.source}, ×${token.occurrences}).`;
+      : `Linked primitive (${token.source}, ×${token.occurrences}).`;
 
   const requestSave = (next: StyleSnapToken) => {
     if (!onEditDerived) return;

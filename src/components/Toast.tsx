@@ -22,7 +22,7 @@ export function Toast({ message, onDismiss, action }: ToastProps) {
   return (
     <div
       role="status"
-      className="fixed bottom-6 right-6 z-toast flex max-w-sm items-center gap-3 rounded-md border-2 border-border-default bg-success px-4 py-3 font-medium text-text-primary shadow-card"
+      className="fixed inset-x-4 bottom-20 z-toast flex max-w-sm items-center gap-3 rounded-md border-2 border-border-default bg-success px-4 py-3 font-medium text-text-primary shadow-card sm:inset-x-auto sm:bottom-6 sm:right-6"
     >
       <span className="flex-1">{message}</span>
       {action && (

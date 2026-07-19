@@ -113,7 +113,7 @@ export function PostCaptureWelcomeModal({
                   Review the snap
                 </span>
                 <span className="text-caption text-text-muted">
-                  On each category page, From snap shows what came in — exclude noise, keep the rest.
+                  On each category, From snap lists what came in. Exclude noise; keep the rest.
                 </span>
               </div>
             </li>
@@ -129,8 +129,7 @@ export function PostCaptureWelcomeModal({
                   Set the vibe
                 </span>
                 <span className="text-caption text-text-muted">
-                  We don’t invent colors for what you already snapped. Picks only shape empty slots —
-                  type scale, secondary harmony, radius, and shadows.
+                  We never overwrite what you snapped. Picks only fill empty slots.
                 </span>
               </div>
             </li>
@@ -146,16 +145,14 @@ export function PostCaptureWelcomeModal({
                   Name roles & export
                 </span>
                 <span className="text-caption text-text-muted">
-                  Point semantic roles at primitives, then ship design.md. System notes help your AI
-                  agent; Figma export works without them.
+                  Link roles to primitives, then export design.md. Notes help AI tools; Figma works without them.
                 </span>
               </div>
             </li>
           </ol>
 
           <p className="rounded-sm border-2 border-dashed border-border-default bg-surface-page p-3 text-caption text-text-muted">
-            Captured values stay yours. Style bias only fills derived gaps — never overwrites what
-            you snapped.
+            Captured values stay yours. Style only fills gaps.
           </p>
 
           <div className="flex flex-wrap gap-2">

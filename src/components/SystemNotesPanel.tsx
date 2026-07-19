@@ -19,22 +19,23 @@ export function SystemNotesPanel({ notes, onChange, noteSources }: SystemNotesPa
   const filled = NOTE_FIELDS.filter((f) => notes[f.key]?.trim()).length;
 
   return (
-    <section className="flex w-full flex-col gap-4 rounded-md border-2 border-border-default bg-surface-card p-6 shadow-card">
+    <section className="flex w-full flex-col gap-4 rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card sm:p-6">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between text-left"
+        className="flex w-full flex-col gap-2 text-left sm:flex-row sm:items-center sm:justify-between"
       >
-        <span className="flex flex-col">
+        <span className="flex min-w-0 flex-col">
           <span className="font-heading text-card-title font-medium">
-            System notes — describe what tokens can't
+            <span className="sm:hidden">System notes</span>
+            <span className="hidden sm:inline">System notes — describe what tokens can&apos;t</span>
           </span>
           <span className="text-caption text-text-muted">
-            Mood, principles, motion, voice, layout. Required for design.md; optional for Figma export.
+            Mood, principles, motion, voice, layout. Needed for design.md; optional for Figma.
           </span>
         </span>
-        <span className="font-mono text-caption text-text-muted">
+        <span className="shrink-0 font-mono text-caption text-text-muted">
           {filled}/{NOTE_FIELDS.length} {open ? "▲" : "▼"}
         </span>
       </button>
