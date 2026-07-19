@@ -101,17 +101,16 @@ The persistent workspace. Sections, top to bottom:
 |---|---|
 | Toggle (off) | `Start picking` |
 | Toggle (on) | `Picking… (Esc to stop)` |
-| Empty state | `Nothing picked yet. Start picking and click anything on the page.` |
+| Empty state | `Nothing snapped yet` + `Start picking and click any element on the page.` |
 | Copy button | `Copy to StyleSnap` |
 | Copy toast | `Copied {n} tokens — paste into StyleSnap` |
 | Restricted page | `Picking doesn't work on this page.` |
 
 ## 8. Visual fit with StyleSnap
-Defers to the team `DESIGN.md` once filled. Until then the extension uses neutral
-surfaces + a single accent for the pick outline and primary button, so it reskins cleanly
-when brand tokens land. The in-page overlay must stay visually distinct from arbitrary
-page content — a consistent accent outline + dark chip is the recognizable "StyleSnap is
-active" signal.
+Side panel matches team `DESIGN.md` / the web app (light canvas, brand-primary,
+hard shadows, Space Grotesk / Inter / JetBrains Mono). See [`DESIGN.md`](./DESIGN.md).
+The in-page overlay stays minimal — brand-primary outline + solid dark chip so it
+reads on arbitrary page content.
 
 ## 9. Out of scope (this surface, MVP)
 - Whole-page auto-scan / "grab everything"
