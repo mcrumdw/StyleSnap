@@ -941,14 +941,14 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
-| 2026-07-19 | `[Bug fix]` `[Change]` `[New feature]` **Mobile layout + teaching tips** (§2.39): chips/`?`/undo chrome; stacked CTAs; toast vs undo; bottom-sheet dialogs; shorter copy. | — |
-| 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | — |
-| 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | — |
-| 2026-07-19 | `[Bug fix]` **Layer nav under mobile chrome:** sticky `top` = session header height. | — |
-| 2026-07-19 | `[Change]` **Undo in layer nav (desktop):** sticky `CategoryLayerNav`; mobile uses floating undo (§2.39). | — |
-| 2026-07-19 | `[Bug fix]` `[Change]` **Secondary opt-in** (§2.38): no auto-synthetic secondary; Use secondary color; fine-tune uses derivedEdits; harmony unassigns role. | — |
-| 2026-07-19 | `[Bug fix]` **Start over / Import portals** (§2.23 follow-up): `ModalPortal` above sticky-rail token cards. | — |
-| 2026-07-19 | `[New feature]` **Role edit → new primitive** (§2.37): confirm Save as primitive; create manual token + assign role. | — |
+| 2026-07-19 | `[Bug fix]` `[Change]` `[New feature]` **Mobile layout + teaching tips** (§2.39): chips/`?`/undo chrome; stacked CTAs; toast vs undo; bottom-sheet dialogs; shorter copy. | `eb38f79` |
+| 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |
+| 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | `eb38f79` |
+| 2026-07-19 | `[Bug fix]` **Layer nav under mobile chrome:** sticky `top` = session header height. | `eb38f79` |
+| 2026-07-19 | `[Change]` **Undo in layer nav (desktop):** sticky `CategoryLayerNav`; mobile uses floating undo (§2.39). | `eb38f79` |
+| 2026-07-19 | `[Bug fix]` `[Change]` **Secondary opt-in** (§2.38): no auto-synthetic secondary; Use secondary color; fine-tune uses derivedEdits; harmony unassigns role. | `eb38f79` |
+| 2026-07-19 | `[Bug fix]` **Start over / Import portals** (§2.23 follow-up): `ModalPortal` above sticky-rail token cards. | `eb38f79` |
+| 2026-07-19 | `[New feature]` **Role edit → new primitive** (§2.37): confirm Save as primitive; create manual token + assign role. | `debecac` |
 | 2026-07-18 | `[Bug fix]` **One-step undo/redo** (§2.36): barrier instead of skip-jump after Create System; assign/accents/rename/manual commit to history; toast Undo when canUndo. | — |
 | 2026-07-18 | `[New feature]` **System-created colors** (§2.35): derived colors in collapsed Primitives band; color PrimitivePicker splits From snap / System-created. | — |
 | 2026-07-18 | `[Change]` **Reassign in role popover** (§2.34): Change primitive (+ Remove role) moves into `RoleValueEditor` click dialog; under-card button removed; assign closes popover. | — |
