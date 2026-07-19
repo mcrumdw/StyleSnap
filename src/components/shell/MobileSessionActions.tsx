@@ -1,5 +1,8 @@
 import { FilePlus, RotateCcw } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import type { StyleSnapExport } from "../../contract/types";
+import type { SystemNotes } from "../../engine/export";
 import { Button } from "../Button";
 import { useSession } from "../../state/SessionProvider";
 import { ImportCaptureModal } from "./ImportCaptureModal";
@@ -11,8 +14,15 @@ const startOverBtn = `${iconBtn} border-warning text-warning-text shadow-card ho
 
 /** Mobile header — merge another capture into the current draft. */
 export function AddCaptureMenuButton() {
-  const { addImport } = useSession();
+  const { addImport, pool } = useSession();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+
+  const handleImport = (data: StyleSnapExport, notes?: SystemNotes) => {
+    const showWelcome = !pool.adjectives?.length;
+    addImport(data, notes);
+    if (showWelcome) navigate("/describe", { state: { fromImport: true } });
+  };
 
   return (
     <>
@@ -26,7 +36,7 @@ export function AddCaptureMenuButton() {
       >
         <FilePlus className="size-5 shrink-0" strokeWidth={2} aria-hidden />
       </Button>
-      {open && <ImportCaptureModal onImport={addImport} onClose={() => setOpen(false)} />}
+      {open && <ImportCaptureModal onImport={handleImport} onClose={() => setOpen(false)} />}
     </>
   );
 }

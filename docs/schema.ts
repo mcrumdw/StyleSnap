@@ -203,6 +203,27 @@ const FRIENDLY_ERROR =
   "That doesn't look like a StyleSnap capture. Mind checking the file?";
 
 /**
+ * Contract rule (types.ts): token ids are globally unique. Duplicate ids
+ * silently clobber earlier tokens when the webtool builds Map(id → token) —
+ * colors vanish. Reject at parse time with a specific FR-2 detail.
+ */
+function duplicateIdDetails(tokens: ReadonlyArray<{ id: string }>): string[] {
+  const counts = new Map<string, number>();
+  for (const token of tokens) {
+    counts.set(token.id, (counts.get(token.id) ?? 0) + 1);
+  }
+  const dups = [...counts.entries()]
+    .filter(([, n]) => n > 1)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  if (dups.length === 0) return [];
+  const [id, n] = dups[0];
+  const more = dups.length > 1 ? ` (+${dups.length - 1} more colliding id${dups.length === 2 ? "" : "s"})` : "";
+  return [
+    `token ids must be unique — ${id} appears ${n}×${more}; update the extension or Figma plugin that produced this capture`,
+  ];
+}
+
+/**
  * Single entry point for the paste zone / file upload.
  * Never throws; returns either the typed export (with an optional FR-4
  * version warning) or a friendly error plus the first few specific issues.
@@ -224,6 +245,11 @@ export function parseStyleSnapExport(text: string): ParseResult {
         .slice(0, 5)
         .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
     };
+  }
+
+  const dupDetails = duplicateIdDetails(result.data.tokens);
+  if (dupDetails.length > 0) {
+    return { ok: false, error: FRIENDLY_ERROR, details: dupDetails };
   }
 
   const versionWarning =

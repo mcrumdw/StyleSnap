@@ -1,6 +1,30 @@
 import { useEffect, useState, useCallback } from "react";
-import type { PickerMessage, Capture, StyleSnapExport } from "../shared/types";
+import type {
+  PickerMessage,
+  Capture,
+  StyleSnapExport,
+  StyleSnapToken,
+} from "../shared/types";
 import { CaptureList } from "./CaptureList";
+
+/** Sequential ids owned by the side panel — survives page navigations. */
+const nextExtId = (n: number) => `ext_${String(n).padStart(3, "0")}`;
+
+/**
+ * Content-script counters reset on every page load, but the panel keeps prior
+ * captures. Remap ids + captureId here so a multi-site session never exports
+ * colliding ext_001… ids (webtool FR-2 rejects those).
+ */
+function withUniqueIds(prev: Capture[], incoming: Capture): Capture {
+  let i = prev.reduce((n, c) => n + c.tokens.length, 0);
+  const captureId = `cap-${prev.length + 1}`;
+  const tokens: StyleSnapToken[] = incoming.tokens.map((t) => ({
+    ...t,
+    id: nextExtId(++i),
+    captureId,
+  }));
+  return { ...incoming, captureId, tokens };
+}
 
 export function App() {
   const [active, setActive] = useState(false);
@@ -12,7 +36,7 @@ export function App() {
   useEffect(() => {
     const handler = (msg: PickerMessage) => {
       if (msg.kind === "picker/captured") {
-        setCaptures((prev) => [...prev, msg.capture]);
+        setCaptures((prev) => [...prev, withUniqueIds(prev, msg.capture)]);
         setPageUrl(msg.pageUrl);
       } else if (msg.kind === "picker/state") {
         setActive(msg.active);

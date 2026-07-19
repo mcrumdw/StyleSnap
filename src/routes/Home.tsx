@@ -18,7 +18,7 @@ export function Home() {
   const handleImport: typeof addImport = (data, notes) => {
     addImport(data, notes);
     createSystem();
-    navigate("/describe");
+    navigate("/describe", { state: { fromImport: true } });
   };
 
   return (

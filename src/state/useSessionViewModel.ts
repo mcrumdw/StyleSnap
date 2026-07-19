@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import { computeChecklist } from "../engine/completeness";
 import { applyMerges } from "../engine/dedup";
+import { effectiveAccentIds } from "../engine/accents";
 import { deriveSystem, type Anchors, type AccentSuggestion } from "../engine/derive-system";
 import { styleProfileFromFamily } from "../engine/style-profile";
 import {
@@ -13,15 +14,17 @@ import {
 import {
   defaultProjectName,
   isSystemCreated,
+  allPoolTokens,
+  excludedPoolTokens,
   poolTokenCount,
-  poolTokens,
   resolveAssignments,
   type TokenPool,
 } from "./pool";
 import { poolEntries } from "./workspace";
+import { radiusInsight, spacingInsight, typeInsight } from "../engine/insights";
 
-/** How a value got into the draft — drives the visual states. */
-export type FillOrigin = "captured" | "derived" | "edited";
+/** How a value got into the draft — drives the subtle origin chips (§2.25). */
+export type FillOrigin = "snap" | "seeded" | "derived" | "default" | "edited";
 
 export interface FillInfo {
   origin: FillOrigin;
@@ -66,7 +69,9 @@ export function useSessionViewModel(pool: TokenPool) {
     return { tokens, assignments };
   }, [entries, pool.merges, pool.assignments]);
 
-  const rawById = useMemo(() => new Map(poolTokens(pool).map((t) => [t.id, t])), [pool]);
+  const rawById = useMemo(() => new Map(allPoolTokens(pool).map((t) => [t.id, t])), [pool]);
+
+  const excludedTokens = useMemo(() => excludedPoolTokens(pool), [pool]);
 
   // ── Derivation (10a): the auto-completed draft, edits overlaid (C.8) ──
   const draft = useMemo(
@@ -89,13 +94,21 @@ export function useSessionViewModel(pool: TokenPool) {
   );
 
   const draftFills = useMemo((): DraftFill[] => {
+    const userAssignments = resolveAssignments(pool.assignments, pool.merges);
     const fills: DraftFill[] = draft.fills.map((fill) => {
       const edit = pool.derivedEdits?.[fill.role];
       if (edit) {
         return { ...fill, token: edit.token, origin: "edited" as const };
       }
       const synthetic = fill.token.id.startsWith("derived_");
-      return { ...fill, origin: synthetic ? ("derived" as const) : ("captured" as const) };
+      if (synthetic) {
+        const origin =
+          fill.derivedFrom === "convention" ? ("default" as const) : ("derived" as const);
+        return { ...fill, origin };
+      }
+      // Captured token: user-assigned → snap (no chip); auto-placed → seeded.
+      const userPlaced = userAssignments[fill.role] === fill.token.id;
+      return { ...fill, origin: userPlaced ? ("snap" as const) : ("seeded" as const) };
     });
     const rolesWithFill = new Set(fills.map((f) => f.role));
     // Edits on roles that derivation skipped (pool.assignments blocks the fill).
@@ -110,7 +123,7 @@ export function useSessionViewModel(pool: TokenPool) {
       });
     }
     return fills;
-  }, [draft, pool.derivedEdits]);
+  }, [draft, pool.derivedEdits, pool.assignments, pool.merges]);
 
   /** Filled-row display tokens — derivedEdits always win over derivation (DECISIONS §2.8). */
   const roleDisplayTokens = useMemo(
@@ -160,7 +173,7 @@ export function useSessionViewModel(pool: TokenPool) {
   }, [view, draftFills, pool.derivedEdits]);
 
   const exportInput = useMemo((): ExportInput => {
-    const raw = poolTokens(pool);
+    const raw = allPoolTokens(pool);
     const names = new Map<string, string>();
     for (const [id, decision] of Object.entries(pool.decisions)) {
       if (decision.name !== undefined) names.set(id, decision.name);
@@ -178,8 +191,19 @@ export function useSessionViewModel(pool: TokenPool) {
       notes: pool.systemNotes ?? {},
       noteSources: pool.noteSources,
       derived: effective.derived,
+      accentIds: effectiveAccentIds(
+        pool.accentIds,
+        view.tokens,
+        view.assignments,
+        draft.anchors.primaryColorId,
+        draft.anchors.secondaryColorId,
+      ),
+      accentsExplicit: pool.accentIds !== undefined,
+      spacingInsight: spacingInsight(view.tokens, view.assignments),
+      radiusInsight: radiusInsight(view.tokens, view.assignments),
+      typeInsight: typeInsight(view.tokens, draft.anchors.bodyTypographyId, pool.typeRatio),
     };
-  }, [pool, projectName, effective, rawById]);
+  }, [pool, projectName, effective, rawById, view.tokens, view.assignments, draft.anchors]);
 
   const resolvedAssignments = useMemo(
     () => Object.fromEntries(effective.assignments),
@@ -218,6 +242,27 @@ export function useSessionViewModel(pool: TokenPool) {
     return { anchorsPicked, derivedCount: draft.derivedCount };
   }, [anchors, draft.derivedCount]);
 
+  const accentIds = useMemo(
+    () =>
+      effectiveAccentIds(
+        pool.accentIds,
+        view.tokens,
+        view.assignments,
+        anchors.primaryColorId,
+        anchors.secondaryColorId,
+      ),
+    [pool.accentIds, view.tokens, view.assignments, anchors.primaryColorId, anchors.secondaryColorId],
+  );
+
+  const insights = useMemo(
+    () => ({
+      spacing: spacingInsight(view.tokens, view.assignments),
+      radius: radiusInsight(view.tokens, view.assignments),
+      type: typeInsight(view.tokens, anchors.bodyTypographyId, pool.typeRatio),
+    }),
+    [view.tokens, view.assignments, anchors.bodyTypographyId, pool.typeRatio],
+  );
+
   // FR-19b — design.md gate: every system-note field filled (user or template).
   // Cleaned JSON / Figma export is never blocked — see DECISIONS §2.21.
   const notesComplete = useMemo(
@@ -241,8 +286,12 @@ export function useSessionViewModel(pool: TokenPool) {
     roleDisplayTokens,
     anchors,
     accent,
+    accentIds,
     summary,
     notesComplete,
     agentExportReady,
+    excludedTokens,
+    insights,
+    workingTokens: view.tokens,
   };
 }

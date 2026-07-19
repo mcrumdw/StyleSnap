@@ -7,13 +7,16 @@ work auto-saves to localStorage — reload anytime and your draft is back.
 
 - `docs/fixtures/capture-thin.json` (6-token wow opener)
 - `docs/fixtures/capture-browser-messy.json` + `capture-figma-clean.json` (full story)
+- `docs/fixtures/capture-fifa.json` (optional colors story: 9 unique colors →
+  Captured colors / Make primary / Design accents)
 
 Optional closer: Claude Code / Cursor on any small project.
 
 **Mental model:** import → **complete draft instantly**. StyleSnap picks three
 anchors (main color, body type, base spacing) and fills everything else
-deterministically. Solid borders = from capture; dashed + **auto** badge =
-filled for you. Change only what you disagree with.
+deterministically. Solid borders = from your snap; dashed rows carry a quiet
+muted chip (`auto` / `derived` / `default`) for origin — click any value for
+the full story. Change only what you disagree with.
 
 ---
 
@@ -22,8 +25,8 @@ filled for you. Change only what you disagree with.
 1. Drag `capture-thin.json` — **6 tokens** from a tiny landing page.
 2. You land on **"Your system"** — a full draft: hover/active states, feedback
    colors, neutrals, type scale, spacing/radius/shadow ramps. Zero forms.
-3. Point at dashed rows with **auto** badges. Click one → provenance popover:
-   *"derived from your main color — hover (ΔL −0.06)"*.
+3. Point at dashed rows with quiet origin chips (`derived` / `default`). Click
+   one → provenance popover: *"derived from your main color — hover (ΔL −0.06)"*.
 4. If a second hue isn't captured, an **accent card** offers harmony options.
    Switch or dismiss.
 
@@ -57,8 +60,9 @@ form."*
 
 1. Edit project name in the header.
 2. **Create System** → lightweight confirm (stats + how much was automated).
-3. **Copy design.md** — one-time guardrail if you haven't reviewed auto-filled
-   values (*export anyway* is fine — they're flagged in §Gaps).
+3. **Copy design.md** — one-time guardrail if you haven't reviewed derived /
+   default fills (*export anyway* is fine — they're flagged in §Gaps). Accents
+   table lists sparingly-used colors when present.
 4. Show **Cleaned JSON** in the export section: *"This file IS the save."*
 
 ## 5. Payoff (~1 min)

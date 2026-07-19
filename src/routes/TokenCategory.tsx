@@ -3,14 +3,25 @@ import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "
 import type { TokenType } from "../contract/types";
 import { AddTokenDialog } from "../components/AddTokenDialog";
 import { AnchorsStep } from "../components/AnchorsStep";
+import { Button } from "../components/Button";
+import { CapturedColors } from "../components/CapturedColors";
 import { CapturedFonts } from "../components/CapturedFonts";
+import { CapturedFoundations } from "../components/CapturedFoundations";
+import {
+  CategoryLayerNav,
+  LayerSection,
+  type CategoryLayerId,
+} from "../components/CategoryLayerNav";
+import { DesignAccents } from "../components/DesignAccents";
 import { TypeAnchorStep } from "../components/TypeAnchorStep";
 import { GapPanel } from "../components/GapPanel";
 import { GiveMeaningStep } from "../components/GiveMeaningStep";
+import { PrimitiveInventory } from "../components/PrimitiveInventory";
 import { isTokenCategory } from "../components/shell/SideNav";
 import { DEFAULT_ROUTE } from "./AppShell";
 import { useSession } from "../state/SessionProvider";
-import { resolveAssignments } from "../state/pool";
+import { poolTokens, resolveAssignments } from "../state/pool";
+import { effectiveAccentIds } from "../engine/accents";
 import { routeForAddToken, routeForRole } from "./nav";
 
 import type { TokenCategory } from "../components/shell/SideNav";
@@ -35,9 +46,48 @@ const CATEGORY_TITLES: Record<TokenCategory, string> = {
   effects: "Effects",
 };
 
+const CATEGORY_TOKEN_TYPE: Record<TokenCategory, TokenType> = {
+  colors: "color",
+  typography: "typography",
+  spacing: "spacing",
+  radius: "border-radius",
+  borders: "border-width",
+  effects: "shadow",
+};
+
+const ADD_LABELS: Record<TokenCategory, string> = {
+  colors: "Add color",
+  typography: "Add type",
+  spacing: "Add spacing",
+  radius: "Add radius",
+  borders: "Add border width",
+  effects: "Add effect",
+};
+
+const FOUNDATION_TYPE: Partial<
+  Record<TokenCategory, "spacing" | "border-radius" | "border-width" | "shadow">
+> = {
+  spacing: "spacing",
+  radius: "border-radius",
+  borders: "border-width",
+  effects: "shadow",
+};
+
 type AddTokenPreset = { tokenType: TokenType; role?: string };
 
-/** One token category per route — anchors are edited on Colors. */
+const LAYER_TIPS = {
+  snap: "Every capture from your snap — merges do not hide members here. Pick primary or which hex a merge keeps; Primitives show the system survivor.",
+  primitives: "Named values the system keeps after merges — rename, change survivor, un-merge, or remove. These export.",
+  roles: "Appendix B semantic slots pointing at primitives — the roles that lead design.md.",
+} as const;
+
+const DEFAULT_OPEN: Record<CategoryLayerId, boolean> = {
+  "from-snap": false,
+  primitives: true,
+  "system-roles": true,
+};
+
+/** One token category per route — three layers: From snap → Primitives → System roles. */
 export function TokenCategory() {
   const { category } = useParams<{ category: string }>();
   const navigate = useNavigate();
@@ -45,8 +95,30 @@ export function TokenCategory() {
   const location = useLocation();
   const focusRoleId = searchParams.get("focus") ?? undefined;
 
-  const { pool, vm, setAnchor, assign, unassign, addManual, editWithUndoToast, resetDerivedValue, setAccent, setToast } =
-    useSession();
+  const {
+    pool,
+    vm,
+    setAnchor,
+    assign,
+    unassign,
+    addCustomRole,
+    removeCustomRole,
+    addManual,
+    setName,
+    unmerge,
+    setMergeSurvivor,
+    makePrimaryColor,
+    makeSecondaryColor,
+    exclude,
+    restore,
+    removeManual,
+    editWithUndoToast,
+    resetDerivedValue,
+    setAccent,
+    setAccentIds,
+    setToast,
+    undo,
+  } = useSession();
 
   const secondaryFill = vm.draftFills.find((f) => f.role === "color/action/secondary");
 
@@ -72,6 +144,7 @@ export function TokenCategory() {
     ?.addTokenPreset;
   const [addTokenPreset, setAddTokenPreset] = useState<AddTokenPreset | undefined>(locationPreset);
   const resumeRef = useRef(category === "colors");
+  const [layerOpen, setLayerOpen] = useState<Record<CategoryLayerId, boolean>>(DEFAULT_OPEN);
 
   useEffect(() => {
     if (locationPreset) setAddTokenPreset(locationPreset);
@@ -90,6 +163,7 @@ export function TokenCategory() {
 
   useEffect(() => {
     if (!focusRoleId) return;
+    setLayerOpen((prev) => ({ ...prev, "system-roles": true }));
     requestAnimationFrame(() => {
       document.getElementById(`role-${focusRoleId.replace(/\//g, "-")}`)?.scrollIntoView({
         behavior: "smooth",
@@ -103,6 +177,24 @@ export function TokenCategory() {
     return ROLE_PREFIX[category as Exclude<TokenCategory, "colors">];
   }, [category]);
 
+  const fontOptions = useMemo(() => {
+    const families = new Set<string>();
+    for (const t of vm.workingTokens) {
+      if (t.type === "typography" && !t.id.startsWith("derived_")) {
+        families.add(t.value.fontFamily);
+      }
+    }
+    return [...families].sort((a, b) => a.localeCompare(b));
+  }, [vm.workingTokens]);
+
+  const snapOfType = useMemo(() => {
+    if (!category || !isTokenCategory(category)) return [];
+    const type = CATEGORY_TOKEN_TYPE[category];
+    return poolTokens(pool).filter(
+      (t) => t.type === type && !t.id.startsWith("derived_"),
+    );
+  }, [pool, category]);
+
   // Legacy routes from the old shell.
   if (category === "anchors" || category === "captured") {
     return <Navigate to={DEFAULT_ROUTE} replace />;
@@ -114,49 +206,99 @@ export function TokenCategory() {
   if (!isTokenCategory(category)) return <Navigate to={DEFAULT_ROUTE} replace />;
 
   const title = CATEGORY_TITLES[category];
+  const tokenType = CATEGORY_TOKEN_TYPE[category];
+  const foundationType = FOUNDATION_TYPE[category];
+  const addLabel = ADD_LABELS[category];
 
-  return (
-    <div className="flex flex-col gap-6 sm:gap-8">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-section-header font-bold sm:text-page-title">{title}</h1>
-        {category === "colors" && (
-          <p className="text-caption text-text-muted">
-            Your primary and secondary colors — then every color role in the system.
-          </p>
-        )}
-        {category === "typography" && (
-          <p className="text-caption text-text-muted">
-            Your text style anchor — then assign every type role in the system.
-          </p>
-        )}
-        {category === "spacing" && (
-          <p className="text-caption text-text-muted">
-            Gaps and padding between elements — preview shows how much space this value adds.
-          </p>
-        )}
-        {category === "radius" && (
-          <p className="text-caption text-text-muted">
-            Corner rounding on cards, buttons, and inputs — preview shows the curve on a square.
-          </p>
-        )}
-        {category === "borders" && (
-          <p className="text-caption text-text-muted">
-            Stroke thickness for outlines and dividers — preview shows the border on a card.
-          </p>
-        )}
-        {category === "effects" && (
-          <p className="text-caption text-text-muted">
-            Elevation and depth — drop shadows, inner shadows, and (when captured) blur and similar
-            treatments. One effect can fill several roles.
-          </p>
-        )}
-        {rolePrefix && category !== "typography" && category !== "effects" && (
-          <p className="text-caption text-text-muted">
-            Assign semantic roles for this category. One primitive can fill several roles.
-          </p>
-        )}
-      </header>
+  const workingOfType = vm.workingTokens.filter(
+    (t) => t.type === tokenType && !t.id.startsWith("derived_"),
+  );
+  const primitivesCount =
+    category === "colors"
+      ? vm.systemTokens.filter((t) => t.type === "color").length
+      : workingOfType.length;
+  const excludedOfType = vm.excludedTokens.filter((t) => t.type === tokenType);
+  const roleCount = vm.draftFills.filter((f) => {
+    if (category === "colors") return f.role.startsWith("color/");
+    if (!rolePrefix) return false;
+    return f.role.startsWith(rolePrefix);
+  }).length;
 
+  const insight =
+    category === "spacing"
+      ? vm.insights.spacing.summary
+      : category === "radius"
+        ? vm.insights.radius.summary
+        : category === "typography"
+          ? vm.insights.type.summary
+          : undefined;
+
+  const handleExclude = (tokenId: string) => {
+    exclude(tokenId);
+    setToast("Excluded from system", { undo: () => undo() });
+  };
+
+  const openAdd = () => setAddTokenPreset({ tokenType });
+
+  const toggleLayer = (id: CategoryLayerId) => {
+    setLayerOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const jumpToLayer = (id: CategoryLayerId) => {
+    setLayerOpen((prev) => ({ ...prev, [id]: true }));
+    requestAnimationFrame(() => {
+      document.getElementById(`layer-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const addButton = (
+    <Button size="sm" variant="secondary" onClick={openAdd}>
+      {addLabel}
+    </Button>
+  );
+
+  const excludedStrip =
+    excludedOfType.length > 0 ? (
+      <div className="mt-3 flex flex-col gap-2 rounded-md border-2 border-dashed border-border-default bg-surface-page p-3">
+        <p className="font-mono text-badge text-text-muted">
+          Excluded ({excludedOfType.length}) — restore to bring back into the system
+        </p>
+        <ul className="flex flex-wrap gap-2">
+          {excludedOfType.map((t) => (
+            <li key={t.id}>
+              <Button size="sm" variant="ghost" onClick={() => restore(t.id)}>
+                Restore {t.type === "color" ? t.value : t.id.slice(0, 12)}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
+  const primitivesPanel = (
+    <PrimitiveInventory
+      tokenType={tokenType}
+      tokens={vm.systemTokens}
+      decisions={pool.decisions}
+      merges={pool.merges}
+      assignments={vm.resolvedAssignments}
+      rawById={vm.exportInput.rawById}
+      onSetName={setName}
+      onUnmerge={(id) => {
+        unmerge(id);
+        setToast("Un-merged", { undo: () => undo() });
+      }}
+      onSetMergeSurvivor={setMergeSurvivor}
+      onExclude={handleExclude}
+      onRemoveManual={(id) => {
+        removeManual(id);
+        setToast("Deleted manual token", { undo: () => undo() });
+      }}
+    />
+  );
+
+  const rolesPanel = (
+    <>
       {category === "colors" && (
         <>
           <AnchorsStep
@@ -171,97 +313,180 @@ export function TokenCategory() {
             onEditSecondary={(token) => handleEditDerived("color/action/secondary", token)}
             onResetSecondary={() => resetDerivedValue("color/action/secondary")}
           />
-          <GiveMeaningStep
-            entries={vm.entries}
-            merges={pool.merges}
-            decisions={pool.decisions}
-            assignments={vm.resolvedAssignments}
-            systemTokens={vm.systemTokens}
-            draftFills={vm.draftFills}
-            roleDisplayTokens={vm.roleDisplayTokens}
-            fills={fills}
-            focusRoleId={focusRoleId}
-            rolePrefix="color/"
-            onAssign={assign}
-            onUnassign={unassign}
-            userAssignments={userAssignments}
-            onEditDerived={handleEditDerived}
-            onResetDerived={resetDerivedValue}
+          <DesignAccents
+            tokens={vm.exportInput.tokens}
+            accentIds={vm.accentIds}
+            explicit={pool.accentIds !== undefined}
+            onRemove={(id) => {
+              const current =
+                pool.accentIds ??
+                effectiveAccentIds(
+                  undefined,
+                  vm.exportInput.tokens,
+                  vm.resolvedAssignments,
+                  vm.anchors.primaryColorId,
+                  vm.anchors.secondaryColorId,
+                );
+              setAccentIds(current.filter((x) => x !== id));
+            }}
+            onResetAuto={() => setAccentIds(undefined)}
           />
-          {vm.gapCount > 0 && (
-            <GapPanel
-              checklist={vm.checklist}
-              onAssignRole={(role) => navigate(routeForRole(role))}
-              onAddToken={(preset) => {
-                const { pathname, state } = routeForAddToken(preset);
-                navigate(pathname, { state });
-              }}
-              onOpenNotes={() => navigate("/describe")}
-            />
-          )}
         </>
       )}
-
       {category === "typography" && (
-        <>
-          <TypeAnchorStep
-            anchors={vm.anchors}
-            tokens={vm.exportInput.tokens}
-            onSetAnchor={setAnchor}
-          />
-          <CapturedFonts
-            tokens={vm.exportInput.tokens}
-            assignments={vm.resolvedAssignments}
-            onAssign={assign}
-          />
-          <GiveMeaningStep
-            entries={vm.entries}
-            merges={pool.merges}
-            decisions={pool.decisions}
-            assignments={vm.resolvedAssignments}
-            systemTokens={vm.systemTokens}
-            draftFills={vm.draftFills}
-            roleDisplayTokens={vm.roleDisplayTokens}
-            fills={fills}
-            focusRoleId={focusRoleId}
-            rolePrefix="type/"
-            onAssign={assign}
-            onUnassign={unassign}
-            userAssignments={userAssignments}
-            onEditDerived={handleEditDerived}
-            onResetDerived={resetDerivedValue}
-          />
-        </>
-      )}
-
-      {rolePrefix && category !== "typography" && (
-        <GiveMeaningStep
-          entries={vm.entries}
-          merges={pool.merges}
-          decisions={pool.decisions}
-          assignments={vm.resolvedAssignments}
-          systemTokens={vm.systemTokens}
-          draftFills={vm.draftFills}
-          roleDisplayTokens={vm.roleDisplayTokens}
-          fills={fills}
-          focusRoleId={focusRoleId}
-          rolePrefix={rolePrefix}
-          onAssign={assign}
-          onUnassign={unassign}
-          userAssignments={userAssignments}
-          onEditDerived={handleEditDerived}
-          onResetDerived={resetDerivedValue}
+        <TypeAnchorStep
+          anchors={vm.anchors}
+          tokens={vm.exportInput.tokens}
+          onSetAnchor={setAnchor}
         />
       )}
+      <GiveMeaningStep
+        entries={vm.entries}
+        merges={pool.merges}
+        decisions={pool.decisions}
+        assignments={vm.resolvedAssignments}
+        systemTokens={vm.systemTokens}
+        draftFills={vm.draftFills}
+        roleDisplayTokens={vm.roleDisplayTokens}
+        fills={fills}
+        focusRoleId={focusRoleId}
+        rolePrefix={category === "colors" ? "color/" : rolePrefix}
+        onAssign={assign}
+        onUnassign={unassign}
+        userAssignments={userAssignments}
+        onEditDerived={handleEditDerived}
+        onResetDerived={resetDerivedValue}
+        customRoles={pool.customRoles}
+        onAddCustomRole={addCustomRole}
+        onRemoveCustomRole={removeCustomRole}
+      />
+      {category === "colors" && vm.gapCount > 0 && (
+        <GapPanel
+          checklist={vm.checklist}
+          onAssignRole={(role) => navigate(routeForRole(role))}
+          onAddToken={(preset) => {
+            const { pathname, state } = routeForAddToken(preset);
+            navigate(pathname, { state });
+          }}
+          onOpenNotes={() => navigate("/describe")}
+        />
+      )}
+    </>
+  );
+
+  const fromSnapPanel = (
+    <>
+      {category === "colors" && (
+        <CapturedColors
+          tokens={snapOfType}
+          merges={pool.merges}
+          assignments={vm.resolvedAssignments}
+          primaryId={vm.anchors.primaryColorId}
+          secondaryId={vm.anchors.secondaryColorId}
+          accentIds={vm.accentIds}
+          onMakePrimary={makePrimaryColor}
+          onMakeSecondary={makeSecondaryColor}
+          onAssign={assign}
+          onAddAccent={(id) => {
+            const next = [...vm.accentIds];
+            if (!next.includes(id)) next.push(id);
+            setAccentIds(next);
+          }}
+          onSetMergeSurvivor={setMergeSurvivor}
+          onExclude={handleExclude}
+        />
+      )}
+      {category === "typography" && (
+        <CapturedFonts
+          tokens={vm.workingTokens}
+          assignments={vm.resolvedAssignments}
+          onAssign={assign}
+          onExclude={handleExclude}
+        />
+      )}
+      {foundationType && (
+        <CapturedFoundations
+          tokenType={foundationType}
+          tokens={vm.workingTokens}
+          assignments={vm.resolvedAssignments}
+          onAssign={assign}
+          onExclude={handleExclude}
+          emptyLabel={`No ${title.toLowerCase()} in this snap.`}
+          customRoles={pool.customRoles}
+        />
+      )}
+      {excludedStrip}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-6 sm:gap-8">
+      <header className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-heading text-section-header font-bold sm:text-page-title">{title}</h1>
+          {addButton}
+        </div>
+        <p className="text-caption text-text-muted">
+          Review what your snap captured, the primitives the system saved, then semantic roles.
+        </p>
+      </header>
+
+      <CategoryLayerNav
+        counts={{
+          "from-snap": snapOfType.length,
+          primitives: primitivesCount,
+          "system-roles": roleCount,
+        }}
+        openLayers={layerOpen}
+        onJumpToLayer={jumpToLayer}
+      />
+
+      <LayerSection
+        id="from-snap"
+        title="From snap"
+        tip={LAYER_TIPS.snap}
+        count={workingOfType.length}
+        open={layerOpen["from-snap"]}
+        onToggle={() => toggleLayer("from-snap")}
+        insight={insight}
+      >
+        {fromSnapPanel}
+      </LayerSection>
+
+      <LayerSection
+        id="primitives"
+        title="Primitives"
+        tip={LAYER_TIPS.primitives}
+        count={workingOfType.length}
+        open={layerOpen.primitives}
+        onToggle={() => toggleLayer("primitives")}
+        actions={addButton}
+      >
+        {primitivesPanel}
+      </LayerSection>
+
+      <LayerSection
+        id="system-roles"
+        title="System roles"
+        tip={LAYER_TIPS.roles}
+        count={roleCount}
+        open={layerOpen["system-roles"]}
+        onToggle={() => toggleLayer("system-roles")}
+      >
+        {rolesPanel}
+      </LayerSection>
 
       {addTokenPreset && (
         <AddTokenDialog
           presetType={addTokenPreset.tokenType}
           presetRole={addTokenPreset.role}
+          addLabel={addLabel}
+          lockType
+          fontOptions={fontOptions}
           onSave={(token, role) => {
             addManual(token, role);
             setAddTokenPreset(undefined);
-            setToast(role ? `Added — ${role} has a home now.` : "Token added.");
+            setToast(role ? `Added — ${role} has a home now.` : `${addLabel.replace(/^Add /, "")} added.`);
           }}
           onClose={() => setAddTokenPreset(undefined)}
         />

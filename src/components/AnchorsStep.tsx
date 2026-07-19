@@ -9,6 +9,7 @@ import {
 } from "../engine/derive-system/color";
 import { fallbackName } from "../engine/roles";
 import { isNeutral } from "../engine/derive-system/oklch";
+import type { FillOrigin } from "../state/useSessionViewModel";
 import { humanValueLabel } from "../state/token-display";
 import { RoleTokenPreview } from "./RoleTokenPreview";
 import { Button } from "./Button";
@@ -34,7 +35,7 @@ interface AnchorsStepProps {
   onAccentHarmony?: (harmony: Harmony) => void;
   /** Effective secondary role token (after derivation + edits). */
   secondaryToken?: StyleSnapToken;
-  secondaryOrigin?: "captured" | "derived" | "edited";
+  secondaryOrigin?: FillOrigin;
   onEditSecondary?: (token: StyleSnapToken) => void;
   onResetSecondary?: () => void;
   /** Role corrections (EditRolesPanel) rendered below by the parent. */
@@ -191,7 +192,7 @@ function SecondaryHarmonyPicker({
   primaryHex: string;
   accentHarmony?: Harmony;
   secondaryToken?: StyleSnapToken;
-  secondaryOrigin?: "captured" | "derived" | "edited";
+  secondaryOrigin?: FillOrigin;
   capturedSecondary?: StyleSnapToken & { type: "color"; value: string };
   onAccentHarmony?: (harmony: Harmony) => void;
   onEditSecondary?: (token: StyleSnapToken) => void;
@@ -201,7 +202,9 @@ function SecondaryHarmonyPicker({
   const harmonySuggestion = harmonyFromPrimary(primaryHex);
   const activeHarmony = accentHarmony ?? harmonySuggestion.suggested;
   const usingCaptured =
-    secondaryOrigin === "captured" && capturedSecondary !== undefined && accentHarmony === undefined;
+    (secondaryOrigin === "snap" || secondaryOrigin === "seeded") &&
+    capturedSecondary !== undefined &&
+    accentHarmony === undefined;
 
   const [editHex, setEditHex] = useState(
     secondaryToken?.type === "color" ? secondaryToken.value : harmonySuggestion.candidates[activeHarmony],
@@ -353,7 +356,10 @@ export function AnchorsStep({
 
   const secondarySummaryLabel = (() => {
     if (!secondaryDisplay || secondaryDisplay.type !== "color") return null;
-    if (secondaryOrigin === "captured" && accentHarmony === undefined) {
+    if (
+      (secondaryOrigin === "snap" || secondaryOrigin === "seeded") &&
+      accentHarmony === undefined
+    ) {
       return `${nameOf(secondaryDisplay)} · ${secondaryDisplay.value}`;
     }
     const harmony = accentHarmony ?? (primary?.type === "color" ? harmonyFromPrimary(primary.value).suggested : undefined);

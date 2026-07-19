@@ -1,20 +1,29 @@
 import { useState } from "react";
-import { validateSlashName } from "../engine/roles";
+import type { TokenType } from "../contract/types";
+import { namePlaceholder, validateSlashName } from "../engine/roles";
 
 interface InlineNameProps {
   name: string | null;
   /** A valid slash name, or undefined to clear back to unnamed. */
   onSetName: (name: string | undefined) => void;
+  /** Drives the placeholder example (type/… for fonts, color/… for colors). */
+  tokenType?: TokenType;
+  /**
+   * Prefill when the token is unnamed — typically `fallbackName(token)` so the
+   * draft matches this value’s type.
+   */
+  suggestedName?: string;
 }
 
 /** FR-21 inline name editing with slash-name validation. Click to edit. */
-export function InlineName({ name, onSetName }: InlineNameProps) {
+export function InlineName({ name, onSetName, tokenType = "color", suggestedName }: InlineNameProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const placeholder = namePlaceholder(tokenType);
 
   function startEditing() {
-    setDraft(name ?? "");
+    setDraft(name ?? suggestedName ?? "");
     setError(null);
     setEditing(true);
   }
@@ -70,7 +79,7 @@ export function InlineName({ name, onSetName }: InlineNameProps) {
           if (e.key === "Escape") setEditing(false);
         }}
         onBlur={save}
-        placeholder="color/brand-blue"
+        placeholder={placeholder}
         aria-label="Token name"
         className={`w-full rounded-sm border-2 bg-surface-card px-2 py-1 font-mono text-caption text-text-primary placeholder:text-text-muted ${
           error ? "border-error" : "border-border-default"
