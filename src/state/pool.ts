@@ -752,6 +752,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   }
 
   // Project name + Create System stamp were added in Phase 6 — optional strings.
+  // systemCreatedAt is validated but intentionally not restored (§2.41).
   const { projectName, systemCreatedAt, currentStep } = json as Partial<TokenPool>;
   if (projectName !== undefined && typeof projectName !== "string") return null;
   if (systemCreatedAt !== undefined && typeof systemCreatedAt !== "string") return null;
@@ -774,7 +775,9 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   }
   const pool: TokenPool = { imports, merges, decisions, assignments, manual };
   if (projectName !== undefined) pool.projectName = projectName;
-  if (systemCreatedAt !== undefined) pool.systemCreatedAt = systemCreatedAt;
+  // §2.41 — Home used to call createSystem() on every import, which locked
+  // merge/un-merge undo immediately (FR-13). Drop legacy stamps on load so
+  // drafts stay editable; stamp again only via explicit Create System.
   if (currentStep !== undefined) pool.currentStep = clampStep(currentStep);
   // System notes were added in Phase 9 — older drafts simply have none.
   const notes = sanitizeNotes((json as Partial<TokenPool>).systemNotes);

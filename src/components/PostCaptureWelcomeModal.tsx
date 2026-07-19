@@ -113,7 +113,7 @@ export function PostCaptureWelcomeModal({
                   Review the snap
                 </span>
                 <span className="text-caption text-text-muted">
-                  On each category, From snap lists what came in. Exclude noise; keep the rest.
+                  On each category, From snap lists what came in. Assign roles in Primitives and System roles.
                 </span>
               </div>
             </li>

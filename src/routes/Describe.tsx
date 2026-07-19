@@ -62,15 +62,8 @@ export function Describe() {
       )}
 
       <header className="flex flex-col gap-2">
-        <p className="flex flex-wrap items-center gap-2 text-caption text-text-muted">
-          Set the vibe — then continue to colors.
-          <InfoHint
-            label="Why vibe first?"
-            content="Picks shape empty slots only — type scale, secondary, radius, shadows. Your captured colors stay. Notes go in design.md; Figma export works without them."
-          />
-        </p>
         <label className="flex w-full max-w-xs flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-          <span className="font-mono text-caption text-text-muted">Project</span>
+          <span className="text-caption font-medium text-text-primary">Project Name</span>
           <input
             value={vm.projectName}
             onChange={(e) => setProjectName(e.target.value)}
@@ -78,6 +71,13 @@ export function Describe() {
             className="h-btn-sm w-full rounded-sm border-2 border-border-default bg-surface-card px-2 text-caption text-text-primary sm:w-48"
           />
         </label>
+        <p className="flex flex-wrap items-center gap-2 text-caption text-text-muted">
+          Set the vibe — then continue to colors.
+          <InfoHint
+            label="Why vibe first?"
+            content="Picks shape empty slots only — type scale, secondary, radius, shadows. Your captured colors stay. Notes go in design.md; Figma export works without them."
+          />
+        </p>
       </header>
 
       <section

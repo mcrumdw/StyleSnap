@@ -1,23 +1,9 @@
 import { useMemo } from "react";
 import type { StyleSnapToken, TokenType } from "../contract/types";
-import {
-  BORDER_WIDTH_SLOTS,
-  RADIUS_SLOTS,
-  SHADOW_SLOTS,
-  SPACE_SLOTS,
-} from "../engine/roles";
 import { formatValue } from "../state/workspace";
-import { Button } from "./Button";
 import { InfoHint } from "./Tooltip";
 
 type FoundationType = "spacing" | "border-radius" | "border-width" | "shadow";
-
-const SLOTS: Record<FoundationType, string[]> = {
-  spacing: SPACE_SLOTS.map((s) => s.role),
-  "border-radius": RADIUS_SLOTS.map((s) => s.role),
-  "border-width": BORDER_WIDTH_SLOTS.map((s) => s.role),
-  shadow: SHADOW_SLOTS.map((s) => s.role),
-};
 
 const EMPTY_TIP: Record<FoundationType, string> = {
   spacing: "No spacing in this snap. Add a token, or keep the auto ones.",
@@ -30,11 +16,7 @@ interface CapturedFoundationsProps {
   tokenType: FoundationType;
   tokens: StyleSnapToken[];
   assignments: Record<string, string>;
-  onAssign: (role: string, tokenId: string) => void;
-  onExclude: (tokenId: string) => void;
   emptyLabel: string;
-  /** Extra slots beyond Appendix B (§2.30). */
-  customRoles?: string[];
 }
 
 function FoundationPreview({ token }: { token: StyleSnapToken }) {
@@ -74,17 +56,13 @@ function FoundationPreview({ token }: { token: StyleSnapToken }) {
 }
 
 /**
- * From-snap strip for spacing / radius / borders / effects — mirror of
- * CapturedColors / CapturedFonts.
+ * From snap inventory — read-only. Slot assignment lives in System roles (§2.40).
  */
 export function CapturedFoundations({
   tokenType,
   tokens,
   assignments,
-  onAssign,
-  onExclude,
   emptyLabel,
-  customRoles = [],
 }: CapturedFoundationsProps) {
   const captured = useMemo(
     () =>
@@ -110,19 +88,6 @@ export function CapturedFoundations({
     }
     return map;
   }, [assignments, tokenType]);
-
-  const slots = useMemo(() => {
-    const prefix =
-      tokenType === "spacing"
-        ? "space/"
-        : tokenType === "border-radius"
-          ? "radius/"
-          : tokenType === "border-width"
-            ? "border-width/"
-            : "shadow/";
-    const extra = customRoles.filter((r) => r.startsWith(prefix));
-    return [...SLOTS[tokenType], ...extra.filter((r) => !SLOTS[tokenType].includes(r))];
-  }, [customRoles, tokenType]);
 
   if (captured.length === 0) {
     return (
@@ -174,33 +139,6 @@ export function CapturedFoundations({
                 ))}
               </span>
             )}
-
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1">
-                <span className="font-mono text-badge text-text-muted">Slot</span>
-                <select
-                  aria-label={`Assign ${formatValue(token)} to a scale slot`}
-                  defaultValue=""
-                  onChange={(e) => {
-                    if (e.target.value) onAssign(e.target.value, token.id);
-                    e.target.value = "";
-                  }}
-                  className="h-btn-sm rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption text-text-primary"
-                >
-                  <option value="" disabled>
-                    …
-                  </option>
-                  {slots.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Button size="sm" variant="ghost" onClick={() => onExclude(token.id)} title="Exclude from system (undoable)">
-                Exclude
-              </Button>
-            </div>
           </li>
         );
       })}

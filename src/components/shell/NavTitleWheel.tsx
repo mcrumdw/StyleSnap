@@ -33,7 +33,7 @@ export function NavTitleWheel({ notesFilled, notesTotal }: NavTitleWheelProps) {
       {
         path: "/describe",
         label: "Describe",
-        hint: notesFilled < notesTotal ? `${notesFilled}/${notesTotal}` : undefined,
+        hint: notesFilled < notesTotal ? "Not filled" : undefined,
         hintWarning: notesFilled < notesTotal,
       },
     ];
