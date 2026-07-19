@@ -346,6 +346,13 @@ disconnect Git deploy entirely). Preview deploys from branches may stay on.
 stale `index-6MiPuC3G.js` hash and that the served JS contains the makram2
 marker string `Continue to colors`. Fails the job if alias drift recurs.
 
+**Verify hardening (2026-07-19):** a green deploy still failed post-check when the
+production alias lagged the deployment URL by a few seconds (bundle already had
+the marker; `curl` hit the old edge). Verify now checks the fresh deploy URL
+first, then retries the `stylesnap-lac.vercel.app` alias with backoff; greps a
+temp file with fixed-string match. Actions bumped to `checkout@v5` /
+`setup-node@v5` (Node 24 runners; silences Node 20 deprecation warnings).
+
 **Manual recovery:** Actions → "Deploy to Vercel" → Run workflow (`workflow_dispatch`
 on `main`), or promote the latest successful Actions deployment in the Vercel
 dashboard.
@@ -941,6 +948,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-19 | `[Bug fix]` **Deploy verify race** (§2.18): check deploy URL first; retry production alias; Actions on Node 24 (`checkout@v5` / `setup-node@v5`). | — |
 | 2026-07-19 | `[Bug fix]` `[Change]` `[New feature]` **Mobile layout + teaching tips** (§2.39): chips/`?`/undo chrome; stacked CTAs; toast vs undo; bottom-sheet dialogs; shorter copy. | `eb38f79` |
 | 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |
 | 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | `eb38f79` |

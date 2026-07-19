@@ -28,7 +28,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check VERCEL_TOKEN is set
         run: |
@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -60,21 +60,51 @@ jobs:
           echo "Deployed to $url"
 
       - name: Verify production bundle
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          html=$(curl -fsSL "https://stylesnap-lac.vercel.app/")
-          if echo "$html" | grep -q 'index-6MiPuC3G.js'; then
-            echo "::error::Production still serves stale bundle index-6MiPuC3G.js (pre-makram2)."
-            echo "Disable Vercel Git auto-deploy for production — rely on this workflow only."
-            exit 1
-          fi
-          js=$(echo "$html" | sed -n 's/.*src="\/assets\/\(index-[^"]*\.js\)".*/\1/p')
-          if [ -z "$js" ]; then
-            echo "::error::Production HTML missing JS bundle reference."
-            exit 1
-          fi
-          bundle=$(curl -fsSL "https://stylesnap-lac.vercel.app/assets/$js")
-          echo "$bundle" | grep -q 'Continue to colors' || {
-            echo "::error::Production bundle missing makram2 marker (Continue to colors)."
-            exit 1
+          marker='Continue to colors'
+          stale='index-6MiPuC3G.js'
+
+          verify_host() {
+            local base="$1"
+            local label="$2"
+            local html js tmp
+            html=$(curl -fsSL "$base/")
+            if echo "$html" | grep -q "$stale"; then
+              echo "::error::$label still serves stale bundle $stale (pre-makram2)."
+              echo "Disable Vercel Git auto-deploy for production — rely on this workflow only."
+              return 1
+            fi
+            js=$(echo "$html" | sed -n 's/.*src="\/assets\/\(index-[^"]*\.js\)".*/\1/p' | head -1)
+            if [ -z "$js" ]; then
+              echo "::error::$label HTML missing JS bundle reference."
+              return 1
+            fi
+            tmp=$(mktemp)
+            curl -fsSL "$base/assets/$js" -o "$tmp"
+            if ! grep -qF "$marker" "$tmp"; then
+              echo "::error::$label bundle $js missing marker ($marker)."
+              rm -f "$tmp"
+              return 1
+            fi
+            rm -f "$tmp"
+            echo "Verified $label serves $js with expected content."
           }
-          echo "Verified production serves $js with makram2 content."
+
+          # Deployment URL is ready immediately; production alias can lag briefly.
+          verify_host "$DEPLOY_URL" "Deploy URL" || exit 1
+
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            if verify_host "https://stylesnap-lac.vercel.app" "Production alias"; then
+              ok=1
+              break
+            fi
+            echo "Alias not ready yet (attempt $attempt/6); waiting 10s…"
+            sleep 10
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::Production alias never served the expected bundle after retries."
+            exit 1
+          fi
