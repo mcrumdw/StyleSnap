@@ -75,12 +75,11 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSe
             </NavLink>
           ))}
         </nav>
-        <div className="flex flex-1 items-center">
-          <SessionNavSection />
-        </div>
+        <div className="flex-1" />
       </div>
       <div className="flex shrink-0 flex-col gap-4">
         <ShareNavSection />
+        <SessionNavSection />
         <StartOverRailButton />
       </div>
     </aside>
