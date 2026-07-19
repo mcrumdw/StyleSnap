@@ -104,21 +104,37 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   };
 
   // ── Colors (need a primary anchor) ──
-  const primary = anchors.primaryColorId ? byId.get(anchors.primaryColorId) : undefined;
+  const primarySource = anchors.primaryColorId ? byId.get(anchors.primaryColorId) : undefined;
+  const primaryHex =
+    anchors.primaryColorHex ??
+    (primarySource?.type === "color" ? primarySource.value : undefined);
   let accent: AccentSuggestion | null = null;
-  if (primary && primary.type === "color") {
-    const from = primary.id;
-    fill("color/action/primary", primary, from, "anchor (your primary color)");
+  if (primarySource && primaryHex) {
+    const from = primarySource.id;
+    // A gradient primary has no single color token, so show a color swatch at
+    // its representative hue while keeping provenance on the gradient token.
+    const primaryColorToken =
+      primarySource.type === "color"
+        ? primarySource
+        : syntheticColor("color/action/primary", primaryHex);
+    fill(
+      "color/action/primary",
+      primaryColorToken,
+      from,
+      primarySource.type === "gradient"
+        ? "anchor (primary — representative hue from your gradient)"
+        : "anchor (your primary color)",
+    );
 
-    const states = deriveStates(primary.value);
+    const states = deriveStates(primaryHex);
     fill("color/action/primary-hover", syntheticColor("color/action/primary-hover", states.hover), from, "hover (ΔL −0.06)");
     fill("color/action/primary-active", syntheticColor("color/action/primary-active", states.active), from, "active (ΔL −0.12)");
-    fill("color/border/focus", primary, from, "focus ring = primary");
+    fill("color/border/focus", primaryColorToken, from, "focus ring = primary");
 
-    const neutrals = deriveNeutrals(primary.value);
-    const linkHex = deriveLinkColor(primary.value, neutrals.surfacePage);
-    if (linkHex.toLowerCase() === primary.value.toLowerCase()) {
-      fill("color/text/link", primary, from, "link = brand primary");
+    const neutrals = deriveNeutrals(primaryHex);
+    const linkHex = deriveLinkColor(primaryHex, neutrals.surfacePage);
+    if (linkHex.toLowerCase() === primaryHex.toLowerCase()) {
+      fill("color/text/link", primaryColorToken, from, "link = brand primary");
     } else {
       fill(
         "color/text/link",
@@ -135,12 +151,12 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     fill("color/surface/card", syntheticColor("color/surface/card", neutrals.surfaceCard), from, "white card surface");
     fill("color/border/default", syntheticColor("color/border/default", neutrals.border), from, neutralMethod("L 0.90"));
 
-    const harvested = harvestFeedbackColors(tokens, assignments, primary.value, rawById);
+    const harvested = harvestFeedbackColors(tokens, assignments, primaryHex, rawById);
     for (const { role, token, method } of harvested) {
       fill(FEEDBACK_ROLE_PATHS[role], token, token.id, method);
     }
 
-    const feedback = deriveFeedback(primary.value);
+    const feedback = deriveFeedback(primaryHex);
     for (const key of ["success", "warning", "error", "info"] as const) {
       fill(
         `color/feedback/${key}`,
@@ -157,9 +173,9 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
       if (t.type === "gradient") return t.value.stops.map((s) => s.color);
       return [];
     });
-    accent = deriveAccent(primary.value, capturedHexes);
+    accent = deriveAccent(primaryHex, capturedHexes);
 
-    const harmonySuggestion = harmonyFromPrimary(primary.value);
+    const harmonySuggestion = harmonyFromPrimary(primaryHex);
     const secondaryAnchor = anchors.secondaryColorId
       ? byId.get(anchors.secondaryColorId)
       : undefined;
@@ -321,7 +337,7 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   const shadows = tokens
     .filter((t): t is StyleSnapToken & { type: "shadow" } => t.type === "shadow")
     .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
-  const inkHex = primary ? deriveNeutrals((primary as { value: string }).value).textPrimary : "#111111";
+  const inkHex = primaryHex ? deriveNeutrals(primaryHex).textPrimary : "#111111";
   const shadowSeed =
     shadows[0] !== undefined
       ? { color: shadows[0].value[0].color, opacity: shadows[0].value[0].opacity, from: shadows[0].id }

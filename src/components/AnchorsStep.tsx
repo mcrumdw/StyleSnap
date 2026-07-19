@@ -337,6 +337,20 @@ export function AnchorsStep({
   const byId = new Map(tokens.map((t) => [t.id, t]));
 
   const primary = anchors.primaryColorId ? byId.get(anchors.primaryColorId) : undefined;
+  // The primary may be a gradient — use its resolved representative hex so the
+  // review UI shows a swatch and derives, instead of "No color captured yet".
+  const primaryHex =
+    anchors.primaryColorHex ?? (primary?.type === "color" ? primary.value : undefined);
+  const primaryIsGradient = primary?.type === "gradient";
+  const primaryDisplayToken: (StyleSnapToken & { type: "color"; value: string }) | undefined =
+    primary?.type === "color"
+      ? primary
+      : primary && primaryHex
+        ? ({ ...primary, type: "color", value: primaryHex, opacity: 1 } as StyleSnapToken & {
+            type: "color";
+            value: string;
+          })
+        : undefined;
   const capturedSecondary = anchors.secondaryColorId ? byId.get(anchors.secondaryColorId) : undefined;
 
   const colorCandidates = tokens.filter(
@@ -356,7 +370,7 @@ export function AnchorsStep({
     if (secondaryOrigin === "captured" && accentHarmony === undefined) {
       return `${nameOf(secondaryDisplay)} · ${secondaryDisplay.value}`;
     }
-    const harmony = accentHarmony ?? (primary?.type === "color" ? harmonyFromPrimary(primary.value).suggested : undefined);
+    const harmony = accentHarmony ?? (primaryHex ? harmonyFromPrimary(primaryHex).suggested : undefined);
     const harmonyLabel = harmony ? HARMONY_LABELS[harmony] : "Derived";
     const suffix = secondaryOrigin === "edited" ? " (edited)" : "";
     return `${harmonyLabel}${suffix} · ${secondaryDisplay.value}`;
@@ -392,14 +406,18 @@ export function AnchorsStep({
       <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         <ColorAnchorCard
           anchorRole="anchor/primary"
-          token={primary?.type === "color" ? primary : undefined}
+          token={primaryDisplayToken}
           humanLabel={
-            primary?.type === "color"
-              ? humanValueLabel(primary)
+            primaryDisplayToken
+              ? primaryIsGradient
+                ? `Gradient — ${primaryHex}`
+                : humanValueLabel(primaryDisplayToken)
               : "No color captured yet."
           }
           detailLine={
-            primary?.type === "color" ? `${nameOf(primary)} · ${primary.value}` : undefined
+            primary && primaryHex
+              ? `${nameOf(primary)} · ${primaryHex}${primaryIsGradient ? " (representative hue)" : ""}`
+              : undefined
           }
           tip={PRIMARY_ANCHOR_TIP}
           open={open === "primary"}
@@ -413,7 +431,7 @@ export function AnchorsStep({
           humanLabel={
             secondaryDisplay?.type === "color"
               ? humanValueLabel(secondaryDisplay)
-              : primary
+              : primaryHex
                 ? "Pick a harmony from primary."
                 : "Set primary first."
           }
@@ -422,9 +440,9 @@ export function AnchorsStep({
           open={open === "secondary"}
           onToggle={() => setOpen(open === "secondary" ? null : "secondary")}
           picker={
-            primary && primary.type === "color" ? (
+            primaryHex ? (
               <SecondaryHarmonyPicker
-                primaryHex={primary.value}
+                primaryHex={primaryHex}
                 accentHarmony={accentHarmony}
                 secondaryToken={secondaryToken}
                 secondaryOrigin={secondaryOrigin}
@@ -447,10 +465,10 @@ export function AnchorsStep({
         />
       </div>
 
-      {primary && primary.type === "color" && (
+      {primaryHex && (
         <div className="rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
           <ColorFamilyPreview
-            primaryHex={primary.value}
+            primaryHex={primaryHex}
             secondaryHex={secondaryDisplay?.type === "color" ? secondaryDisplay.value : undefined}
             accentHarmony={accentHarmony}
           />

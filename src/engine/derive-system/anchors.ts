@@ -7,6 +7,12 @@ import { isNeutral, oklchOf, hueDistance } from "./oklch";
 export interface Anchors {
   /** Token id of the primary color (a captured token, never synthetic). */
   primaryColorId?: string;
+  /**
+   * Resolved hex for the primary anchor. Usually the primary color token's
+   * value, but when the primary is a gradient it is the gradient's
+   * representative (most chromatic) stop — so the system can still derive.
+   */
+  primaryColorHex?: string;
   /** Token id of the secondary color — distinct accent / second CTA hue. */
   secondaryColorId?: string;
   /** Token id of the body typography. */
@@ -36,6 +42,29 @@ function contextsOf(
     if (absorbed?.context) contexts.push(absorbed.context);
   }
   return contexts;
+}
+
+/**
+ * A single hex that best stands in for a token's "color" when proposing a
+ * primary. Opaque color → its value; gradient → its most chromatic stop (a
+ * screen's real brand hue often lives only in a gradient). Undefined for
+ * transparent colors or non-color tokens.
+ */
+function representativeHex(token: StyleSnapToken): string | undefined {
+  if (token.type === "color") return token.opacity >= 1 ? token.value : undefined;
+  if (token.type === "gradient") {
+    let best: string | undefined;
+    let bestChroma = -1;
+    for (const stop of token.value.stops) {
+      const chroma = oklchOf(stop.color).c;
+      if (chroma > bestChroma) {
+        bestChroma = chroma;
+        best = stop.color;
+      }
+    }
+    return best;
+  }
+  return undefined;
 }
 
 /**
@@ -123,11 +152,39 @@ export function detectAnchors(
     }
   }
 
+  // Fallback: no color carried a weighted signal (common for Figma captures
+  // without a "primary/brand" authored name, or screens whose only strong hue
+  // lives in a gradient). Propose the most-used color so the system still
+  // derives — prefer chromatic candidates, allow neutrals only if nothing else.
+  if (!anchors.primaryColorId) {
+    const candidates = tokens
+      .map((t) => ({ id: t.id, hex: representativeHex(t), occurrences: t.occurrences }))
+      .filter((c): c is { id: string; hex: string; occurrences: number } => c.hex !== undefined);
+    const chromatic = candidates.filter((c) => !isNeutral(c.hex));
+    const pool = chromatic.length > 0 ? chromatic : candidates;
+    let best: (typeof pool)[number] | undefined;
+    for (const c of pool) {
+      if (
+        !best ||
+        c.occurrences > best.occurrences ||
+        (c.occurrences === best.occurrences && c.id < best.id)
+      ) {
+        best = c;
+      }
+    }
+    if (best) {
+      anchors.primaryColorId = best.id;
+      anchors.primaryColorHex = best.hex;
+    }
+  }
+
   const primaryToken = anchors.primaryColorId
     ? tokens.find((t) => t.id === anchors.primaryColorId)
     : undefined;
-  const primaryHex =
-    primaryToken?.type === "color" ? primaryToken.value : undefined;
+  if (anchors.primaryColorHex === undefined && primaryToken) {
+    anchors.primaryColorHex = representativeHex(primaryToken);
+  }
+  const primaryHex = anchors.primaryColorHex;
 
   // Secondary color — only when a distinct second hue exists in the capture.
   let bestSecondary: { score: number; id: string } | undefined;
@@ -185,6 +242,8 @@ export function detectAnchors(
   // User swaps win (validated upstream; unknown ids fall back to detection).
   if (overrides.primaryColorId && tokens.some((t) => t.id === overrides.primaryColorId)) {
     anchors.primaryColorId = overrides.primaryColorId;
+    const swapped = tokens.find((t) => t.id === overrides.primaryColorId);
+    anchors.primaryColorHex = swapped ? representativeHex(swapped) : undefined;
   }
   if (overrides.secondaryColorId && tokens.some((t) => t.id === overrides.secondaryColorId)) {
     anchors.secondaryColorId = overrides.secondaryColorId;
