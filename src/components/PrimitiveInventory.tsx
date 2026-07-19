@@ -16,6 +16,8 @@ interface PrimitiveInventoryProps {
   merges: MergeRecord[];
   assignments: Record<string, string>;
   rawById: ReadonlyMap<string, StyleSnapToken>;
+  /** After Create System (FR-13) — hide un-merge / change survivor. */
+  mergesLocked?: boolean;
   onSetName: (tokenId: string, name: string | undefined) => void;
   onUnmerge: (survivorId: string) => void;
   onSetMergeSurvivor?: (tokenId: string) => void;
@@ -97,7 +99,7 @@ function Preview({ token }: { token: StyleSnapToken }) {
 function RoleChips({ roles }: { roles: string[] }) {
   if (roles.length === 0) return null;
   return (
-    <span className="flex max-w-xs shrink-0 flex-wrap gap-1">
+    <span className="flex flex-wrap gap-1">
       {roles.slice(0, 3).map((role) => (
         <span
           key={role}
@@ -125,6 +127,7 @@ export function PrimitiveInventory({
   merges,
   assignments,
   rawById,
+  mergesLocked = false,
   onSetName,
   onUnmerge,
   onSetMergeSurvivor,
@@ -213,66 +216,75 @@ export function PrimitiveInventory({
             return (
               <li
                 key={token.id}
-                className="flex flex-wrap items-center gap-3 rounded-md border-2 border-border-default bg-surface-page p-3"
+                className="flex flex-col gap-2 rounded-md border-2 border-border-default bg-surface-page p-3"
               >
-                <Preview token={token} />
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <InlineName
-                    name={displayName ?? null}
-                    onSetName={(name) => onSetName(token.id, name)}
-                    tokenType={token.type}
-                    suggestedName={fallbackName(token)}
-                  />
-                  <span className="truncate font-mono text-badge text-text-muted">
-                    {formatValue(token)}
-                    {manual ? " · manual" : ""}
-                  </span>
-                  {mergeCount > 1 && (
-                    <span className="inline-flex items-center gap-1 font-mono text-badge text-text-muted">
-                      {mergeCount}-way merge
-                      <InfoHint
-                        content={
-                          absorbed.length > 0
-                            ? `Merged from: ${absorbed.join(" · ")}. Un-merge splits them apart again.`
-                            : "Near-identical captures were merged into this one."
-                        }
-                      />
+                <div className="flex min-w-0 items-start gap-3">
+                  <Preview token={token} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <InlineName
+                      name={displayName ?? null}
+                      onSetName={(name) => onSetName(token.id, name)}
+                      tokenType={token.type}
+                      suggestedName={fallbackName(token)}
+                    />
+                    <span className="truncate font-mono text-badge text-text-muted">
+                      {formatValue(token)}
+                      {manual ? " · manual" : ""}
                     </span>
-                  )}
-                </div>
-
-                <RoleChips roles={usedAs} />
-
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {merge && tokenType === "color" && onSetMergeSurvivor && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setPickerSurvivorId(token.id)}
-                      title="Pick which merged hex the system keeps"
-                    >
-                      Change merged…
-                    </Button>
-                  )}
-                  {merge && (
-                    <Button size="sm" variant="secondary" onClick={() => onUnmerge(token.id)}>
-                      Un-merge
-                    </Button>
-                  )}
-                  {manual ? (
-                    <Button size="sm" variant="ghost" onClick={() => onRemoveManual(token.id)}>
-                      Delete
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onExclude(token.id)}
-                      title="Exclude from system (undoable)"
-                    >
-                      Exclude
-                    </Button>
-                  )}
+                    {mergeCount > 1 && (
+                      <span className="inline-flex items-center gap-1 font-mono text-badge text-text-muted">
+                        {mergeCount}-way merge
+                        <InfoHint
+                          content={
+                            absorbed.length > 0
+                              ? `Merged from: ${absorbed.join(" · ")}. Un-merge splits them apart again.`
+                              : "Near-identical captures were merged into this one."
+                          }
+                        />
+                      </span>
+                    )}
+                    <RoleChips roles={usedAs} />
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    {!mergesLocked && merge && tokenType === "color" && onSetMergeSurvivor && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setPickerSurvivorId(token.id)}
+                        title="Pick which merged hex the system keeps"
+                      >
+                        Change merged…
+                      </Button>
+                    )}
+                    {!mergesLocked && merge && (
+                      <Button size="sm" variant="secondary" onClick={() => onUnmerge(token.id)}>
+                        Un-merge
+                      </Button>
+                    )}
+                    {mergesLocked && merge && (
+                      <span
+                        className="font-mono text-badge text-text-muted"
+                        title="Merges lock after Create System"
+                      >
+                        Merged · locked
+                      </span>
+                    )}
+                    {manual ? (
+                      <Button size="sm" variant="ghost" onClick={() => onRemoveManual(token.id)}>
+                        Delete
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onExclude(token.id)}
+                        title="Exclude from system (undoable)"
+                        aria-label="Exclude"
+                      >
+                        Exclude
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </li>
             );
@@ -309,7 +321,7 @@ export function PrimitiveInventory({
                 return (
                   <li
                     key={token.id}
-                    className="flex flex-wrap items-center gap-3 rounded-md border-2 border-border-default bg-surface-page p-3"
+                    className="flex min-w-0 items-start gap-3 rounded-md border-2 border-border-default bg-surface-page p-3"
                   >
                     <Preview token={token} />
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -324,8 +336,8 @@ export function PrimitiveInventory({
                         {" · "}
                         <span title="System-created for a missing semantic role">system</span>
                       </span>
+                      <RoleChips roles={usedAs} />
                     </div>
-                    <RoleChips roles={usedAs} />
                   </li>
                 );
               })}

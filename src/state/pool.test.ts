@@ -367,17 +367,19 @@ describe("localStorage draft (FR-29)", () => {
     expect(migrated?.adjectives).toBeUndefined();
   });
 
-  it("round-trips projectName + systemCreatedAt; derives a default name", () => {
+  it("round-trips projectName; strips legacy Create System stamp on load (§2.41)", () => {
     let pool = poolWithBothFixtures();
     expect(defaultProjectName(pool)).toBe("Lumen Design v3"); // figma file wins
     expect(isSystemCreated(pool)).toBe(false);
 
     pool = setProjectName(pool, "Lumen");
     pool = createSystem(pool, "2026-07-04T12:00:00Z");
+    expect(isSystemCreated(pool)).toBe(true);
     const restored = deserializeDraft(serializeDraft(pool));
     expect(restored?.projectName).toBe("Lumen");
-    expect(restored?.systemCreatedAt).toBe("2026-07-04T12:00:00Z");
-    expect(isSystemCreated(restored!)).toBe(true);
+    // Auto-stamped locks from Home import are dropped so merge undo works.
+    expect(restored?.systemCreatedAt).toBeUndefined();
+    expect(isSystemCreated(restored!)).toBe(false);
   });
 
   it("round-trips manual tokens; removal cleans decisions, merges, assignments", () => {

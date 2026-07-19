@@ -1,25 +1,17 @@
 import { useMemo } from "react";
 import type { StyleSnapToken, TypographyToken } from "../contract/types";
-import { TYPE_ROLES } from "../engine/roles";
-import { Button } from "./Button";
 
 interface CapturedFontsProps {
   /** The effective token set (captured + derived); we show captured only. */
   tokens: StyleSnapToken[];
   /** Resolved role → token id, to show what each captured font is used as. */
   assignments: Record<string, string>;
-  /** Assign a captured font to a type role (overrides derivation for that slot). */
-  onAssign: (role: string, tokenId: string) => void;
-  onExclude?: (tokenId: string) => void;
 }
 
-const TYPE_ROLE_LIST = TYPE_ROLES.map((r) => r.role);
-
 /**
- * Every typography token the snap captured — shown verbatim so nothing the
- * user picked is hidden behind derivation.
+ * From snap inventory — read-only. Assign roles in System roles (§2.40).
  */
-export function CapturedFonts({ tokens, assignments, onAssign, onExclude }: CapturedFontsProps) {
+export function CapturedFonts({ tokens, assignments }: CapturedFontsProps) {
   const captured = useMemo(
     () =>
       tokens.filter(
@@ -93,7 +85,7 @@ export function CapturedFonts({ tokens, assignments, onAssign, onExclude }: Capt
               </span>
             </div>
 
-            {usedAs.length > 0 ? (
+            {usedAs.length > 0 && (
               <span className="flex shrink-0 flex-wrap gap-1">
                 {usedAs.map((role) => (
                   <span
@@ -104,38 +96,6 @@ export function CapturedFonts({ tokens, assignments, onAssign, onExclude }: Capt
                   </span>
                 ))}
               </span>
-            ) : (
-              <label className="flex shrink-0 items-center gap-2">
-                <span className="font-mono text-badge text-text-muted">Use as</span>
-                <select
-                  aria-label={`Assign ${token.value.fontFamily} ${token.value.fontSize}px to a role`}
-                  defaultValue=""
-                  onChange={(e) => {
-                    if (e.target.value) onAssign(e.target.value, token.id);
-                    e.target.value = "";
-                  }}
-                  className="h-btn-sm rounded-sm border-2 border-border-default bg-surface-card px-2 font-mono text-caption text-text-primary"
-                >
-                  <option value="" disabled>
-                    role…
-                  </option>
-                  {TYPE_ROLE_LIST.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {onExclude && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onExclude(token.id)}
-                title="Exclude from system (undoable)"
-              >
-                Exclude
-              </Button>
             )}
           </li>
         );

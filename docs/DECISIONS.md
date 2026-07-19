@@ -839,6 +839,37 @@ Decided 2026-07-19. Small-screen chrome and teaching affordances:
 
 ---
 
+### 2.40 From snap is inventory-only `[Change]`
+Decided 2026-07-19. **From snap** lists captured tokens and read-only context
+(value, authored name, occurrences, merge membership, role badges if already
+assigned). It no longer offers Make primary/secondary, role/slot assigns, merge
+survivor pick, accents, or Exclude.
+
+**Why:** those decisions belong in **Primitives** (survivor, exclude, rename)
+and **System roles** (anchors, assign, edit). Keeping actions in From snap
+duplicated the three-layer model and made the capture band a second workspace.
+
+**Still true:** From snap shows every raw capture (including absorbed merge
+members) per §2.33; soft-exclude remains available from Primitives.
+
+---
+
+### 2.41 Un-merge undo after import `[Bug fix]`
+Decided 2026-07-19. Un-merge on a primary (or any) merge split the cluster, but
+Undo / toast Undo / ⌘Z did nothing.
+
+**Cause:** `Home` called `createSystem()` on every first import, setting
+`systemCreatedAt` immediately. That flipped the §2.8 / §2.36 merge **barrier**
+(`locked && affectsMerges`), so un-merge still mutated the pool but could not be
+undone. FR-13 says merges stay reversible until Create System — not until the
+landing import.
+
+**Fix:** stop auto-stamping on Home import; drop legacy `systemCreatedAt` when
+loading drafts; hide Un-merge / Change merged when truly locked. Explicit Create
+System (when re-wired) remains the lock point.
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -949,6 +980,8 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-19 | `[Bug fix]` **Un-merge undo** (§2.41): Home no longer auto Create-System on import; clear legacy stamp on draft load; gate merge actions when locked. | — |
+| 2026-07-19 | `[Change]` **From snap inventory-only** (§2.40): no primary/role/exclude/merge actions on capture rows — assign in Primitives / System roles. | — |
 | 2026-07-19 | `[Bug fix]` **Deploy verify** (§2.18): local build marker + retry public alias only (deploy URLs are SSO-protected); Actions on Node 24. | — |
 | 2026-07-19 | `[Bug fix]` `[Change]` `[New feature]` **Mobile layout + teaching tips** (§2.39): chips/`?`/undo chrome; stacked CTAs; toast vs undo; bottom-sheet dialogs; shorter copy. | `eb38f79` |
 | 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |

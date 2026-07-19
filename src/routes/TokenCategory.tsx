@@ -76,7 +76,7 @@ const FOUNDATION_TYPE: Partial<
 type AddTokenPreset = { tokenType: TokenType; role?: string };
 
 const LAYER_TIPS = {
-  snap: "Everything from your snap. Pick a primary or which merge hex to keep. Merges don’t hide colors here.",
+  snap: "What your snap captured — inventory only. Assign roles and pick survivors in Primitives and System roles.",
   primitives: "Values the system keeps after merges. Rename, change the survivor, un-merge, or remove.",
   roles: "Jobs for your tokens — like “primary button.” Point each at a primitive. These lead design.md.",
 } as const;
@@ -107,8 +107,6 @@ export function TokenCategory() {
     setName,
     unmerge,
     setMergeSurvivor,
-    makePrimaryColor,
-    makeSecondaryColor,
     exclude,
     restore,
     removeManual,
@@ -293,6 +291,7 @@ export function TokenCategory() {
       merges={pool.merges}
       assignments={vm.resolvedAssignments}
       rawById={vm.exportInput.rawById}
+      mergesLocked={vm.created}
       onSetName={setName}
       onUnmerge={(id) => {
         unmerge(id);
@@ -394,24 +393,12 @@ export function TokenCategory() {
           primaryId={vm.anchors.primaryColorId}
           secondaryId={vm.anchors.secondaryColorId}
           accentIds={vm.accentIds}
-          onMakePrimary={makePrimaryColor}
-          onMakeSecondary={makeSecondaryColor}
-          onAssign={assign}
-          onAddAccent={(id) => {
-            const next = [...vm.accentIds];
-            if (!next.includes(id)) next.push(id);
-            setAccentIds(next);
-          }}
-          onSetMergeSurvivor={setMergeSurvivor}
-          onExclude={handleExclude}
         />
       )}
       {category === "typography" && (
         <CapturedFonts
           tokens={vm.workingTokens}
           assignments={vm.resolvedAssignments}
-          onAssign={assign}
-          onExclude={handleExclude}
         />
       )}
       {foundationType && (
@@ -419,10 +406,7 @@ export function TokenCategory() {
           tokenType={foundationType}
           tokens={vm.workingTokens}
           assignments={vm.resolvedAssignments}
-          onAssign={assign}
-          onExclude={handleExclude}
           emptyLabel={`No ${title.toLowerCase()} in this snap.`}
-          customRoles={pool.customRoles}
         />
       )}
       {excludedStrip}

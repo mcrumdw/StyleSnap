@@ -7,7 +7,7 @@ import { AddCaptureMenuButton, StartOverMenuButton } from "./MobileSessionAction
 import { ShareMenuButton } from "./ShareMenuButton";
 import { SessionNavSection, StartOverRailButton } from "./SessionNavSection";
 import { ShareNavSection } from "./ShareNavSection";
-import { TOKEN_CATEGORIES, type TokenCategory } from "./SideNav";
+import { TOKEN_CATEGORIES } from "./SideNav";
 
 const MOBILE_NAV_HEIGHT_VAR = "--session-mobile-nav-height";
 
@@ -17,7 +17,6 @@ interface MobileSessionNavProps {
 }
 
 interface DesktopSessionRailProps {
-  hints?: Partial<Record<TokenCategory, string>>;
   notesFilled: number;
   notesTotal: number;
 }
@@ -70,7 +69,7 @@ export function MobileSessionNav({ notesFilled, notesTotal }: MobileSessionNavPr
 }
 
 /** Desktop: sticky left rail — viewport-tall; main page scrolls independently. */
-export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSessionRailProps) {
+export function DesktopSessionRail({ notesFilled, notesTotal }: DesktopSessionRailProps) {
   return (
     <aside className="hidden w-44 shrink-0 flex-col gap-4 lg:sticky lg:top-8 lg:flex lg:h-[calc(100dvh-4rem)] lg:max-h-[calc(100dvh-4rem)] lg:self-start">
       <Link to="/" aria-label="StyleSnap home" className="shrink-0 px-1">
@@ -81,7 +80,7 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSe
           Description
           {notesFilled < notesTotal && (
             <span className="ml-1 font-mono text-badge font-normal text-warning-text">
-              {notesFilled}/{notesTotal}
+              Not filled
             </span>
           )}
         </NavLink>
@@ -95,14 +94,9 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSe
             <NavLink
               key={id}
               to={`/tokens/${id}`}
-              className={({ isActive }) =>
-                `flex flex-col ${sessionNavLinkClass(isActive, { rail: true })}`
-              }
+              className={({ isActive }) => sessionNavLinkClass(isActive, { rail: true })}
             >
-              <span className="font-heading text-caption font-bold">{label}</span>
-              {hints?.[id] && (
-                <span className="font-mono text-badge text-text-muted">{hints[id]}</span>
-              )}
+              {label}
             </NavLink>
           ))}
         </nav>

@@ -80,4 +80,60 @@ describe("poolReducer undo/redo", () => {
     );
     expect(state.pool).toEqual(emptyPool());
   });
+
+  it("undoes an un-merge when the system is not locked", () => {
+    const messy = poolFromFixture("capture-browser-messy.json");
+    let state: { pool: TokenPool; history: HistoryState } = {
+      pool: messy,
+      history: emptyHistory(),
+    };
+    // Simulate import auto-merge by committing a merge, then un-merge + undo.
+    const colors = messy.imports[0]!.tokens.filter((t) => t.type === "color");
+    const survivorId = colors[0]!.id;
+    const mergedIds = colors.slice(1, 3).map((t) => t.id);
+    state = poolReducer(state, {
+      type: "commit",
+      updater: (current) => ({
+        ...current,
+        merges: [
+          {
+            survivorId,
+            mergedIds,
+            mergedAt: "2026-07-19T12:00:00Z",
+          },
+        ],
+      }),
+      label: "Merge colors",
+      affectsMerges: true,
+    });
+    expect(state.pool.merges).toHaveLength(1);
+
+    state = poolReducer(state, {
+      type: "commit",
+      updater: (current) => ({
+        ...current,
+        merges: current.merges.filter((m) => m.survivorId !== survivorId),
+      }),
+      label: "Un-merge tokens",
+      affectsMerges: true,
+    });
+    expect(state.pool.merges).toHaveLength(0);
+
+    state = poolReducer(state, { type: "undo", locked: false });
+    expect(state.pool.merges).toHaveLength(1);
+    expect(state.pool.merges[0]!.survivorId).toBe(survivorId);
+
+    // Locked (Create System) blocks undoing the merge-affecting step.
+    state = poolReducer(state, {
+      type: "commit",
+      updater: (current) => ({
+        ...current,
+        merges: current.merges.filter((m) => m.survivorId !== survivorId),
+      }),
+      label: "Un-merge tokens",
+      affectsMerges: true,
+    });
+    const locked = poolReducer(state, { type: "undo", locked: true });
+    expect(locked.pool.merges).toHaveLength(0);
+  });
 });

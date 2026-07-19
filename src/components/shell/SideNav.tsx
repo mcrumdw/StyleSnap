@@ -17,17 +17,16 @@ export function isTokenCategory(value: string | undefined): value is TokenCatego
 }
 
 /** Left rail — one page per token category. Anchors live under Colors. */
-export function SideNav({ hints }: { hints?: Partial<Record<TokenCategory, string>> }) {
+export function SideNav() {
   return (
     <nav aria-label="Token categories" className="flex w-44 shrink-0 flex-col gap-1">
       {TOKEN_CATEGORIES.map(({ id, label }) => (
         <NavLink
           key={id}
           to={`/tokens/${id}`}
-          className={({ isActive }) => `flex flex-col ${sessionNavLinkClass(isActive)}`}
+          className={({ isActive }) => sessionNavLinkClass(isActive)}
         >
-          <span className="font-heading text-caption font-bold">{label}</span>
-          {hints?.[id] && <span className="font-mono text-badge text-text-muted">{hints[id]}</span>}
+          {label}
         </NavLink>
       ))}
     </nav>
