@@ -20,10 +20,10 @@ const SLOTS: Record<FoundationType, string[]> = {
 };
 
 const EMPTY_TIP: Record<FoundationType, string> = {
-  spacing: "This snap didn’t capture spacing — add a token below or keep auto-derived slots.",
-  "border-radius": "No corner radii in this snap — add one or keep derived radius slots.",
-  "border-width": "No border widths captured — add a stroke or keep the default slot.",
-  shadow: "No shadows/effects captured — add one or keep derived elevation slots.",
+  spacing: "No spacing in this snap. Add a token, or keep the auto ones.",
+  "border-radius": "No corner radii in this snap. Add one, or keep the auto ones.",
+  "border-width": "No border widths in this snap. Add one, or keep the default.",
+  shadow: "No shadows in this snap. Add one, or keep the auto ones.",
 };
 
 interface CapturedFoundationsProps {

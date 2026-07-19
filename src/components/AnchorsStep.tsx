@@ -42,20 +42,18 @@ interface AnchorsStepProps {
   children?: React.ReactNode;
 }
 
-const PRIMARY_ANCHOR_TIP =
-  "Your primary color — action buttons, links, and the tinted neutral ramp.";
-const SECONDARY_ANCHOR_TIP =
-  "Your secondary color — ghost buttons and alternate CTAs.";
+const PRIMARY_ANCHOR_TIP = "Main brand color. Drives buttons, links, and neutrals.";
+const SECONDARY_ANCHOR_TIP = "Second accent. Used for ghost buttons and alternate CTAs.";
 const COLOR_FAMILY_TIP =
-  "Primary drives neutrals, states, and feedback; secondary fills color/action/secondary — swap either anchor above to rebuild. Missing feedback colors are derived from your primary; captured alerts and semantic colors win.";
+  "Preview of colors built from your primary. Change primary or secondary above to rebuild.";
 
 const SWATCH_TIPS: Record<string, string> = {
-  Primary: "Action buttons, links, and the tinted neutral ramp.",
-  Hover: "Primary hover state — derived from your primary.",
-  Secondary: "Ghost buttons and alternate CTAs — fills color/action/secondary.",
-  Text: "Body text ink — derived from your primary.",
-  Surface: "Page background — derived from your primary.",
-  Success: "Feedback green — conventional hue, brand chroma, AA-tuned.",
+  Primary: "Main actions and links.",
+  Hover: "Primary button on hover.",
+  Secondary: "Ghost buttons and alternate CTAs.",
+  Text: "Body text.",
+  Surface: "Page background.",
+  Success: "Success / confirmation.",
 };
 
 function swatchTip(label: string, hex: string): string {
@@ -76,14 +74,11 @@ function ColorFamilyPreview({
   const states = deriveStates(primaryHex);
   const neutrals = deriveNeutrals(primaryHex);
   const feedback = deriveFeedback(primaryHex);
-  const harmonySuggestion = harmonyFromPrimary(primaryHex);
-  const harmony = accentHarmony ?? harmonySuggestion.suggested;
-  const secondary = secondaryHex ?? harmonySuggestion.candidates[harmony];
 
-  const swatches = [
+  const swatches: Array<{ label: string; hex?: string }> = [
     { label: "Primary", hex: primaryHex },
     { label: "Hover", hex: states.hover },
-    { label: "Secondary", hex: secondary },
+    { label: "Secondary", hex: secondaryHex },
     { label: "Text", hex: neutrals.textPrimary },
     { label: "Surface", hex: neutrals.surfacePage },
     { label: "Success", hex: feedback.success },
@@ -93,17 +88,29 @@ function ColorFamilyPreview({
     <div className="flex flex-col gap-2">
       <p className="text-caption font-medium text-text-primary" title={COLOR_FAMILY_TIP}>
         Your color family
+        {accentHarmony ? ` · ${HARMONY_LABELS[accentHarmony]}` : ""}
       </p>
-      <div className="flex w-full gap-1 sm:gap-2">
+      <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:gap-1 md:gap-2">
         {swatches.map(({ label, hex }) => (
-          <div key={label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <div key={label} className="flex min-w-0 flex-col items-center gap-1 sm:flex-1">
+            {hex ? (
+              <span
+                className="h-8 w-full rounded-sm border-2 border-border-default"
+                style={{ backgroundColor: hex }}
+                title={swatchTip(label, hex)}
+                aria-hidden
+              />
+            ) : (
+              <span
+                className="h-8 w-full rounded-sm border-2 border-dashed border-border-default bg-surface-page"
+                title={`${label} — not set yet`}
+                aria-hidden
+              />
+            )}
             <span
-              className="h-8 w-full rounded-sm border-2 border-border-default"
-              style={{ backgroundColor: hex }}
-              title={swatchTip(label, hex)}
-              aria-hidden
-            />
-            <span className="truncate font-mono text-badge text-text-muted" title={swatchTip(label, hex)}>
+              className="truncate font-mono text-badge text-text-muted"
+              title={hex ? swatchTip(label, hex) : `${label} — not set yet`}
+            >
               {label}
             </span>
           </div>
@@ -146,7 +153,7 @@ function ColorAnchorCard({
             <RoleTokenPreview token={token} role={anchorRole} />
           ) : (
             <div
-              className="flex h-full w-[5.5rem] shrink-0 self-stretch border-r-2 border-border-default bg-surface-page"
+              className="flex h-full w-16 shrink-0 self-stretch border-r-2 border-border-default bg-surface-page sm:w-[5.5rem]"
               aria-hidden
             />
           )}
@@ -167,7 +174,7 @@ function ColorAnchorCard({
             className="whitespace-nowrap font-mono text-caption text-text-muted underline-offset-2 hover:text-brand-primary hover:underline"
             aria-expanded={open}
           >
-            {open ? "Done" : "Swap"}
+            {open ? "Done" : token ? "Swap" : "Set"}
           </button>
         </div>
       </div>
@@ -212,19 +219,32 @@ function SecondaryHarmonyPicker({
 
   useEffect(() => {
     if (secondaryToken?.type === "color") setEditHex(secondaryToken.value);
-  }, [secondaryToken]);
+    else setEditHex(harmonyFromPrimary(primaryHex).candidates[activeHarmony]);
+  }, [secondaryToken, activeHarmony, primaryHex]);
 
   const applyTweak = () => {
-    if (!onEditSecondary || !secondaryToken || secondaryToken.type !== "color" || !HEX_RE.test(editHex)) {
-      return;
-    }
-    onEditSecondary({ ...secondaryToken, value: editHex.toUpperCase() });
+    if (!onEditSecondary || !HEX_RE.test(editHex)) return;
+    const base =
+      secondaryToken?.type === "color"
+        ? secondaryToken
+        : {
+            id: "derived_color_action_secondary",
+            captureId: "derived",
+            source: "derived" as const,
+            name: null,
+            occurrences: 1,
+            merged: false,
+            type: "color" as const,
+            value: editHex.toUpperCase(),
+            opacity: 1,
+          };
+    onEditSecondary({ ...base, value: editHex.toUpperCase() });
   };
 
   return (
     <div className="flex w-full flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <p className="text-caption font-medium text-text-primary">Color theory — pick a harmony with primary</p>
+        <p className="text-caption font-medium text-text-primary">Color theory — pick a harmony</p>
         <div className="flex flex-wrap gap-2">
           {HARMONIES.map((harmony) => {
             const hex = harmonySuggestion.candidates[harmony];
@@ -260,7 +280,7 @@ function SecondaryHarmonyPicker({
       <div className="flex flex-col gap-2 rounded-md border-2 border-border-default bg-surface-page p-3">
         <p className="text-caption font-medium text-text-primary">Fine-tune</p>
         <p className="text-caption text-text-muted">
-          Nudge the secondary hex after picking a harmony — small edits only.
+          Tweak the hex. You can still pick another harmony after.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -282,7 +302,7 @@ function SecondaryHarmonyPicker({
             size="sm"
             variant="primary"
             onClick={applyTweak}
-            disabled={!HEX_RE.test(editHex) || !onEditSecondary || secondaryToken?.type !== "color"}
+            disabled={!HEX_RE.test(editHex) || !onEditSecondary}
           >
             Apply
           </Button>
@@ -347,10 +367,16 @@ export function AnchorsStep({
       t.type === "color" && t.opacity === 1 && !t.id.startsWith("derived_") && !isNeutral(t.value),
   );
 
+  /** Instantiated: captured anchor, explicit harmony opt-in, or a fill/edit. */
+  const secondaryActive =
+    Boolean(capturedSecondary && accentHarmony === undefined) ||
+    accentHarmony !== undefined ||
+    secondaryToken !== undefined;
+
   const secondaryDisplay =
     secondaryToken?.type === "color"
       ? secondaryToken
-      : capturedSecondary?.type === "color"
+      : capturedSecondary?.type === "color" && accentHarmony === undefined
         ? capturedSecondary
         : undefined;
 
@@ -362,11 +388,52 @@ export function AnchorsStep({
     ) {
       return `${nameOf(secondaryDisplay)} · ${secondaryDisplay.value}`;
     }
-    const harmony = accentHarmony ?? (primary?.type === "color" ? harmonyFromPrimary(primary.value).suggested : undefined);
+    const harmony =
+      accentHarmony ??
+      (primary?.type === "color" ? harmonyFromPrimary(primary.value).suggested : undefined);
     const harmonyLabel = harmony ? HARMONY_LABELS[harmony] : "Derived";
     const suffix = secondaryOrigin === "edited" ? " (edited)" : "";
     return `${harmonyLabel}${suffix} · ${secondaryDisplay.value}`;
   })();
+
+  const enableSecondary = () => {
+    if (!primary || primary.type !== "color" || !onAccentHarmony) return;
+    onAccentHarmony(harmonyFromPrimary(primary.value).suggested);
+  };
+
+  const secondaryPicker =
+    primary && primary.type === "color" ? (
+      secondaryActive ? (
+        <SecondaryHarmonyPicker
+          primaryHex={primary.value}
+          accentHarmony={accentHarmony}
+          secondaryToken={secondaryToken}
+          secondaryOrigin={secondaryOrigin}
+          capturedSecondary={
+            capturedSecondary?.type === "color" ? capturedSecondary : undefined
+          }
+          onAccentHarmony={(harmony) => {
+            onAccentHarmony?.(harmony);
+          }}
+          onEditSecondary={onEditSecondary}
+          onResetSecondary={onResetSecondary}
+          onUseCaptured={() => {
+            if (capturedSecondary) onSetAnchor({ secondaryColorId: capturedSecondary.id });
+          }}
+        />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-caption text-text-muted">
+            No secondary in this snap. Generate one from primary, then fine-tune if you want.
+          </p>
+          <Button type="button" size="sm" onClick={enableSecondary}>
+            Use secondary color
+          </Button>
+        </div>
+      )
+    ) : (
+      <p className="text-caption text-text-muted">Set a primary color first.</p>
+    );
 
   const primaryPicker = colorCandidates
     .filter((t) => t.id !== anchors.secondaryColorId)
@@ -420,36 +487,14 @@ export function AnchorsStep({
             secondaryDisplay?.type === "color"
               ? humanValueLabel(secondaryDisplay)
               : primary
-                ? "Pick a harmony from primary."
+                ? "Not set yet."
                 : "Set primary first."
           }
           detailLine={secondarySummaryLabel ?? undefined}
           tip={SECONDARY_ANCHOR_TIP}
           open={open === "secondary"}
           onToggle={() => setOpen(open === "secondary" ? null : "secondary")}
-          picker={
-            primary && primary.type === "color" ? (
-              <SecondaryHarmonyPicker
-                primaryHex={primary.value}
-                accentHarmony={accentHarmony}
-                secondaryToken={secondaryToken}
-                secondaryOrigin={secondaryOrigin}
-                capturedSecondary={
-                  capturedSecondary?.type === "color" ? capturedSecondary : undefined
-                }
-                onAccentHarmony={(harmony) => {
-                  onAccentHarmony?.(harmony);
-                }}
-                onEditSecondary={onEditSecondary}
-                onResetSecondary={onResetSecondary}
-                onUseCaptured={() => {
-                  if (capturedSecondary) onSetAnchor({ secondaryColorId: capturedSecondary.id });
-                }}
-              />
-            ) : (
-              <p className="text-caption text-text-muted">Set a primary color first.</p>
-            )
-          }
+          picker={secondaryPicker}
         />
       </div>
 

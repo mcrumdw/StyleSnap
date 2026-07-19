@@ -38,12 +38,11 @@ export function DesignAccents({
             Design accents — use sparingly
           </h3>
           <p className="text-caption text-text-muted">
-            Colors from your snap that aren&apos;t primary, secondary, or a role. Keep them for
-            highlights — not every surface.
+            Extra snap colors for highlights — not every surface.
             {!explicit && (
               <>
                 {" "}
-                <span className="font-mono text-badge text-text-muted">auto</span> seeded from the
+                <span className="font-mono text-badge text-text-muted">auto</span> from the
                 capture.
               </>
             )}

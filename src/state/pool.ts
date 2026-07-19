@@ -484,6 +484,9 @@ export function setAccentChoice(
     const derivedEdits = { ...next.derivedEdits };
     delete derivedEdits["color/action/secondary"];
     next = { ...next, derivedEdits };
+    // Harmony mode owns the secondary role — drop a prior assignment so fine-tune
+    // / swap can't leave the slot locked to a manual primitive (§2.37 vs §2.16).
+    next = unassignRole(next, "color/action/secondary");
   }
   return next;
 }

@@ -66,7 +66,7 @@ export function Describe() {
           Set the vibe — then continue to colors.
           <InfoHint
             label="Why vibe first?"
-            content="Your picks tune auto-filled type scale, secondary harmony, radius, and shadows. Captured values stay yours; only derived gaps feel the style. System notes appear in design.md for your AI agent; Figma export works without them."
+            content="Picks shape empty slots only — type scale, secondary, radius, shadows. Your captured colors stay. Notes go in design.md; Figma export works without them."
           />
         </p>
         <label className="flex w-full max-w-xs flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
@@ -82,7 +82,7 @@ export function Describe() {
 
       <section
         id="vibe-picker"
-        className="scroll-mt-16 rounded-md border-2 border-border-default bg-surface-card p-6 shadow-card"
+        className="scroll-mt-[calc(var(--session-mobile-nav-height,0px)+1rem)] rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card sm:p-6"
       >
         <AdjectivePicker
           tokens={vm.exportInput.tokens}

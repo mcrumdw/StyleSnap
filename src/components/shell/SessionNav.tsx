@@ -1,4 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
+import { useEffect, useRef } from "react";
 import { Wordmark } from "../Wordmark";
 import { sessionNavLinkClass } from "./nav-link-styles";
 import { NavTitleWheel } from "./NavTitleWheel";
@@ -7,6 +8,8 @@ import { ShareMenuButton } from "./ShareMenuButton";
 import { SessionNavSection, StartOverRailButton } from "./SessionNavSection";
 import { ShareNavSection } from "./ShareNavSection";
 import { TOKEN_CATEGORIES, type TokenCategory } from "./SideNav";
+
+const MOBILE_NAV_HEIGHT_VAR = "--session-mobile-nav-height";
 
 interface MobileSessionNavProps {
   notesFilled: number;
@@ -21,10 +24,38 @@ interface DesktopSessionRailProps {
 
 /** Phone / tablet: logo + share, then swipeable section title wheel. */
 export function MobileSessionNav({ notesFilled, notesTotal }: MobileSessionNavProps) {
+  const headerRef = useRef<HTMLElement>(null);
+
+  // Publish height so CategoryLayerNav can stick *under* this bar (not at top-0).
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const sync = () => {
+      const hidden = getComputedStyle(header).display === "none";
+      document.documentElement.style.setProperty(
+        MOBILE_NAV_HEIGHT_VAR,
+        hidden ? "0px" : `${header.offsetHeight}px`,
+      );
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(header);
+    window.addEventListener("resize", sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+      document.documentElement.style.removeProperty(MOBILE_NAV_HEIGHT_VAR);
+    };
+  }, []);
+
   return (
-    <header className="sticky top-0 z-sticky bg-surface-page lg:hidden">
+    <header
+      ref={headerRef}
+      id="mobile-session-nav"
+      className="sticky top-0 z-sticky bg-surface-page lg:hidden"
+    >
       <div className="flex items-center justify-between gap-3 border-b-2 border-border-default px-4 py-3">
-        <Link to="/" aria-label="StyleSnap home" className="min-w-0 shrink">
+        <Link to="/" aria-label="StyleSnap home" className="min-w-0 shrink truncate">
           <Wordmark />
         </Link>
         <div className="flex shrink-0 items-center gap-2">

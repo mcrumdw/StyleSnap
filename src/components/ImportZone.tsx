@@ -106,12 +106,34 @@ export function ImportZone({ onImport, variant = "add" }: ImportZoneProps) {
           />
         </label>
 
-        <div className="flex items-center gap-4">
-          <Button onClick={() => importText(text)} disabled={text.trim().length === 0}>
-            {variant === "create" ? "Create system from JSON" : "Import tokens"}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => importText(text)}
+            disabled={text.trim().length === 0}
+          >
+            {variant === "create" ? (
+              <>
+                <span className="sm:hidden">From JSON</span>
+                <span className="hidden sm:inline">Create system from JSON</span>
+              </>
+            ) : (
+              "Import tokens"
+            )}
           </Button>
-          <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            {variant === "create" ? "Create system from file" : "Upload a file"}
+          <Button
+            className="w-full sm:w-auto"
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {variant === "create" ? (
+              <>
+                <span className="sm:hidden">From file</span>
+                <span className="hidden sm:inline">Create system from file</span>
+              </>
+            ) : (
+              "Upload a file"
+            )}
           </Button>
           <input
             ref={fileInputRef}

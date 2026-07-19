@@ -19,7 +19,7 @@ const CHECKERBOARD: React.CSSProperties = {
 
 /** Flush left strip — StyleSnap backdrop; inner specimen uses captured roles. */
 const STRIP =
-  "flex h-full w-[5.5rem] shrink-0 self-stretch border-r-2 border-border-default overflow-hidden bg-state-disabled-bg";
+  "flex h-full w-16 shrink-0 self-stretch overflow-hidden border-r-2 border-border-default bg-state-disabled-bg sm:w-[5.5rem]";
 
 /** Same square tile for every shadow preview (inset + drop). */
 const SHADOW_TILE = "size-14 shrink-0";

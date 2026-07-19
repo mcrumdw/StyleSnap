@@ -233,8 +233,8 @@ export function PrimitiveInventory({
                       <InfoHint
                         content={
                           absorbed.length > 0
-                            ? `Absorbed: ${absorbed.join(" · ")}. Un-merge restores them as separate primitives.`
-                            : "Several near-identical captures were merged into this survivor."
+                            ? `Merged from: ${absorbed.join(" · ")}. Un-merge splits them apart again.`
+                            : "Near-identical captures were merged into this one."
                         }
                       />
                     </span>

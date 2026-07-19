@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { TokenType } from "../contract/types";
+import type { StyleSnapToken, TokenType } from "../contract/types";
 import { AddTokenDialog } from "../components/AddTokenDialog";
 import { AnchorsStep } from "../components/AnchorsStep";
 import { Button } from "../components/Button";
@@ -60,7 +60,7 @@ const ADD_LABELS: Record<TokenCategory, string> = {
   typography: "Add type",
   spacing: "Add spacing",
   radius: "Add radius",
-  borders: "Add border width",
+  borders: "Add border",
   effects: "Add effect",
 };
 
@@ -76,9 +76,9 @@ const FOUNDATION_TYPE: Partial<
 type AddTokenPreset = { tokenType: TokenType; role?: string };
 
 const LAYER_TIPS = {
-  snap: "Every capture from your snap — merges do not hide members here. Pick primary or which hex a merge keeps; Primitives show the system survivor.",
-  primitives: "Named values the system keeps after merges — rename, change survivor, un-merge, or remove. These export.",
-  roles: "Appendix B semantic slots pointing at primitives — the roles that lead design.md.",
+  snap: "Everything from your snap. Pick a primary or which merge hex to keep. Merges don’t hide colors here.",
+  primitives: "Values the system keeps after merges. Rename, change the survivor, un-merge, or remove.",
+  roles: "Jobs for your tokens — like “primary button.” Point each at a primitive. These lead design.md.",
 } as const;
 
 const DEFAULT_OPEN: Record<CategoryLayerId, boolean> = {
@@ -113,6 +113,7 @@ export function TokenCategory() {
     restore,
     removeManual,
     editWithUndoToast,
+    editDerivedValue,
     resetDerivedValue,
     setAccent,
     setAccentIds,
@@ -121,6 +122,14 @@ export function TokenCategory() {
   } = useSession();
 
   const secondaryFill = vm.draftFills.find((f) => f.role === "color/action/secondary");
+
+  const handleEditSecondary = (token: StyleSnapToken) => {
+    // Fine-tune stays a C.8 derivedEdits overlay (§2.16) — not save-as-primitive —
+    // so picking another harmony can still replace the secondary.
+    editDerivedValue("color/action/secondary", token);
+    const label = token.type === "color" ? token.value : "secondary";
+    setToast(`Updated ${label}`, { undo: () => undo() });
+  };
 
   const fills = useMemo(
     () =>
@@ -253,7 +262,8 @@ export function TokenCategory() {
 
   const addButton = (
     <Button size="sm" variant="secondary" onClick={openAdd}>
-      {addLabel}
+      <span className="sm:hidden">Add</span>
+      <span className="hidden sm:inline">{addLabel}</span>
     </Button>
   );
 
@@ -310,7 +320,7 @@ export function TokenCategory() {
             secondaryToken={secondaryFill?.token}
             secondaryOrigin={secondaryFill?.origin}
             onAccentHarmony={(harmony) => setAccent({ harmony })}
-            onEditSecondary={(token) => handleEditDerived("color/action/secondary", token)}
+            onEditSecondary={handleEditSecondary}
             onResetSecondary={() => resetDerivedValue("color/action/secondary")}
           />
           <DesignAccents
@@ -427,7 +437,7 @@ export function TokenCategory() {
           {addButton}
         </div>
         <p className="text-caption text-text-muted">
-          Review what your snap captured, the primitives the system saved, then semantic roles.
+          Check the snap, name the primitives, then assign roles.
         </p>
       </header>
 

@@ -1,7 +1,7 @@
 import { useSession } from "../../state/SessionProvider";
 import { Button } from "../Button";
 
-/** Desktop — top-right undo/redo; hidden until an action is available. */
+/** Compact Undo/Redo — used in CategoryLayerNav and (on non-token pages) shell chrome. */
 export function UndoRedoToolbar() {
   const { undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useSession();
 

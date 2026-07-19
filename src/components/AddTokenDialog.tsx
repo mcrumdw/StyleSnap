@@ -197,7 +197,7 @@ export function AddTokenDialog({
 
   return (
     <div
-      className="fixed inset-0 z-modal flex items-center justify-center bg-text-primary/50 p-6"
+      className="fixed inset-0 z-modal flex items-end justify-center bg-text-primary/50 p-0 sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
@@ -205,7 +205,7 @@ export function AddTokenDialog({
         role="dialog"
         aria-modal="true"
         aria-label={editing ? "Edit token" : addLabel}
-        className="w-full max-w-md rounded-lg border-2 border-border-default bg-surface-card p-6 shadow-modal"
+        className="flex max-h-[min(90dvh,100%)] w-full max-w-md flex-col overflow-y-auto rounded-t-lg border-2 border-border-default bg-surface-card p-4 shadow-modal sm:rounded-lg sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-heading text-card-title font-medium">
@@ -437,9 +437,11 @@ export function AddTokenDialog({
           {error && <p className="text-caption text-error">{error}</p>}
         </div>
 
-        <div className="mt-6 flex items-center gap-4">
-          <Button onClick={save}>{editing ? "Save changes" : addLabel}</Button>
-          <Button variant="secondary" onClick={onClose}>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <Button className="w-full sm:w-auto" onClick={save}>
+            {editing ? "Save changes" : "Add"}
+          </Button>
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
         </div>
