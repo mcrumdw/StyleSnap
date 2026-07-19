@@ -4,7 +4,7 @@ import { parseStyleSnapExport } from "../../contract/schema";
 import type { StyleSnapToken } from "../../contract/types";
 import { applyMerges } from "../dedup";
 import { deriveRoleCandidates, topSuggestionsByToken } from "./derive";
-import { fallbackName, validateSlashName } from "./naming";
+import { fallbackName, namePlaceholder, validateSlashName } from "./naming";
 import { ALL_ROLES, isValidRole, roleOrderIndex, rolesForType } from "./taxonomy";
 
 const fixture = (name: string) =>
@@ -182,6 +182,27 @@ describe("naming (§7.7)", () => {
     expect(fallbackName(byId.get("ext_013")!)).toBe("gradient/linear-135");
     for (const token of allTokens) {
       expect(validateSlashName(fallbackName(token)), token.id).toBeNull();
+    }
+  });
+
+  it("namePlaceholder matches token type (never color/ for fonts)", () => {
+    expect(namePlaceholder("color")).toBe("color/brand-blue");
+    expect(namePlaceholder("typography")).toBe("type/inter-16-400");
+    expect(namePlaceholder("spacing")).toBe("space/md");
+    expect(namePlaceholder("border-radius")).toBe("radius/md");
+    expect(namePlaceholder("border-width")).toBe("border-width/default");
+    expect(namePlaceholder("shadow")).toBe("shadow/md");
+    expect(namePlaceholder("gradient")).toBe("gradient/hero");
+    for (const type of [
+      "color",
+      "gradient",
+      "typography",
+      "spacing",
+      "border-radius",
+      "border-width",
+      "shadow",
+    ] as const) {
+      expect(validateSlashName(namePlaceholder(type)), type).toBeNull();
     }
   });
 });

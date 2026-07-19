@@ -4,7 +4,9 @@ import { fallbackName } from "../engine/roles";
 import type { FillInfo, FillOrigin } from "../state/useSessionViewModel";
 import { humanValueLabel, type TokenPreviewContext } from "../state/token-display";
 import { Button } from "./Button";
+import { ModalPortal } from "./ModalPortal";
 import { RoleTokenPreview } from "./RoleTokenPreview";
+import { useDialog } from "./useDialog";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -31,6 +33,59 @@ export function isRoleValueEditable(
   );
 }
 
+interface SaveAsPrimitiveConfirmProps {
+  role: string;
+  token: StyleSnapToken;
+  onAccept: () => void;
+  onCancel: () => void;
+}
+
+/** Confirm before materializing a role value edit as a linked manual primitive. */
+export function SaveAsPrimitiveConfirm({
+  role,
+  token,
+  onAccept,
+  onCancel,
+}: SaveAsPrimitiveConfirmProps) {
+  const dialogRef = useDialog(onCancel);
+  return (
+    <ModalPortal>
+      <div
+        className="fixed inset-0 z-modal flex items-center justify-center bg-text-primary/50 p-6"
+        onClick={onCancel}
+      >
+        <div
+          ref={dialogRef}
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="save-primitive-title"
+          aria-describedby="save-primitive-desc"
+          className="w-full max-w-md rounded-lg border-2 border-border-default bg-surface-card p-6 shadow-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 id="save-primitive-title" className="font-heading text-card-title font-medium">
+            Save as a new primitive?
+          </h2>
+          <p id="save-primitive-desc" className="mt-2 text-caption text-text-muted">
+            To change <span className="font-mono text-text-primary">{role}</span>, StyleSnap will
+            add a new primitive (
+            <span className="font-mono text-text-primary">{humanValueLabel(token, role)}</span>) and
+            link this role to it. The value will appear under Primitives.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={onAccept}>
+              Save as primitive
+            </Button>
+            <Button type="button" variant="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
 interface RoleValueEditorProps {
   role: string;
   token: StyleSnapToken;
@@ -39,13 +94,20 @@ interface RoleValueEditorProps {
   anchorToken?: StyleSnapToken;
   open: boolean;
   onClose: () => void;
+  /**
+   * Persist the edit as a new primitive + assign this role (after confirm).
+   * Call sites should wire `saveRoleAsPrimitive`, not a silent derived overlay.
+   */
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
+  /** Compact PrimitivePicker (+ optional Remove role) — lives in this popover. */
+  reassignSlot?: ReactNode;
 }
 
 /**
  * FR-19 — click-to-edit popover for derived role values. Captured assignments
- * are reassign-only (provenance explains why).
+ * are reassign-only (provenance + Change primitive in this dialog).
+ * Value edits confirm → save as a new linked primitive.
  */
 export function RoleValueEditor({
   role,
@@ -57,6 +119,7 @@ export function RoleValueEditor({
   onClose,
   onEditDerived,
   onResetDerived,
+  reassignSlot,
 }: RoleValueEditorProps) {
   const [editHex, setEditHex] = useState(token.type === "color" ? token.value : "");
   const [editNumber, setEditNumber] = useState(
@@ -67,9 +130,13 @@ export function RoleValueEditor({
   const [editFontSize, setEditFontSize] = useState(
     token.type === "typography" ? String(token.value.fontSize) : "",
   );
+  const [pending, setPending] = useState<StyleSnapToken | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setPending(null);
+      return;
+    }
     if (token.type === "color") setEditHex(token.value);
     if (token.type === "spacing" || token.type === "border-radius" || token.type === "border-width") {
       setEditNumber(String(token.value));
@@ -99,27 +166,35 @@ export function RoleValueEditor({
             }.`
       : `Assigned primitive (${token.source}, ×${token.occurrences}).`;
 
+  const requestSave = (next: StyleSnapToken) => {
+    if (!onEditDerived) return;
+    setPending(next);
+  };
+
   const saveColor = () => {
-    if (!onEditDerived || token.type !== "color" || !HEX_RE.test(editHex)) return;
-    onEditDerived(role, { ...token, value: editHex.toUpperCase() });
-    onClose();
+    if (token.type !== "color" || !HEX_RE.test(editHex)) return;
+    requestSave({ ...token, value: editHex.toUpperCase() });
   };
 
   const saveNumber = () => {
-    if (!onEditDerived) return;
     const n = Number(editNumber);
     if (!Number.isFinite(n) || n < 0) return;
     if (token.type === "spacing" || token.type === "border-radius" || token.type === "border-width") {
-      onEditDerived(role, { ...token, value: n });
-      onClose();
+      requestSave({ ...token, value: n });
     }
   };
 
   const saveFontSize = () => {
-    if (!onEditDerived || token.type !== "typography") return;
+    if (token.type !== "typography") return;
     const n = Number(editFontSize);
     if (!Number.isFinite(n) || n <= 0) return;
-    onEditDerived(role, { ...token, value: { ...token.value, fontSize: n } });
+    requestSave({ ...token, value: { ...token.value, fontSize: n } });
+  };
+
+  const acceptPending = () => {
+    if (!pending || !onEditDerived) return;
+    onEditDerived(role, pending);
+    setPending(null);
     onClose();
   };
 
@@ -129,9 +204,13 @@ export function RoleValueEditor({
       <div
         role="dialog"
         aria-label={`Edit ${role}`}
-        className="absolute left-0 top-full z-dropdown mt-2 w-72 rounded-md border-2 border-border-default bg-surface-card p-3 shadow-modal"
+        className="absolute left-0 top-full z-dropdown mt-2 w-80 max-w-[min(20rem,calc(100vw-2rem))] rounded-md border-2 border-border-default bg-surface-card p-3 shadow-modal"
       >
         <p className="text-caption text-text-primary">{provenance}</p>
+
+        {reassignSlot && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">{reassignSlot}</div>
+        )}
 
         {editable && token.type === "color" && onEditDerived && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -231,6 +310,15 @@ export function RoleValueEditor({
           </Button>
         )}
       </div>
+
+      {pending && (
+        <SaveAsPrimitiveConfirm
+          role={role}
+          token={pending}
+          onAccept={acceptPending}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </>
   );
 }
@@ -249,8 +337,11 @@ interface RoleFilledRowProps {
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
   previewContext: TokenPreviewContext;
-  /** Compact PrimitivePicker for reassignment (foundations + colors). */
-  reassignSlot?: ReactNode;
+  /**
+   * Build the Change primitive control (and optional Remove role). Called with
+   * `close` so assign can dismiss the popover.
+   */
+  reassignSlot?: (close: () => void) => ReactNode;
 }
 
 export function RoleFilledRow({
@@ -271,7 +362,8 @@ export function RoleFilledRow({
 }: RoleFilledRowProps) {
   const [open, setOpen] = useState(false);
   const origin = fillInfo?.origin ?? (token.id.startsWith("derived_") ? "derived" : "assigned");
-  const canOpen = Boolean(onEditDerived);
+  const canOpen = Boolean(onEditDerived || reassignSlot);
+  const close = () => setOpen(false);
 
   const originChip =
     origin === "seeded" ? (
@@ -344,7 +436,6 @@ export function RoleFilledRow({
           )}
         </div>
       </div>
-      {reassignSlot && <div className="px-1">{reassignSlot}</div>}
       <RoleValueEditor
         role={role}
         token={token}
@@ -352,9 +443,10 @@ export function RoleFilledRow({
         fillInfo={fillInfo}
         anchorToken={anchorToken}
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         onEditDerived={onEditDerived}
         onResetDerived={onResetDerived}
+        reassignSlot={reassignSlot?.(close)}
       />
     </div>
   );

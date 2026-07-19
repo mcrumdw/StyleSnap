@@ -10,7 +10,7 @@ import type {
   TypographyToken,
 } from "../contract/types";
 import { isBackdropBlurToken } from "../engine/effect-kinds";
-import { rolesForType, validateSlashName } from "../engine/roles";
+import { rolesForType, validateSlashName, namePlaceholder } from "../engine/roles";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import { useDialog } from "./useDialog";
@@ -419,7 +419,7 @@ export function AddTokenDialog({
             label="Name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="color/brand-blue"
+            placeholder={namePlaceholder(type)}
           />
 
           <label className="flex flex-col gap-1">

@@ -33,6 +33,8 @@ interface CapturedFoundationsProps {
   onAssign: (role: string, tokenId: string) => void;
   onExclude: (tokenId: string) => void;
   emptyLabel: string;
+  /** Extra slots beyond Appendix B (§2.30). */
+  customRoles?: string[];
 }
 
 function FoundationPreview({ token }: { token: StyleSnapToken }) {
@@ -82,6 +84,7 @@ export function CapturedFoundations({
   onAssign,
   onExclude,
   emptyLabel,
+  customRoles = [],
 }: CapturedFoundationsProps) {
   const captured = useMemo(
     () =>
@@ -108,7 +111,18 @@ export function CapturedFoundations({
     return map;
   }, [assignments, tokenType]);
 
-  const slots = SLOTS[tokenType];
+  const slots = useMemo(() => {
+    const prefix =
+      tokenType === "spacing"
+        ? "space/"
+        : tokenType === "border-radius"
+          ? "radius/"
+          : tokenType === "border-width"
+            ? "border-width/"
+            : "shadow/";
+    const extra = customRoles.filter((r) => r.startsWith(prefix));
+    return [...SLOTS[tokenType], ...extra.filter((r) => !SLOTS[tokenType].includes(r))];
+  }, [customRoles, tokenType]);
 
   if (captured.length === 0) {
     return (
@@ -142,7 +156,8 @@ export function CapturedFoundations({
                   ? `authored "${authored}"`
                   : el
                     ? `seen on <${el}>`
-                    : "captured"}{" "}
+                    : "captured"}
+                {token.context?.cssProperty ? ` · ${token.context.cssProperty}` : ""}{" "}
                 · ×{token.occurrences}
               </span>
             </div>

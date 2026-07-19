@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { StyleSnapToken } from "../contract/types";
+import type { StyleSnapToken, TokenType } from "../contract/types";
 import { applyMerges, type MergeRecord } from "../engine/dedup";
 import { deriveRoleCandidates, fallbackName } from "../engine/roles";
 import { resolveAssignments, type TokenDecision } from "../state/pool";
@@ -30,6 +30,9 @@ interface GiveMeaningStepProps {
   userAssignments?: Record<string, string>;
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
+  customRoles?: string[];
+  onAddCustomRole?: (type: TokenType, pathAfterPrefix: string) => void;
+  onRemoveCustomRole?: (role: string) => void;
 }
 
 /** Phase 10 step 2 — semantic role assignment (EditRolesPanel + derived state). */
@@ -49,6 +52,9 @@ export function GiveMeaningStep({
   userAssignments,
   onEditDerived,
   onResetDerived,
+  customRoles,
+  onAddCustomRole,
+  onRemoveCustomRole,
 }: GiveMeaningStepProps) {
   const view = useMemo(() => {
     const merged = applyMerges(entries, merges);
@@ -114,6 +120,9 @@ export function GiveMeaningStep({
         onResetDerived={onResetDerived}
         focusRoleId={focusRoleId}
         rolePrefix={rolePrefix}
+        customRoles={customRoles}
+        onAddCustomRole={onAddCustomRole}
+        onRemoveCustomRole={onRemoveCustomRole}
       />
     </section>
   );

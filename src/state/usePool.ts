@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer } from "react";
-import type { StyleSnapExport, StyleSnapToken } from "../contract/types";
+import type { StyleSnapExport, StyleSnapToken, TokenType } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import type { SystemNotes, SystemNotesField } from "../engine/export";
@@ -20,14 +20,17 @@ import {
   autoMergeClusters,
   editDerived,
   resetDerived,
+  saveRoleEditAsPrimitive as saveRoleEditAsPrimitivePure,
   setAccentChoice as setAccentChoicePure,
   setAccentIds as setAccentIdsPure,
   setAnchorOverride as setAnchorOverridePure,
   setTypeRatio as setTypeRatioPure,
 } from "./pool";
 import {
+  addCustomRole as addCustomRolePure,
   addManualToken,
   addMerge,
+  setMergeSurvivor as setMergeSurvivorPure,
   appendImport,
   assignRole,
   clearDraft,
@@ -36,6 +39,7 @@ import {
   excludeToken as excludeTokenPure,
   isSystemCreated,
   loadDraft,
+  removeCustomRole as removeCustomRolePure,
   removeManualToken,
   removeMerge,
   restoreToken as restoreTokenPure,
@@ -60,7 +64,7 @@ type PoolAction =
       type: "commit";
       updater: (pool: TokenPool) => TokenPool;
       label: string;
-      affectsMerges: boolean;
+      affectsMerges: boolean | ((before: TokenPool, after: TokenPool) => boolean);
     }
   | { type: "silent"; updater: (pool: TokenPool) => TokenPool }
   | { type: "replace"; pool: TokenPool; clearHistory: boolean }
@@ -68,15 +72,25 @@ type PoolAction =
   | { type: "undo"; locked: boolean }
   | { type: "redo"; locked: boolean };
 
+function mergesChanged(before: TokenPool, after: TokenPool): boolean {
+  if (before.merges === after.merges) return false;
+  if (before.merges.length !== after.merges.length) return true;
+  return JSON.stringify(before.merges) !== JSON.stringify(after.merges);
+}
+
 /** @internal Exported for reducer integration tests. */
 export function poolReducer(state: PoolState, action: PoolAction): PoolState {
   switch (action.type) {
     case "commit": {
       const next = action.updater(state.pool);
       if (next === state.pool) return state;
+      const affectsMerges =
+        typeof action.affectsMerges === "function"
+          ? action.affectsMerges(state.pool, next)
+          : action.affectsMerges;
       return {
         pool: next,
-        history: pushHistory(state.history, state.pool, next, action.label, action.affectsMerges),
+        history: pushHistory(state.history, state.pool, next, action.label, affectsMerges),
       };
     }
     case "silent": {
@@ -144,7 +158,7 @@ export function usePool() {
     (
       updater: (current: TokenPool) => TokenPool,
       label: string,
-      affectsMerges = false,
+      affectsMerges: boolean | ((before: TokenPool, after: TokenPool) => boolean) = false,
     ) => dispatch({ type: "commit", updater, label, affectsMerges }),
     [],
   );
@@ -198,6 +212,17 @@ export function usePool() {
     [commit],
   );
 
+  /** Create a manual primitive from a role value edit and assign the role to it. */
+  const saveRoleAsPrimitive = useCallback(
+    (role: string, token: StyleSnapToken) => {
+      commit(
+        (current) => saveRoleEditAsPrimitivePure(current, role, token),
+        `Save ${role} as primitive`,
+      );
+    },
+    [commit],
+  );
+
   const resetDerivedValue = useCallback(
     (role: string) => {
       commit((current) => resetDerived(current, role), `Reset ${role} to derived`);
@@ -207,16 +232,16 @@ export function usePool() {
 
   const setAccent = useCallback(
     (choice: { harmony?: Harmony; dismissed?: boolean }) => {
-      silent((current) => setAccentChoicePure(current, choice));
+      commit((current) => setAccentChoicePure(current, choice), "Set accent harmony");
     },
-    [silent],
+    [commit],
   );
 
   const setAccentIds = useCallback(
     (accentIds: string[] | undefined) => {
-      silent((current) => setAccentIdsPure(current, accentIds));
+      commit((current) => setAccentIdsPure(current, accentIds), "Update accents");
     },
-    [silent],
+    [commit],
   );
 
   const setRatio = useCallback(
@@ -242,41 +267,99 @@ export function usePool() {
     [commit],
   );
 
+  /** Re-pick survivor within an existing merge cluster (same members). */
+  const setMergeSurvivor = useCallback(
+    (newSurvivorId: string) => {
+      commit(
+        (current) => setMergeSurvivorPure(current, newSurvivorId),
+        "Change merge survivor",
+        mergesChanged,
+      );
+    },
+    [commit],
+  );
+
+  /**
+   * Promote a snap color to primary. If it was absorbed into a merge, it becomes
+   * the survivor first so its hex drives the system (anchors require a survivor id).
+   */
+  const makePrimaryColor = useCallback(
+    (tokenId: string) => {
+      commit(
+        (current) => {
+          const promoted = setMergeSurvivorPure(current, tokenId);
+          return setAnchorOverridePure(promoted, { primaryColorId: tokenId });
+        },
+        "Set primary color",
+        mergesChanged,
+      );
+    },
+    [commit],
+  );
+
+  const makeSecondaryColor = useCallback(
+    (tokenId: string) => {
+      commit(
+        (current) => {
+          const promoted = setMergeSurvivorPure(current, tokenId);
+          return setAnchorOverridePure(promoted, { secondaryColorId: tokenId });
+        },
+        "Set secondary color",
+        mergesChanged,
+      );
+    },
+    [commit],
+  );
+
   const setName = useCallback(
     (tokenId: string, name: string | undefined) => {
-      silent((current) => setDecision(current, tokenId, { name }));
+      commit((current) => setDecision(current, tokenId, { name }), "Rename token");
     },
-    [silent],
+    [commit],
   );
 
   const assign = useCallback(
     (role: string, tokenId: string) => {
-      silent((current) => assignRole(current, role, tokenId));
+      commit((current) => assignRole(current, role, tokenId), `Assign ${role}`);
     },
-    [silent],
+    [commit],
   );
 
   const unassign = useCallback(
     (role: string) => {
-      silent((current) => unassignRole(current, role));
+      commit((current) => unassignRole(current, role), `Unassign ${role}`);
+    },
+    [commit],
+  );
+
+  const addCustomRole = useCallback(
+    (type: TokenType, pathAfterPrefix: string) => {
+      silent((current) => addCustomRolePure(current, type, pathAfterPrefix));
     },
     [silent],
+  );
+
+  const removeCustomRole = useCallback(
+    (role: string) => {
+      commit((current) => removeCustomRolePure(current, role), "Remove custom role");
+    },
+    [commit],
   );
 
   const addManual = useCallback(
     (token: StyleSnapToken, role?: string) => {
-      silent((current) => {
+      commit((current) => {
         let next = addManualToken(current, token);
         if (role) next = assignRole(next, role, token.id);
         return next;
-      });
+      }, "Add manual token");
     },
-    [silent],
+    [commit],
   );
 
   const updateManual = useCallback(
     (token: StyleSnapToken, role?: string | null) => {
-      silent((current) => {
+      commit((current) => {
         let next = updateManualToken(current, token);
         if (role !== undefined) {
           for (const [r, id] of Object.entries(next.assignments)) {
@@ -285,9 +368,9 @@ export function usePool() {
           if (role !== null) next = assignRole(next, role, token.id);
         }
         return next;
-      });
+      }, "Update manual token");
     },
-    [silent],
+    [commit],
   );
 
   const removeManual = useCallback(
@@ -340,9 +423,14 @@ export function usePool() {
       addImport,
       mergeCluster,
       unmerge,
+      setMergeSurvivor,
+      makePrimaryColor,
+      makeSecondaryColor,
       setName,
       assign,
       unassign,
+      addCustomRole,
+      removeCustomRole,
       addManual,
       updateManual,
       removeManual,
@@ -353,6 +441,7 @@ export function usePool() {
       applyTemplate,
       setAnchor,
       editDerivedValue,
+      saveRoleAsPrimitive,
       resetDerivedValue,
       setAccent,
       setAccentIds,
@@ -372,9 +461,14 @@ export function usePool() {
       addImport,
       mergeCluster,
       unmerge,
+      setMergeSurvivor,
+      makePrimaryColor,
+      makeSecondaryColor,
       setName,
       assign,
       unassign,
+      addCustomRole,
+      removeCustomRole,
       addManual,
       updateManual,
       removeManual,
@@ -385,6 +479,7 @@ export function usePool() {
       applyTemplate,
       setAnchor,
       editDerivedValue,
+      saveRoleAsPrimitive,
       resetDerivedValue,
       setAccent,
       setAccentIds,

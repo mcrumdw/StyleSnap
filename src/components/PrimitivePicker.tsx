@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import { fallbackName, type RoleDefinition } from "../engine/roles";
 import { formatValue } from "../state/workspace";
@@ -9,6 +9,10 @@ const CHECKERBOARD: React.CSSProperties = {
   backgroundImage: "repeating-conic-gradient(#ECEAF2 0% 25%, #FFFFFF 0% 50%)",
   backgroundSize: "8px 8px",
 };
+
+function isSystemCreated(token: StyleSnapToken): boolean {
+  return token.id.startsWith("derived_");
+}
 
 function primitiveListKey(token: StyleSnapToken): string {
   if (token.type === "color") return `${token.value}:${token.opacity}`;
@@ -108,10 +112,12 @@ function PrimitiveListRow({
   token,
   count,
   onPick,
+  system,
 }: {
   token: StyleSnapToken;
   count: number;
   onPick: () => void;
+  system?: boolean;
 }) {
   return (
     <li>
@@ -122,13 +128,31 @@ function PrimitiveListRow({
       >
         <PrimitiveThumb token={token} />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-mono text-caption text-text-primary">{nameOf(token)}</span>
+          <span className="flex items-center gap-2 truncate font-mono text-caption text-text-primary">
+            <span className="truncate">{nameOf(token)}</span>
+            {system && (
+              <span
+                className="shrink-0 font-mono text-badge text-text-muted"
+                title="System-created for a missing semantic role"
+              >
+                system
+              </span>
+            )}
+          </span>
           <span className="truncate font-mono text-badge text-text-muted">
             {formatValue(token)}
             {count > 1 && ` · ${count} captures`}
           </span>
         </span>
       </button>
+    </li>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <li className="sticky top-0 bg-surface-card px-2 py-1 font-mono text-badge text-text-muted">
+      {children}
     </li>
   );
 }
@@ -160,25 +184,53 @@ export function PrimitivePicker({
   const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
 
+  const isColor = def.tokenType === "color";
+
   const candidates = useMemo(
-    () => tokens.filter((t) => t.type === def.tokenType && !t.id.startsWith("derived_")),
-    [tokens, def.tokenType],
+    () =>
+      tokens.filter((t) => {
+        if (t.type !== def.tokenType) return false;
+        // Colors: include system-created (derived_*). Other types: snap/manual only.
+        if (!isColor && t.id.startsWith("derived_")) return false;
+        return true;
+      }),
+    [tokens, def.tokenType, isColor],
   );
-  const deduped = useMemo(() => dedupeCandidates(candidates), [candidates]);
+
+  const snapCandidates = useMemo(
+    () => candidates.filter((t) => !isSystemCreated(t)),
+    [candidates],
+  );
+  const systemCandidates = useMemo(
+    () => (isColor ? candidates.filter((t) => isSystemCreated(t)) : []),
+    [candidates, isColor],
+  );
+
+  const snapDeduped = useMemo(() => dedupeCandidates(snapCandidates), [snapCandidates]);
+  const systemDeduped = useMemo(() => dedupeCandidates(systemCandidates), [systemCandidates]);
+
   const suggested = suggestedId ? candidates.find((t) => t.id === suggestedId) : undefined;
   const holder = holderLabel(role);
 
   const q = query.toLowerCase().trim();
-  const matches = deduped.filter(
-    ({ token }) =>
-      nameOf(token).toLowerCase().includes(q) || formatValue(token).toLowerCase().includes(q),
-  );
+  const filterEntry = (entry: { token: StyleSnapToken; count: number }) =>
+    nameOf(entry.token).toLowerCase().includes(q) ||
+    formatValue(entry.token).toLowerCase().includes(q);
+
+  const snapMatches = snapDeduped.filter(filterEntry);
+  const systemMatches = systemDeduped.filter(filterEntry);
+
   const suggestedEntry = suggested
-    ? (matches.find(({ token }) => token.id === suggested.id) ?? { token: suggested, count: 1 })
+    ? ({ token: suggested, count: 1 } as const)
     : undefined;
-  const listMatches = suggestedEntry
-    ? matches.filter(({ token }) => token.id !== suggestedEntry.token.id)
-    : matches;
+  const suggestedIsSystem = suggested ? isSystemCreated(suggested) : false;
+
+  const snapList = suggestedEntry && !suggestedIsSystem
+    ? snapMatches.filter(({ token }) => token.id !== suggestedEntry.token.id)
+    : snapMatches;
+  const systemList = suggestedEntry && suggestedIsSystem
+    ? systemMatches.filter(({ token }) => token.id !== suggestedEntry.token.id)
+    : systemMatches;
 
   const close = () => {
     setOpen(false);
@@ -200,6 +252,7 @@ export function PrimitivePicker({
         <PrimitiveThumb token={suggested} />
         <span className="text-badge text-text-muted">
           → {nameOf(suggested)} ({formatValue(suggested)})
+          {isSystemCreated(suggested) ? " · system" : ""}
         </span>
       </div>
     );
@@ -208,6 +261,8 @@ export function PrimitivePicker({
   if (candidates.length === 0) {
     return <span className="text-caption text-text-muted">No {def.tokenType} primitives captured yet.</span>;
   }
+
+  const showSections = isColor && (snapList.length > 0 || systemList.length > 0 || suggestedEntry);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -251,20 +306,59 @@ export function PrimitivePicker({
                     <PrimitiveListRow
                       token={suggestedEntry.token}
                       count={suggestedEntry.count}
+                      system={suggestedIsSystem}
                       onPick={() => pick(suggestedEntry.token.id)}
                     />
                   </li>
                 )}
-                {listMatches.map(({ token, count }) => (
-                  <PrimitiveListRow
-                    key={token.id}
-                    token={token}
-                    count={count}
-                    onPick={() => pick(token.id)}
-                  />
-                ))}
-                {listMatches.length === 0 && !suggestedEntry && (
-                  <li className="px-2 py-1 text-caption text-text-muted">No matching primitive.</li>
+
+                {showSections ? (
+                  <>
+                    {snapList.length > 0 && (
+                      <>
+                        <SectionLabel>From snap</SectionLabel>
+                        {snapList.map(({ token, count }) => (
+                          <PrimitiveListRow
+                            key={token.id}
+                            token={token}
+                            count={count}
+                            onPick={() => pick(token.id)}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {systemList.length > 0 && (
+                      <>
+                        <SectionLabel>System-created</SectionLabel>
+                        {systemList.map(({ token, count }) => (
+                          <PrimitiveListRow
+                            key={token.id}
+                            token={token}
+                            count={count}
+                            system
+                            onPick={() => pick(token.id)}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {snapList.length === 0 && systemList.length === 0 && !suggestedEntry && (
+                      <li className="px-2 py-1 text-caption text-text-muted">No matching primitive.</li>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {snapList.map(({ token, count }) => (
+                      <PrimitiveListRow
+                        key={token.id}
+                        token={token}
+                        count={count}
+                        onPick={() => pick(token.id)}
+                      />
+                    ))}
+                    {snapList.length === 0 && !suggestedEntry && (
+                      <li className="px-2 py-1 text-caption text-text-muted">No matching primitive.</li>
+                    )}
+                  </>
                 )}
               </ul>
             </div>

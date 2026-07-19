@@ -6,7 +6,6 @@ import {
   canUndoHistory,
   emptyHistory,
   MAX_HISTORY,
-  peekRedoLabel,
   peekUndoLabel,
   pushHistory,
   redoHistory,
@@ -34,6 +33,35 @@ describe("history", () => {
 
     const u2 = undoHistory(h, c, false)!;
     expect(u2.pool.projectName).toBe("b");
+  });
+
+  it("undoes and redoes three commits one step at a time", () => {
+    const p0 = pool("0");
+    const p1 = pool("1");
+    const p2 = pool("2");
+    const p3 = pool("3");
+    let h = pushHistory(emptyHistory(), p0, p1, "one", false);
+    h = pushHistory(h, p1, p2, "two", false);
+    h = pushHistory(h, p2, p3, "three", false);
+
+    const u1 = undoHistory(h, p3, false)!;
+    expect(u1.pool.projectName).toBe("2");
+    expect(peekUndoLabel(u1.history, false)).toBe("two");
+
+    const u2 = undoHistory(u1.history, u1.pool, false)!;
+    expect(u2.pool.projectName).toBe("1");
+
+    const u3 = undoHistory(u2.history, u2.pool, false)!;
+    expect(u3.pool.projectName).toBe("0");
+    expect(canUndoHistory(u3.history, false)).toBe(false);
+
+    const r1 = redoHistory(u3.history, u3.pool, false)!;
+    expect(r1.pool.projectName).toBe("1");
+    const r2 = redoHistory(r1.history, r1.pool, false)!;
+    expect(r2.pool.projectName).toBe("2");
+    const r3 = redoHistory(r2.history, r2.pool, false)!;
+    expect(r3.pool.projectName).toBe("3");
+    expect(canRedoHistory(r3.history, false)).toBe(false);
   });
 
   it("redo restores the after snapshot, not the before snapshot", () => {
@@ -71,19 +99,35 @@ describe("history", () => {
     expect(h.past).toHaveLength(MAX_HISTORY);
   });
 
-  it("skips merge steps when the system is locked", () => {
+  it("blocks undo when locked and the top step affects merges (barrier)", () => {
     const start = pool("start");
     const edited = pool("edited");
     const merged = pool("merged");
     let h = pushHistory(emptyHistory(), start, edited, "edit color", false);
     h = pushHistory(h, edited, merged, "merge blues", true);
 
-    expect(canUndoHistory(h, true)).toBe(true);
-    expect(peekUndoLabel(h, true)).toBe("edit color");
+    expect(canUndoHistory(h, true)).toBe(false);
+    expect(peekUndoLabel(h, true)).toBeNull();
+    expect(undoHistory(h, merged, true)).toBeNull();
+    // Unlocked still undoes the merge one step.
+    expect(canUndoHistory(h, false)).toBe(true);
+    expect(undoHistory(h, merged, false)!.pool.projectName).toBe("edited");
+  });
 
-    const u = undoHistory(h, merged, true)!;
-    expect(u.pool.projectName).toBe("start");
-    expect(peekRedoLabel(u.history, true)).toBe("edit color");
+  it("locked: undoes a non-merge edit above a merge barrier, then stops", () => {
+    const start = pool("start");
+    const edited = pool("edited");
+    const merged = pool("merged");
+    const edited2 = pool("edited2");
+    let h = pushHistory(emptyHistory(), start, edited, "edit color", false);
+    h = pushHistory(h, edited, merged, "merge blues", true);
+    h = pushHistory(h, merged, edited2, "edit again", false);
+
+    expect(peekUndoLabel(h, true)).toBe("edit again");
+    const u1 = undoHistory(h, edited2, true)!;
+    expect(u1.pool.projectName).toBe("merged");
+    expect(canUndoHistory(u1.history, true)).toBe(false);
+    expect(undoHistory(u1.history, u1.pool, true)).toBeNull();
   });
 
   it("allows merge undo before finalize", () => {

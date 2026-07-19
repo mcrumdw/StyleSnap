@@ -1,7 +1,10 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/Button";
 import { AdjectivePicker } from "../components/AdjectivePicker";
+import { PostCaptureWelcomeModal } from "../components/PostCaptureWelcomeModal";
 import { SystemNotesPanel } from "../components/SystemNotesPanel";
+import { InfoHint } from "../components/Tooltip";
 import { styleProfileFromFamily } from "../engine/style-profile";
 import { FAMILY_PACKS } from "../engine/templates";
 import { DEFAULT_ROUTE } from "./AppShell";
@@ -11,6 +14,23 @@ import { useSession } from "../state/SessionProvider";
 export function Describe() {
   const { pool, vm, setNote, applyTemplate, setProjectName } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const fromImport = Boolean(
+    (location.state as { fromImport?: boolean } | null)?.fromImport,
+  );
+  const [welcomeOpen, setWelcomeOpen] = useState(fromImport);
+
+  useEffect(() => {
+    if (!fromImport) return;
+    navigate(".", { replace: true, state: {} });
+  }, [fromImport, navigate]);
+
+  const latestImport = pool.imports[pool.imports.length - 1];
+  const welcomeTokens = useMemo(
+    () => latestImport?.tokens ?? [],
+    [latestImport],
+  );
 
   const styleFamily = pool.styleFamily;
   const styleBadge = styleFamily
@@ -20,11 +40,34 @@ export function Describe() {
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
+      {welcomeOpen && (
+        <PostCaptureWelcomeModal
+          tokens={welcomeTokens}
+          meta={latestImport?.meta}
+          onSetVibe={() => {
+            setWelcomeOpen(false);
+            requestAnimationFrame(() => {
+              document.getElementById("vibe-picker")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            });
+          }}
+          onSkipToColors={() => {
+            setWelcomeOpen(false);
+            navigate(DEFAULT_ROUTE);
+          }}
+          onClose={() => setWelcomeOpen(false)}
+        />
+      )}
+
       <header className="flex flex-col gap-2">
-        <p className="text-caption text-text-muted">
-          Set the vibe first — your picks tune auto-filled type scale, secondary harmony, radius, and
-          shadows. Captured values stay yours; only derived gaps feel the style. System notes appear
-          in design.md for your AI agent; Figma export works without them.
+        <p className="flex flex-wrap items-center gap-2 text-caption text-text-muted">
+          Set the vibe — then continue to colors.
+          <InfoHint
+            label="Why vibe first?"
+            content="Your picks tune auto-filled type scale, secondary harmony, radius, and shadows. Captured values stay yours; only derived gaps feel the style. System notes appear in design.md for your AI agent; Figma export works without them."
+          />
         </p>
         <label className="flex w-full max-w-xs flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
           <span className="font-mono text-caption text-text-muted">Project</span>
@@ -37,7 +80,10 @@ export function Describe() {
         </label>
       </header>
 
-      <section className="rounded-md border-2 border-border-default bg-surface-card p-6 shadow-card">
+      <section
+        id="vibe-picker"
+        className="scroll-mt-16 rounded-md border-2 border-border-default bg-surface-card p-6 shadow-card"
+      >
         <AdjectivePicker
           tokens={vm.exportInput.tokens}
           anchors={vm.anchors}

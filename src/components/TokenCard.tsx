@@ -1,4 +1,5 @@
 import type { PoolEntry } from "../state/workspace";
+import { fallbackName } from "../engine/roles";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
 import { InlineName } from "./InlineName";
@@ -66,7 +67,12 @@ export function TokenCard({
     >
       <div className="flex items-start justify-between gap-2">
         {onSetName ? (
-          <InlineName name={token.name} onSetName={onSetName} />
+          <InlineName
+            name={token.name}
+            onSetName={onSetName}
+            tokenType={token.type}
+            suggestedName={fallbackName(token)}
+          />
         ) : token.name ? (
           <span className="font-mono text-caption font-medium text-text-primary">{token.name}</span>
         ) : (

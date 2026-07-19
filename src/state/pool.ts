@@ -9,7 +9,7 @@
 // React or a browser.
 
 import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
-import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken } from "../contract/types";
+import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types";
 import { applyMerges, detectClusters, type MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
 import { styleProfileFromFamily } from "../engine/style-profile";
@@ -23,6 +23,13 @@ import {
   type AssembledDescription,
   type NoteSource,
 } from "../engine/templates";
+import {
+  buildCustomRole,
+  inferCustomRoles,
+  isAllowedCustomRole,
+  isCanonicalRole,
+  tokenTypeFromRole,
+} from "../engine/roles/custom";
 import type { PipelineStep } from "./pipeline";
 import { clampStep } from "./pipeline";
 
@@ -60,6 +67,11 @@ export interface TokenPool {
    * and un-merge restores the original targets for free.
    */
   assignments: Record<string, string>;
+  /**
+   * User-declared semantic roles beyond Appendix B (§2.30). Persisted even when
+   * unassigned so gap slots remain. Completeness ignores these.
+   */
+  customRoles?: string[];
   /** Manually added tokens (Phase 5, FR-19) — user-owned, editable, removable. */
   manual: StyleSnapToken[];
   /** User-edited project name (Phase 6); when unset, derived from the first import. */
@@ -201,6 +213,70 @@ export function removeMerge(pool: TokenPool, survivorId: string): TokenPool {
   return { ...pool, merges: pool.merges.filter((m) => m.survivorId !== survivorId) };
 }
 
+/** Walk merge records to the current survivor for a raw token id. */
+export function resolveSurvivorId(tokenId: string, merges: MergeRecord[]): string {
+  const survivorOf = new Map<string, string>();
+  for (const merge of merges) {
+    for (const id of merge.mergedIds) survivorOf.set(id, merge.survivorId);
+  }
+  let current = tokenId;
+  for (let hops = 0; hops < merges.length && survivorOf.has(current); hops++) {
+    current = survivorOf.get(current)!;
+  }
+  return current;
+}
+
+/** Merge record that includes this id as survivor or absorbed member. */
+export function findMergeForMember(
+  merges: MergeRecord[],
+  memberId: string,
+): MergeRecord | undefined {
+  return merges.find(
+    (m) => m.survivorId === memberId || m.mergedIds.includes(memberId),
+  );
+}
+
+/**
+ * Re-pick which cluster member is the survivor (keeps the same member set).
+ * Pure — raw tokens unchanged. Remaps primary/secondary overrides and
+ * accentIds that pointed at the old survivor. No-op if `newSurvivorId` is
+ * not in any merge or is already the survivor.
+ */
+export function setMergeSurvivor(pool: TokenPool, newSurvivorId: string): TokenPool {
+  const idx = pool.merges.findIndex(
+    (m) => m.survivorId === newSurvivorId || m.mergedIds.includes(newSurvivorId),
+  );
+  if (idx < 0) return pool;
+  const old = pool.merges[idx]!;
+  if (old.survivorId === newSurvivorId) return pool;
+
+  const members = [old.survivorId, ...old.mergedIds];
+  const mergedIds = members.filter((id) => id !== newSurvivorId);
+  const merges = [...pool.merges];
+  merges[idx] = { survivorId: newSurvivorId, mergedIds, mergedAt: old.mergedAt };
+
+  let next: TokenPool = { ...pool, merges };
+  const ao = next.anchorOverrides;
+  if (ao) {
+    const patch: Partial<AnchorOverrides> = {};
+    if (ao.primaryColorId === old.survivorId) patch.primaryColorId = newSurvivorId;
+    if (ao.secondaryColorId === old.survivorId) patch.secondaryColorId = newSurvivorId;
+    if (Object.keys(patch).length > 0) next = setAnchorOverride(next, patch);
+  }
+  if (next.accentIds) {
+    const seen = new Set<string>();
+    const accentIds = next.accentIds
+      .map((id) => (id === old.survivorId ? newSurvivorId : id))
+      .filter((id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    next = { ...next, accentIds };
+  }
+  return next;
+}
+
 /**
  * Phase 10 fix-up (user testing 2026-07-06): merges apply AUTOMATICALLY at
  * import time — no queue, no review step. Policy:
@@ -256,15 +332,50 @@ export function setDecision(
 /**
  * Point a role at a token. Overwrites any previous target — the UI asks for
  * explicit confirmation before stealing a role from another primitive.
+ * Non-canonical roles are auto-registered in `customRoles` (§2.30).
  */
 export function assignRole(pool: TokenPool, role: string, tokenId: string): TokenPool {
-  return { ...pool, assignments: { ...pool.assignments, [role]: tokenId } };
+  let next: TokenPool = { ...pool, assignments: { ...pool.assignments, [role]: tokenId } };
+  if (!isCanonicalRole(role)) {
+    const type = tokenTypeFromRole(role);
+    if (type && isAllowedCustomRole(role, type)) {
+      const existing = new Set(next.customRoles ?? []);
+      if (!existing.has(role)) {
+        next = { ...next, customRoles: [...existing, role].sort() };
+      }
+    }
+  }
+  return next;
 }
 
 export function unassignRole(pool: TokenPool, role: string): TokenPool {
   const assignments = { ...pool.assignments };
   delete assignments[role];
   return { ...pool, assignments };
+}
+
+/**
+ * Declare a custom semantic role under the type prefix (e.g. path `card` on
+ * border-width → `border-width/card`). No-op if invalid or already canonical.
+ */
+export function addCustomRole(pool: TokenPool, type: TokenType, pathAfterPrefix: string): TokenPool {
+  const role = buildCustomRole(type, pathAfterPrefix);
+  if (!role) return pool;
+  const existing = new Set(pool.customRoles ?? []);
+  if (existing.has(role)) return pool;
+  return { ...pool, customRoles: [...existing, role].sort() };
+}
+
+/** Remove a custom role declaration and any assignment pointing at it. */
+export function removeCustomRole(pool: TokenPool, role: string): TokenPool {
+  if (isCanonicalRole(role)) return pool;
+  const customRoles = (pool.customRoles ?? []).filter((r) => r !== role);
+  const next: TokenPool = {
+    ...pool,
+    customRoles: customRoles.length > 0 ? customRoles : undefined,
+  };
+  if (role in next.assignments) return unassignRole(next, role);
+  return next;
 }
 
 /**
@@ -276,19 +387,11 @@ export function resolveAssignments(
   assignments: Record<string, string>,
   merges: MergeRecord[],
 ): Record<string, string> {
-  const survivorOf = new Map<string, string>();
-  for (const merge of merges) {
-    for (const id of merge.mergedIds) survivorOf.set(id, merge.survivorId);
-  }
-  const resolve = (id: string): string => {
-    let current = id;
-    for (let hops = 0; hops < merges.length && survivorOf.has(current); hops++) {
-      current = survivorOf.get(current)!;
-    }
-    return current;
-  };
   return Object.fromEntries(
-    Object.entries(assignments).map(([role, id]) => [role, resolve(id)]),
+    Object.entries(assignments).map(([role, id]) => [
+      role,
+      resolveSurvivorId(id, merges),
+    ]),
   );
 }
 
@@ -337,6 +440,38 @@ export function resetDerived(pool: TokenPool, role: string): TokenPool {
   const derivedEdits = { ...pool.derivedEdits };
   delete derivedEdits[role];
   return { ...pool, derivedEdits };
+}
+
+/**
+ * Persist a role value edit as a new manual primitive and point the role at it.
+ * Clears any derivedEdits overlay for that role so the assignment wins.
+ */
+export function saveRoleEditAsPrimitive(
+  pool: TokenPool,
+  role: string,
+  token: StyleSnapToken,
+  id: string = `manual_${crypto.randomUUID().slice(0, 8)}`,
+): TokenPool {
+  const suggested =
+    role
+      .split("/")
+      .filter(Boolean)
+      .slice(-2)
+      .join("/") || null;
+  const manual: StyleSnapToken = {
+    ...token,
+    id,
+    captureId: "manual",
+    source: "manual entry",
+    name: token.name ?? suggested,
+    occurrences: 1,
+    merged: false,
+    mergedFrom: undefined,
+  };
+  let next = addManualToken(pool, manual);
+  next = assignRole(next, role, id);
+  next = resetDerived(next, role);
+  return next;
 }
 
 export function setAccentChoice(
@@ -712,6 +847,15 @@ export function deserializeDraft(text: string | null): TokenPool | null {
     const excludedIds = draft.excludedIds.filter((id): id is string => typeof id === "string");
     if (excludedIds.length > 0) pool.excludedIds = excludedIds;
   }
+
+  // §2.30 custom roles — persist list; also infer from non-canonical assignments.
+  const rawCustom = draft.customRoles;
+  const declared =
+    Array.isArray(rawCustom) ? rawCustom.filter((r): r is string => typeof r === "string") : [];
+  const inferred = inferCustomRoles(assignments);
+  const customRoles = [...new Set([...declared, ...inferred])].sort();
+  if (customRoles.length > 0) pool.customRoles = customRoles;
+
   return pool;
 }
 

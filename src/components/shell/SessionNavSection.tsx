@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import type { StyleSnapExport } from "../../contract/types";
+import type { SystemNotes } from "../../engine/export";
 import { Button } from "../Button";
 import { useSession } from "../../state/SessionProvider";
 import { ImportCaptureModal } from "./ImportCaptureModal";
@@ -9,8 +12,15 @@ const sessionBtn =
 
 /** Left-rail — merge another capture into the current draft. */
 export function SessionNavSection({ className = "" }: { className?: string }) {
-  const { addImport } = useSession();
+  const { addImport, pool } = useSession();
+  const navigate = useNavigate();
   const [importOpen, setImportOpen] = useState(false);
+
+  const handleImport = (data: StyleSnapExport, notes?: SystemNotes) => {
+    const showWelcome = !pool.adjectives?.length;
+    addImport(data, notes);
+    if (showWelcome) navigate("/describe", { state: { fromImport: true } });
+  };
 
   return (
     <>
@@ -20,7 +30,7 @@ export function SessionNavSection({ className = "" }: { className?: string }) {
         </Button>
       </nav>
       {importOpen && (
-        <ImportCaptureModal onImport={addImport} onClose={() => setImportOpen(false)} />
+        <ImportCaptureModal onImport={handleImport} onClose={() => setImportOpen(false)} />
       )}
     </>
   );

@@ -4,6 +4,7 @@ import { parseStyleSnapExport } from "../contract/schema";
 import type { StyleSnapExport } from "../contract/types";
 import { assembleDescription } from "../engine/templates";
 import {
+  addCustomRole,
   addManualToken,
   appendImport,
   applyNoteTemplate,
@@ -12,8 +13,10 @@ import {
   createSystem,
   editDerived,
   rejectCluster,
+  removeCustomRole,
   removeMerge,
   resetDerived,
+  saveRoleEditAsPrimitive,
   setAccentChoice,
   setAnchorOverride,
   setTypeRatio,
@@ -28,9 +31,11 @@ import {
   poolTokens,
   removeManualToken,
   resolveAssignments,
+  resolveSurvivorId,
   restoreToken,
   serializeDraft,
   setDecision,
+  setMergeSurvivor,
   setProjectName,
   setSystemNote,
   unassignRole,
@@ -124,6 +129,24 @@ describe("role assignments (Phase 8 — roles point at primitives)", () => {
     expect(pool.assignments["color/action/primary"]).toBe("blue_2");
   });
 
+  it("custom roles register on assign and survive unassign until removed", () => {
+    let pool = emptyPool();
+    pool = assignRole(pool, "border-width/card", "w1");
+    expect(pool.customRoles).toEqual(["border-width/card"]);
+    pool = unassignRole(pool, "border-width/card");
+    expect(pool.customRoles).toEqual(["border-width/card"]);
+    expect(pool.assignments["border-width/card"]).toBeUndefined();
+    pool = removeCustomRole(pool, "border-width/card");
+    expect(pool.customRoles).toBeUndefined();
+  });
+
+  it("addCustomRole declares a gap slot without assigning", () => {
+    let pool = emptyPool();
+    pool = addCustomRole(pool, "color", "border/card");
+    expect(pool.customRoles).toEqual(["color/border/card"]);
+    expect(pool.assignments).toEqual({});
+  });
+
   it("merge remaps assignments to the survivor; un-merge restores them", () => {
     let pool = emptyPool();
     pool = assignRole(pool, "color/text/link", "ext_002");
@@ -149,6 +172,22 @@ describe("role assignments (Phase 8 — roles point at primitives)", () => {
       { survivorId: "c", mergedIds: ["b"], mergedAt: "t2" },
     ];
     expect(resolveAssignments(assignments, chain)).toEqual({ "space/md": "c" });
+  });
+
+  it("setMergeSurvivor re-picks the cluster survivor and remaps primary", () => {
+    let pool = emptyPool();
+    pool = {
+      ...pool,
+      merges: [{ survivorId: "ext_001", mergedIds: ["ext_002", "ext_003"], mergedAt: "t" }],
+      anchorOverrides: { primaryColorId: "ext_001" },
+    };
+    pool = setMergeSurvivor(pool, "ext_002");
+    expect(pool.merges).toEqual([
+      { survivorId: "ext_002", mergedIds: ["ext_001", "ext_003"], mergedAt: "t" },
+    ]);
+    expect(pool.anchorOverrides?.primaryColorId).toBe("ext_002");
+    expect(resolveSurvivorId("ext_001", pool.merges)).toBe("ext_002");
+    expect(resolveSurvivorId("ext_003", pool.merges)).toBe("ext_002");
   });
 });
 
@@ -364,6 +403,54 @@ describe("localStorage draft (FR-29)", () => {
     const legacy = JSON.parse(serializeDraft(poolWithBothFixtures()));
     delete legacy.manual;
     expect(deserializeDraft(JSON.stringify(legacy))?.manual).toEqual([]);
+  });
+
+  it("saveRoleEditAsPrimitive creates a manual token and assigns the role", () => {
+    let pool = poolWithBothFixtures();
+    pool = editDerived(
+      pool,
+      "color/feedback/info",
+      {
+        id: "derived_color_feedback_info",
+        captureId: "derived",
+        source: "derived",
+        name: null,
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#1D6FD8",
+        opacity: 1,
+      },
+      "2026-07-05T12:00:00Z",
+    );
+    expect(pool.derivedEdits?.["color/feedback/info"]).toBeDefined();
+
+    pool = saveRoleEditAsPrimitive(
+      pool,
+      "color/feedback/info",
+      {
+        id: "derived_color_feedback_info",
+        captureId: "derived",
+        source: "derived",
+        name: null,
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#AABBCC",
+        opacity: 1,
+      },
+      "manual_from_edit",
+    );
+
+    const manual = pool.manual.find((t) => t.id === "manual_from_edit");
+    expect(manual).toMatchObject({
+      type: "color",
+      value: "#AABBCC",
+      source: "manual entry",
+      captureId: "manual",
+    });
+    expect(pool.assignments["color/feedback/info"]).toBe("manual_from_edit");
+    expect(pool.derivedEdits?.["color/feedback/info"]).toBeUndefined();
   });
 
   it("soft-excludes captures from the working set and restores them", () => {

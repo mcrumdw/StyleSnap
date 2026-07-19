@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ---
 
@@ -609,6 +609,176 @@ Decided 2026-07-18. Follow-up to §2.27 / §2.14 Phase 3:
 
 ---
 
+### 2.29 From snap visual differentiation
+Decided 2026-07-18. On every token category page, **From snap** must read as
+raw capture inventory — not the same chrome as the exportable system.
+
+- **From snap band:** dashed `border-default`, `surface-page` fill, no
+  `shadow-card`, yellow `brand-pop` “capture” badge, short caption that the
+  system below is what exports.
+- **Primitives / System roles:** unchanged solid card + `shadow-card`.
+- **Jump chips:** From snap uses dashed border + page surface; the other two
+  stay solid card chips.
+
+Uses only DESIGN.md tokens (dashed border already used for import drag zones
+in §5.1).
+
+---
+
+### 2.30 Custom semantic roles + CSS border model
+Decided 2026-07-18.
+
+**CSS border ≠ one StyleSnap token.** A CSS `border` shorthand packs width,
+style, and color (and can be per-side). StyleSnap keeps a **lean split** that
+matches the capture contract (`types.ts` unchanged):
+
+| CSS concept | StyleSnap home |
+|---|---|
+| `border-*-width` / stroke thickness | `border-width/*` primitives + roles |
+| `border-*-color` | `color/border/*` (and custom `color/border/…`) |
+| `border-*-radius` | `border-radius` / `radius/*` |
+| `border-style` (solid/dashed/dotted/double/…) | **Not a token type in V1** — deferred |
+| Per-side (`border-left`, `border-top`, …) | Hint via `context.cssProperty` on capture |
+| `outline` / `box-shadow` inset | Separate (outline not captured; inset → shadow) |
+
+**Custom semantic roles (beyond Appendix B):** users may add slash-nested roles
+under the type prefix — e.g. `border-width/card`, `border-width/table-cell`,
+`color/border/card`, `space/section` — and assign a primitive.
+
+Implementation:
+- Engine: `src/engine/roles/custom.ts` (`buildCustomRole`, `isAllowedCustomRole`,
+  `inferCustomRoles`). Kebab-case path segments; cannot collide with Appendix B.
+- Pool: `customRoles?: string[]` on `TokenPool`; `addCustomRole` /
+  `removeCustomRole`; assigning a non-canonical role auto-registers it.
+  Draft load merges declared + inferred customs. Completeness (`B.5`) ignores
+  customs; `roleOrderIndex` sorts them after Appendix B (secondary sort by name).
+- UI: **Add role** form on every category’s System roles band (`EditRolesPanel`);
+  yellow **custom** badge on gap slots; **Remove role** drops declaration +
+  assignment. From-snap foundation Slot dropdowns include declared customs;
+  `cssProperty` shown on foundation capture rows when present.
+- There is no bare `border/` prefix — width vs color stay split.
+
+Component-level composites (`button/border` as one object) remain V3
+(PRD Appendix B deferral).
+
+---
+
+### 2.31 Type-matched rename / add-token placeholders
+Decided 2026-07-18. Rename and Add-token name fields used a hardcoded
+`color/brand-blue` placeholder on every type — fonts suggested a color path.
+
+**Fix:** `namePlaceholder(tokenType)` in `src/engine/roles/naming.ts` returns a
+type-correct example (`type/…`, `space/md`, `border-width/default`, …).
+`InlineName` takes optional `tokenType` + `suggestedName` (prefill from
+`fallbackName` when unnamed). `AddTokenDialog` uses the same helper.
+
+No taxonomy or export change — display-only correctness.
+
+---
+
+### 2.32 Post-capture welcome modal
+Decided 2026-07-18. The Description page led with a dense caption about vibe /
+derived gaps / export. That orientation belongs at **import time**, not as
+page chrome.
+
+**Modal** (`PostCaptureWelcomeModal`): after a successful import with
+`location.state.fromImport`, show once on `/describe` — headline, source +
+per-type counts, three-step map (review snap → set vibe → name roles & export),
+trust line (captured stay yours; vibe only fills derived gaps), CTAs **Set the
+vibe** / **Skip to colors**. Uses `ModalPortal` + `useDialog` (§2.23).
+
+**Triggers:** `Home` always passes `fromImport` on first create; in-session
+“Add new capture” passes it only when `!pool.adjectives?.length`. Not shown on
+draft restore, routine Description visits, or import-another when vibe is set.
+Location state cleared with `replace` so refresh does not re-open.
+
+**Describe page:** long intro replaced by a one-liner + `InfoHint` (“Why vibe
+first?”). Adjective picker stays on the page (not in the modal).
+
+---
+
+### 2.33 From snap shows all captures; survivor pick is explicit
+Decided 2026-07-18. CapturedColors was fed `workingTokens` (post-`applyMerges`),
+so absorbed snap colors vanished from From snap and primary felt tied to an
+invisible merge choice.
+
+**Rule:** From snap = raw pool captures (every snapped color). Primitives /
+derivation = merge survivors. Auto-merge at import still creates records; it
+does not hide members in the snap list.
+
+**Survivor pick:** `setMergeSurvivor` rewrites a merge record (same members,
+new `survivorId`) and remaps primary/secondary/accent ids that pointed at the
+old survivor. CapturedColors + PrimitiveInventory open `MergeSurvivorDialog`.
+Make primary / secondary on an absorbed color promotes it to survivor first
+(`makePrimaryColor` / `makeSecondaryColor`).
+
+**Rejected:** keeping From snap merge-collapsed; rewriting token hexes in place.
+
+---
+
+### 2.34 Reassign primitive inside the role click popover
+Decided 2026-07-18. Filled role rows had a separate under-card **Change
+primitive…** control next to the click-to-edit popover. Users expect one place:
+click the card → see provenance and pick another primitive.
+
+**Fix:** `RoleFilledRow` passes a `reassignSlot(close)` render prop into
+`RoleValueEditor`; compact `PrimitivePicker` (+ custom Remove role) lives in
+the dialog after provenance. Assign closes the popover. Gap-row pickers
+unchanged. Hex/number Save for derived values unchanged.
+
+**Rejected:** creating a new primitive from the dropdown (still
+`assignRole` → existing pool primitive only).
+
+---
+
+### 2.35 System-created colors in Primitives + color pickers
+Decided 2026-07-18. Derived fill colors (`derived_*` — hover/active, feedback,
+neutrals, etc.) were real system values but hidden from Primitives and excluded
+from `PrimitivePicker`, so users could not see or reassign them as primitives.
+
+**Primitives (Colors):** snap/manual stay in the main list; derived colors live
+in a **System-created** band (collapsed by default) with caption *“Colors the
+system made for missing semantic roles.”* Rename only — no exclude/un-merge.
+
+**Color pickers:** `PrimitivePicker` includes derived colors and splits the
+list into **From snap** vs **System-created** (muted `system` chip). Non-color
+pickers and primary/secondary anchors stay snap-only.
+
+---
+
+### 2.36 One-step undo / redo (barrier + commit decisions)
+Decided 2026-07-18. One Undo could wipe several UI actions: (1) after Create
+System, merge-flagged history frames were **skipped** and an older `before`
+snapshot restored (multi-jump); (2) role assign / accents / rename used
+`silent()`, so they rode along inside neighboring commit snapshots and vanished
+on a single Undo.
+
+**Fix:**
+- **Barrier** (§2.8 Create System gate, corrected): when locked, a top-of-stack
+  `affectsMerges` entry blocks undo/redo — never jump under it.
+- **`affectsMerges` only when merges change** (survivor promote may be false).
+- **Commit** assign / unassign / accents / rename / add·update manual so each
+  is one undo step (supersedes §2.8 “role assignment not undoable”).
+- Toast Undo shows when `canUndo` and calls the same stack.
+
+---
+
+### 2.37 Role value edit → new linked primitive
+Decided 2026-07-19. Editing a semantic role's value (derived / default / prior
+overlay) no longer only dirty-flags `derivedEdits`. After the user confirms
+**Save as a new primitive?**:
+
+1. A `manual_*` primitive is created (`source: "manual entry"`).
+2. The role is **assigned** to that primitive.
+3. Any `derivedEdits` overlay for the role is cleared.
+
+Cancel aborts with no pool change. Accept is one undoable commit
+(`saveRoleAsPrimitive`). Captured / assigned roles stay reassign-only
+(§2.34 provenance). `editDerived` remains for draft round-trip / legacy
+overlays; the UI save path uses the promote API.
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -719,6 +889,15 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-19 | **Role edit → new primitive** (§2.37): confirm Save as primitive; create manual token + assign role; Cancel aborts. | — |
+| 2026-07-18 | **One-step undo/redo** (§2.36): barrier instead of skip-jump after Create System; assign/accents/rename/manual commit to history; toast Undo when canUndo. | — |
+| 2026-07-18 | **System-created colors** (§2.35): derived colors in collapsed Primitives band; color PrimitivePicker splits From snap / System-created. | — |
+| 2026-07-18 | **Reassign in role popover** (§2.34): Change primitive (+ Remove role) moves into `RoleValueEditor` click dialog; under-card button removed; assign closes popover. | — |
+| 2026-07-18 | **From snap vs merge survivors** (§2.33): CapturedColors lists all raw snap colors; `setMergeSurvivor` + dialog to pick which hex a merge keeps; Make primary promotes absorbed members. | — |
+| 2026-07-18 | **Post-capture welcome modal** (§2.32): orientation dialog after import (summary + 3-step map + trust line); Describe intro → one-liner + InfoHint; `fromImport` from Home / first in-session import. | — |
+| 2026-07-18 | **Type-matched name placeholders** (§2.31): `namePlaceholder(tokenType)` for InlineName / AddTokenDialog — fonts no longer suggest `color/brand-blue`. | — |
+| 2026-07-18 | **Custom semantic roles + CSS border model** (§2.30): Add role under type prefix (e.g. `border-width/card`); `pool.customRoles`; customs export, not completeness; CSS border stays split (width/color/radius); `cssProperty` on foundation capture; customs in Slot dropdowns. | — |
+| 2026-07-18 | **From snap visual differentiation** (§2.29): dashed/page-surface capture band + badge; solid shadowed cards for Primitives/System roles; matching jump-chip treatment. | — |
 | 2026-07-18 | **Layer UX polish** (§2.28): category Add labels; From snap collapsed by default; effect kinds (drop/inset/backdrop-blur); snap font dropdown; reassign inside RoleValueEditor. | — |
 | 2026-07-18 | **Three-layer token review** (§2.27): From snap → Primitives → System roles on every category; soft-exclude; foundation capture strips; PrimitivePicker reassign; scale intelligence in UI + design.md; shadow Add token. | — |
 | 2026-07-17 | **Extension panel-owned ids** (§2.26): remapping `ext_*` / `cap-*` in the side panel so multi-site sessions export unique ids. | — |

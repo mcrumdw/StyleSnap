@@ -20,7 +20,7 @@ import { PrimitiveInventory } from "../components/PrimitiveInventory";
 import { isTokenCategory } from "../components/shell/SideNav";
 import { DEFAULT_ROUTE } from "./AppShell";
 import { useSession } from "../state/SessionProvider";
-import { resolveAssignments } from "../state/pool";
+import { poolTokens, resolveAssignments } from "../state/pool";
 import { effectiveAccentIds } from "../engine/accents";
 import { routeForAddToken, routeForRole } from "./nav";
 
@@ -76,9 +76,9 @@ const FOUNDATION_TYPE: Partial<
 type AddTokenPreset = { tokenType: TokenType; role?: string };
 
 const LAYER_TIPS = {
-  snap: "Everything this capture brought in — assign roles or exclude noise.",
-  primitives: "Named values the system keeps after merges — rename, un-merge, or remove.",
-  roles: "Appendix B semantic slots pointing at primitives.",
+  snap: "Every capture from your snap — merges do not hide members here. Pick primary or which hex a merge keeps; Primitives show the system survivor.",
+  primitives: "Named values the system keeps after merges — rename, change survivor, un-merge, or remove. These export.",
+  roles: "Appendix B semantic slots pointing at primitives — the roles that lead design.md.",
 } as const;
 
 const DEFAULT_OPEN: Record<CategoryLayerId, boolean> = {
@@ -101,9 +101,14 @@ export function TokenCategory() {
     setAnchor,
     assign,
     unassign,
+    addCustomRole,
+    removeCustomRole,
     addManual,
     setName,
     unmerge,
+    setMergeSurvivor,
+    makePrimaryColor,
+    makeSecondaryColor,
     exclude,
     restore,
     removeManual,
@@ -182,6 +187,14 @@ export function TokenCategory() {
     return [...families].sort((a, b) => a.localeCompare(b));
   }, [vm.workingTokens]);
 
+  const snapOfType = useMemo(() => {
+    if (!category || !isTokenCategory(category)) return [];
+    const type = CATEGORY_TOKEN_TYPE[category];
+    return poolTokens(pool).filter(
+      (t) => t.type === type && !t.id.startsWith("derived_"),
+    );
+  }, [pool, category]);
+
   // Legacy routes from the old shell.
   if (category === "anchors" || category === "captured") {
     return <Navigate to={DEFAULT_ROUTE} replace />;
@@ -200,6 +213,10 @@ export function TokenCategory() {
   const workingOfType = vm.workingTokens.filter(
     (t) => t.type === tokenType && !t.id.startsWith("derived_"),
   );
+  const primitivesCount =
+    category === "colors"
+      ? vm.systemTokens.filter((t) => t.type === "color").length
+      : workingOfType.length;
   const excludedOfType = vm.excludedTokens.filter((t) => t.type === tokenType);
   const roleCount = vm.draftFills.filter((f) => {
     if (category === "colors") return f.role.startsWith("color/");
@@ -271,6 +288,7 @@ export function TokenCategory() {
         unmerge(id);
         setToast("Un-merged", { undo: () => undo() });
       }}
+      onSetMergeSurvivor={setMergeSurvivor}
       onExclude={handleExclude}
       onRemoveManual={(id) => {
         removeManual(id);
@@ -338,6 +356,9 @@ export function TokenCategory() {
         userAssignments={userAssignments}
         onEditDerived={handleEditDerived}
         onResetDerived={resetDerivedValue}
+        customRoles={pool.customRoles}
+        onAddCustomRole={addCustomRole}
+        onRemoveCustomRole={removeCustomRole}
       />
       {category === "colors" && vm.gapCount > 0 && (
         <GapPanel
@@ -357,19 +378,21 @@ export function TokenCategory() {
     <>
       {category === "colors" && (
         <CapturedColors
-          tokens={vm.workingTokens}
+          tokens={snapOfType}
+          merges={pool.merges}
           assignments={vm.resolvedAssignments}
           primaryId={vm.anchors.primaryColorId}
           secondaryId={vm.anchors.secondaryColorId}
           accentIds={vm.accentIds}
-          onMakePrimary={(id) => setAnchor({ primaryColorId: id })}
-          onMakeSecondary={(id) => setAnchor({ secondaryColorId: id })}
+          onMakePrimary={makePrimaryColor}
+          onMakeSecondary={makeSecondaryColor}
           onAssign={assign}
           onAddAccent={(id) => {
             const next = [...vm.accentIds];
             if (!next.includes(id)) next.push(id);
             setAccentIds(next);
           }}
+          onSetMergeSurvivor={setMergeSurvivor}
           onExclude={handleExclude}
         />
       )}
@@ -389,6 +412,7 @@ export function TokenCategory() {
           onAssign={assign}
           onExclude={handleExclude}
           emptyLabel={`No ${title.toLowerCase()} in this snap.`}
+          customRoles={pool.customRoles}
         />
       )}
       {excludedStrip}
@@ -409,8 +433,8 @@ export function TokenCategory() {
 
       <CategoryLayerNav
         counts={{
-          "from-snap": workingOfType.length,
-          primitives: workingOfType.length,
+          "from-snap": snapOfType.length,
+          primitives: primitivesCount,
           "system-roles": roleCount,
         }}
         openLayers={layerOpen}

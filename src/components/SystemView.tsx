@@ -12,6 +12,7 @@ import {
 import type { FillInfo, FillOrigin } from "../state/useSessionViewModel";
 import { formatValue } from "../state/workspace";
 import { Button } from "./Button";
+import { SaveAsPrimitiveConfirm } from "./RoleValueEditor";
 
 export type { FillInfo } from "../state/useSessionViewModel";
 
@@ -27,7 +28,7 @@ interface SystemViewProps {
   accentHarmony?: Harmony;
   onAccentHarmony?: (harmony: Harmony) => void;
   onAccentDismiss?: () => void;
-  /** Phase 10 — hand-edit a derived value (dirty-flags it) / reset to derived. */
+  /** Phase 10 — save a role value edit as a new linked primitive (after confirm). */
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
   /** Gap slots jump to the anchors & meaning step. */
@@ -86,6 +87,7 @@ export function SystemView({
   const byId = useMemo(() => new Map(tokens.map((t) => [t.id, t])), [tokens]);
   const [openRole, setOpenRole] = useState<string | null>(null);
   const [editHex, setEditHex] = useState("");
+  const [pending, setPending] = useState<{ role: string; token: StyleSnapToken } | null>(null);
 
   /** role → the token it points at (dropping stale ids defensively). */
   const roleEntries = useMemo(() => {
@@ -245,8 +247,10 @@ export function SystemView({
               size="sm"
               disabled={!HEX_RE.test(editHex)}
               onClick={() => {
-                onEditDerived(role, { ...token, value: editHex.toUpperCase() } as StyleSnapToken);
-                setOpenRole(null);
+                setPending({
+                  role,
+                  token: { ...token, value: editHex.toUpperCase() } as StyleSnapToken,
+                });
               }}
             >
               Save
@@ -529,6 +533,19 @@ export function SystemView({
           </div>
         ) : null;
       })()}
+
+      {pending && onEditDerived && (
+        <SaveAsPrimitiveConfirm
+          role={pending.role}
+          token={pending.token}
+          onAccept={() => {
+            onEditDerived(pending.role, pending.token);
+            setPending(null);
+            setOpenRole(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </section>
   );
 }
