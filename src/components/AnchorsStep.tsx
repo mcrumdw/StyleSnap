@@ -38,6 +38,11 @@ interface AnchorsStepProps {
   secondaryOrigin?: FillOrigin;
   onEditSecondary?: (token: StyleSnapToken) => void;
   onResetSecondary?: () => void;
+  /**
+   * Role → display token (includes derivedEdits). Used so the color-family
+   * strip tracks live role edits (e.g. hover), not only re-derive from primary.
+   */
+  roleDisplayTokens?: Map<string, StyleSnapToken>;
   /** Role corrections (EditRolesPanel) rendered below by the parent. */
   children?: React.ReactNode;
 }
@@ -45,7 +50,7 @@ interface AnchorsStepProps {
 const PRIMARY_ANCHOR_TIP = "Main brand color. Drives buttons, links, and neutrals.";
 const SECONDARY_ANCHOR_TIP = "Second accent. Used for ghost buttons and alternate CTAs.";
 const COLOR_FAMILY_TIP =
-  "Preview of colors built from your primary. Change primary or secondary above to rebuild.";
+  "Preview of your color roles. Edits to hover, text, and other slots update here live.";
 
 const SWATCH_TIPS: Record<string, string> = {
   Primary: "Main actions and links.",
@@ -62,14 +67,27 @@ function swatchTip(label: string, hex: string): string {
 
 const nameOf = (t: StyleSnapToken) => t.name ?? fallbackName(t);
 
+function colorHex(token: StyleSnapToken | undefined): string | undefined {
+  return token?.type === "color" ? token.value : undefined;
+}
+
 function ColorFamilyPreview({
   primaryHex,
   secondaryHex,
   accentHarmony,
+  hoverHex,
+  textHex,
+  surfaceHex,
+  successHex,
 }: {
   primaryHex: string;
   secondaryHex?: string;
   accentHarmony?: Harmony;
+  /** Effective role hexes — when set, beat pure derivation from primary. */
+  hoverHex?: string;
+  textHex?: string;
+  surfaceHex?: string;
+  successHex?: string;
 }) {
   const states = deriveStates(primaryHex);
   const neutrals = deriveNeutrals(primaryHex);
@@ -77,11 +95,11 @@ function ColorFamilyPreview({
 
   const swatches: Array<{ label: string; hex?: string }> = [
     { label: "Primary", hex: primaryHex },
-    { label: "Hover", hex: states.hover },
+    { label: "Hover", hex: hoverHex ?? states.hover },
     { label: "Secondary", hex: secondaryHex },
-    { label: "Text", hex: neutrals.textPrimary },
-    { label: "Surface", hex: neutrals.surfacePage },
-    { label: "Success", hex: feedback.success },
+    { label: "Text", hex: textHex ?? neutrals.textPrimary },
+    { label: "Surface", hex: surfaceHex ?? neutrals.surfacePage },
+    { label: "Success", hex: successHex ?? feedback.success },
   ];
 
   return (
@@ -354,6 +372,7 @@ export function AnchorsStep({
   secondaryOrigin,
   onEditSecondary,
   onResetSecondary,
+  roleDisplayTokens,
   children,
 }: AnchorsStepProps) {
   const [open, setOpen] = useState<null | "primary" | "secondary">(null);
@@ -502,8 +521,16 @@ export function AnchorsStep({
         <div className="rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
           <ColorFamilyPreview
             primaryHex={primary.value}
-            secondaryHex={secondaryDisplay?.type === "color" ? secondaryDisplay.value : undefined}
+            secondaryHex={
+              secondaryDisplay?.type === "color"
+                ? secondaryDisplay.value
+                : colorHex(roleDisplayTokens?.get("color/action/secondary"))
+            }
             accentHarmony={accentHarmony}
+            hoverHex={colorHex(roleDisplayTokens?.get("color/action/primary-hover"))}
+            textHex={colorHex(roleDisplayTokens?.get("color/text/primary"))}
+            surfaceHex={colorHex(roleDisplayTokens?.get("color/surface/page"))}
+            successHex={colorHex(roleDisplayTokens?.get("color/feedback/success"))}
           />
         </div>
       )}

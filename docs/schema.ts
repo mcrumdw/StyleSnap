@@ -1,5 +1,5 @@
 // StyleSnap — Runtime validation schema (zod)
-// The runtime twin of docs/types.ts · schema version 2.0
+// The runtime twin of docs/types.ts · schema version 2.1
 //
 // WHY THIS FILE EXISTS
 // TypeScript types are erased at compile time — types.ts cannot check JSON a
@@ -90,6 +90,16 @@ export const captureStateSchema = z.enum([
   "visited",
 ]);
 
+export const captureLayoutSchema = z.object({
+  display: z.string().min(1),
+  flexDirection: z.string().optional(),
+  justifyContent: z.string().optional(),
+  alignItems: z.string().optional(),
+  gridTemplateColumns: z.string().optional(),
+  maxWidthPx: z.number().finite().optional(),
+  gapPx: z.number().finite().optional(),
+});
+
 export const tokenContextSchema = z.object({
   cssProperty: z.string().optional(),
   element: z.string().optional(),
@@ -97,6 +107,21 @@ export const tokenContextSchema = z.object({
   state: captureStateSchema.optional(),
   selector: z.string().optional(),
   authoredName: z.string().optional(),
+  layout: captureLayoutSchema.optional(),
+});
+
+export const captureMotionHintSchema = z.object({
+  durationMs: z.number().finite(),
+  easing: z.string().min(1),
+  property: z.string().optional(),
+});
+
+export const captureFoundationsSchema = z.object({
+  breakpointsPx: z.array(z.number().finite()).optional(),
+  motion: z.array(captureMotionHintSchema).optional(),
+  zIndex: z.array(z.number().finite()).optional(),
+  contentMaxWidthsPx: z.array(z.number().finite()).optional(),
+  spacingBasePx: z.number().finite().optional(),
 });
 
 // ─────────────────────────────────────────
@@ -181,6 +206,7 @@ export const styleSnapMetaSchema = z.object({
   figmaFile: z.string().optional(), // contract: present when source is "figma" (not enforced — lenient envelope)
   pageUrl: z.string().optional(), //  contract: present when source is "browser-extension" (idem)
   version: z.string(), // any string accepted here; the app warns on mismatch (FR-4), it doesn't reject
+  foundations: captureFoundationsSchema.optional(),
 });
 
 export const styleSnapExportSchema = z.object({
@@ -192,7 +218,7 @@ export const styleSnapExportSchema = z.object({
 // FR-2 / FR-4 helper — paste-zone entry point
 // ─────────────────────────────────────────
 
-export const SCHEMA_VERSION = "2.0";
+export const SCHEMA_VERSION = "2.1";
 
 export type ParseResult =
   | { ok: true; data: StyleSnapExport; versionWarning?: string }

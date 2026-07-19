@@ -2,12 +2,16 @@
 // Single source of truth for all three codebases (Figma Plugin, Webtool, Browser Extension)
 // docs/types.ts
 //
-// Schema version: 2.0
+// Schema version: 2.1
 //
 // This is the RAW CAPTURE / TRANSPORT format. It intentionally only models
 // primitive values + the context needed to derive semantic roles later.
 // Semantic roles ("color.action.primary"), scales, and component definitions
 // are built in the Webtool on top of this data — they do NOT live here.
+//
+// 2.1 (additive): optional meta.foundations (breakpoints / motion / z-index /
+// content widths / spacing base) and optional context.layout for coherent
+// design.md reproduction. 2.0 captures remain valid.
 
 // ─────────────────────────────────────────
 // Token Types
@@ -88,6 +92,17 @@ export type CaptureState =
   | "disabled"
   | "visited";
 
+/** Layout recipe for one captured element — feeds design.md Components / Layout. */
+export interface CaptureLayout {
+  display: string;
+  flexDirection?: string;
+  justifyContent?: string;
+  alignItems?: string;
+  gridTemplateColumns?: string;
+  maxWidthPx?: number;
+  gapPx?: number;
+}
+
 export interface TokenContext {
   cssProperty?: string;   // where the value was used: "background-color" | "color" | "border-color" ...
   element?: string;       // tag name, e.g. "button" | "h1" | "nav"
@@ -99,6 +114,30 @@ export interface TokenContext {
   //   • utility class:        "bg-blue-500" / "text-red-600"
   //   • Figma Variable/Style: "color/action/primary"
   authoredName?: string;
+  /** Optional layout recipe (browser extension v2.1). */
+  layout?: CaptureLayout;
+}
+
+// ─────────────────────────────────────────
+// Page-level foundations (browser scan / meta)
+// ─────────────────────────────────────────
+
+export interface CaptureMotionHint {
+  durationMs: number;
+  easing: string;
+  property?: string;
+}
+
+/**
+ * Optional page-level signals that fill design.md Foundations / Agent rules /
+ * Layout & Motion notes. Absent on Figma captures and on 2.0 browser exports.
+ */
+export interface CaptureFoundations {
+  breakpointsPx?: number[];
+  motion?: CaptureMotionHint[];
+  zIndex?: number[];
+  contentMaxWidthsPx?: number[];
+  spacingBasePx?: number;
 }
 
 // ─────────────────────────────────────────
@@ -182,7 +221,9 @@ export interface StyleSnapMeta {
   exportedAt: string;   // ISO 8601, e.g. "2026-06-28T10:00:00Z"
   figmaFile?: string;   // only present when source is "figma"
   pageUrl?: string;     // only present when source is "browser-extension"
-  version: string;      // schema version, e.g. "2.0"
+  version: string;      // schema version, e.g. "2.1"
+  /** Page-level foundations from a browser scan (schema 2.1+). */
+  foundations?: CaptureFoundations;
 }
 
 export interface StyleSnapExport {
