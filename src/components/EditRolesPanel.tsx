@@ -353,6 +353,23 @@ export function EditRolesPanel({
 
   const previewContext = useMemo(() => buildPreviewContext(roleEntries), [roleEntries]);
 
+  // Provenance summary for the visible category: how many role values come
+  // straight from the design vs. were added by StyleSnap to complete it.
+  const provenance = useMemo(() => {
+    let captured = 0;
+    let added = 0;
+    let edited = 0;
+    for (const [role, token] of roleEntries) {
+      if (rolePrefix && !role.startsWith(rolePrefix)) continue;
+      const origin =
+        fills[role]?.origin ?? (token.id.startsWith("derived_") ? "derived" : "assigned");
+      if (origin === "derived") added += 1;
+      else if (origin === "edited") edited += 1;
+      else captured += 1;
+    }
+    return { captured, added, edited };
+  }, [roleEntries, fills, rolePrefix]);
+
   const rowId = (role: string) => `role-${role.replace(/\//g, "-")}`;
 
   const filledRow = (role: string, token: StyleSnapToken) => {
@@ -443,6 +460,19 @@ export function EditRolesPanel({
         <p className="text-caption text-text-muted">
           Assign meaning to your primitives — one primitive can fill several roles.
         </p>
+        {provenance.captured + provenance.added + provenance.edited > 0 && (
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-badge">
+            <span className="text-success-text">{provenance.captured} from your design</span>
+            <span className="text-text-muted">·</span>
+            <span className="text-text-primary">{provenance.added} added</span>
+            {provenance.edited > 0 && (
+              <>
+                <span className="text-text-muted">·</span>
+                <span className="text-brand-primary">{provenance.edited} edited</span>
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       {show("color/") && (

@@ -290,17 +290,29 @@ export function RoleFilledRow({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-2 self-center px-4">
+          {(origin === "captured" || origin === "assigned") && (
+            <span
+              className="rounded-sm border-2 border-success px-1.5 py-0.5 font-mono text-badge font-medium text-success-text"
+              title="Captured from your design — a real value from your capture"
+            >
+              your design
+            </span>
+          )}
           {origin === "derived" && (
-            <span className="rounded-sm border border-border-default bg-surface-page px-1.5 py-0.5 font-mono text-badge text-text-muted">
-              auto
+            <span
+              className="rounded-sm border-2 border-border-default bg-brand-pop px-1.5 py-0.5 font-mono text-badge font-medium text-text-primary"
+              title="Added by StyleSnap to complete the system — click for the story"
+            >
+              added
             </span>
           )}
           {origin === "edited" && (
             <span
-              className="h-2 w-2 rounded-full bg-brand-primary"
+              className="rounded-sm border-2 border-brand-primary px-1.5 py-0.5 font-mono text-badge font-medium text-brand-primary"
               title="You edited this value"
-              aria-label="edited by you"
-            />
+            >
+              edited
+            </span>
           )}
           {onUnassign && (
             <button
