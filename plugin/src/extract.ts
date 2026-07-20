@@ -78,8 +78,17 @@ interface TextSegment {
   textStyleId: string;
 }
 
+// Figma occasionally reports fontWeight 0 (e.g. some variable fonts) — not a
+// valid design-token weight, which the shared schema pins to 100–900. Fall back
+// to regular for anything below 100; clamp the top end.
+function normalizeWeight(w: number): number {
+  if (!Number.isFinite(w) || w < 100) return 400;
+  return Math.min(900, Math.round(w));
+}
+
 function segmentToTypography(seg: TextSegment): TypographyValue {
-  const fontSize = seg.fontSize;
+  const rawSize = seg.fontSize;
+  const fontSize = round2(rawSize); // Figma yields floats like 14.3999 after scaling
 
   // Normalize Figma lineHeight to a unitless ratio.
   const lh = seg.lineHeight;
@@ -87,13 +96,13 @@ function segmentToTypography(seg: TextSegment): TypographyValue {
     lh.unit === "PERCENT"
       ? round2(lh.value / 100)
       : lh.unit === "PIXELS"
-        ? round2(lh.value / fontSize)
+        ? round2(lh.value / rawSize)
         : 1.2; // AUTO — Figma's default is ~1.2
 
   const value: TypographyValue = {
     fontFamily: seg.fontName.family,
     fontSize,
-    fontWeight: seg.fontWeight,
+    fontWeight: normalizeWeight(seg.fontWeight),
     lineHeight,
   };
 
