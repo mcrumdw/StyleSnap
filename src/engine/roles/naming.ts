@@ -3,6 +3,9 @@
 // unnamed tokens export with a generated, deterministic fallback.
 
 import type { StyleSnapToken } from "../../contract/types";
+import { backdropBlurPx, isBackdropBlurToken } from "../effect-kinds";
+
+export type EffectNameKind = "drop" | "inset" | "backdrop-blur";
 
 // Segments: lowercase letters/digits, hyphen-joined; at least two segments
 // (primitives live under a type prefix: "color/brand-indigo").
@@ -49,6 +52,9 @@ export function fallbackName(token: StyleSnapToken): string {
     case "border-width":
       return `border-width/${token.value}`;
     case "shadow": {
+      if (isBackdropBlurToken(token)) {
+        return `effect/backdrop-blur-${backdropBlurPx(token)}`;
+      }
       const l = token.value[0];
       const n = (v: number) => (v < 0 ? `n${-v}` : `${v}`); // negatives stay slug-safe
       return `shadow/${n(l.offsetX)}-${n(l.offsetY)}-${n(l.blur)}-${n(l.spread)}`;
@@ -60,7 +66,11 @@ export function fallbackName(token: StyleSnapToken): string {
  * Example slash name for rename / add-token placeholders — type-matched so a
  * font row never suggests `color/brand-blue`.
  */
-export function namePlaceholder(tokenType: StyleSnapToken["type"]): string {
+/** Example slash name — never a taxonomy role id (e.g. shadow/md is a role, not a primitive). */
+export function namePlaceholder(
+  tokenType: StyleSnapToken["type"],
+  options?: { effectKind?: EffectNameKind },
+): string {
   switch (tokenType) {
     case "color":
       return "color/brand-blue";
@@ -75,6 +85,8 @@ export function namePlaceholder(tokenType: StyleSnapToken["type"]): string {
     case "border-width":
       return "border-width/default";
     case "shadow":
-      return "shadow/md";
+      if (options?.effectKind === "backdrop-blur") return "effect/backdrop-blur";
+      if (options?.effectKind === "inset") return "shadow/inset-depth";
+      return "shadow/card-elevation";
   }
 }

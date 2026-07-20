@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "source": "browser-extension",
+    "exportedAt": "2026-07-19T15:00:00Z",
+    "pageUrl": "https://example.com/app",
+    "version": "2.1",
+    "foundations": {
+      "breakpointsPx": [640, 768, 1024, 1280],
+      "motion": [
+        { "durationMs": 150, "easing": "ease-out", "property": "background-color" },
+        { "durationMs": 200, "easing": "ease", "property": "transform" }
+      ],
+      "zIndex": [10, 40, 50, 60],
+      "contentMaxWidthsPx": [720, 1200],
+      "spacingBasePx": 4
+    }
+  },
+  "tokens": [
+    {
+      "id": "ext_001",
+      "captureId": "cap-1",
+      "source": "button.btn-primary",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "background-color",
+        "element": "button",
+        "ariaRole": "button",
+        "state": "default",
+        "selector": ".btn-primary",
+        "authoredName": "--color-primary",
+        "layout": {
+          "display": "inline-flex",
+          "alignItems": "center",
+          "gapPx": 8
+        }
+      },
+      "type": "color",
+      "value": "#5B2EFF",
+      "opacity": 1
+    },
+    {
+      "id": "ext_002",
+      "captureId": "cap-1",
+      "source": "button.btn-primary",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "background-color",
+        "element": "button",
+        "ariaRole": "button",
+        "state": "hover",
+        "selector": ".btn-primary",
+        "authoredName": "--color-primary"
+      },
+      "type": "color",
+      "value": "#4A21E0",
+      "opacity": 1
+    },
+    {
+      "id": "ext_003",
+      "captureId": "cap-1",
+      "source": "button.btn-primary",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "outline-color",
+        "element": "button",
+        "ariaRole": "button",
+        "state": "focus",
+        "selector": ".btn-primary"
+      },
+      "type": "color",
+      "value": "#5B2EFF",
+      "opacity": 1
+    },
+    {
+      "id": "ext_004",
+      "captureId": "cap-1",
+      "source": "button.btn-primary",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-radius",
+        "element": "button",
+        "selector": ".btn-primary",
+        "state": "default",
+        "layout": {
+          "display": "inline-flex",
+          "alignItems": "center",
+          "gapPx": 8
+        }
+      },
+      "type": "border-radius",
+      "value": 14
+    },
+    {
+      "id": "ext_005",
+      "captureId": "cap-1",
+      "source": "button.btn-primary",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "padding",
+        "element": "button",
+        "selector": ".btn-primary",
+        "state": "default"
+      },
+      "type": "spacing",
+      "value": 16
+    },
+    {
+      "id": "ext_006",
+      "captureId": "cap-1",
+      "source": "button.btn-primary",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "gap",
+        "element": "button",
+        "selector": ".btn-primary",
+        "state": "default"
+      },
+      "type": "spacing",
+      "value": 8
+    },
+    {
+      "id": "ext_007",
+      "captureId": "cap-2",
+      "source": "div.card",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "background-color",
+        "element": "div",
+        "selector": ".card",
+        "state": "default",
+        "layout": {
+          "display": "flex",
+          "flexDirection": "column",
+          "gapPx": 16,
+          "maxWidthPx": 720
+        }
+      },
+      "type": "color",
+      "value": "#FFFFFF",
+      "opacity": 1
+    },
+    {
+      "id": "ext_008",
+      "captureId": "cap-2",
+      "source": "div.card",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "padding",
+        "element": "div",
+        "selector": ".card",
+        "state": "default"
+      },
+      "type": "spacing",
+      "value": 24
+    },
+    {
+      "id": "ext_009",
+      "captureId": "cap-2",
+      "source": "div.card",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "box-shadow",
+        "element": "div",
+        "selector": ".card",
+        "state": "default"
+      },
+      "type": "shadow",
+      "value": [
+        {
+          "inset": false,
+          "offsetX": 4,
+          "offsetY": 4,
+          "blur": 0,
+          "spread": 0,
+          "color": "#14121F",
+          "opacity": 1
+        }
+      ]
+    },
+    {
+      "id": "ext_010",
+      "captureId": "cap-2",
+      "source": "div.card",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-radius",
+        "element": "div",
+        "selector": ".card",
+        "state": "default"
+      },
+      "type": "border-radius",
+      "value": 14
+    }
+  ]
+}

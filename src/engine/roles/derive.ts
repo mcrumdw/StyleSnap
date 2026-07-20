@@ -20,6 +20,7 @@
 // without human confirmation (FR-16).
 
 import type { ShadowToken, StyleSnapToken, TokenContext } from "../../contract/types";
+import { isBackdropBlurToken } from "../effect-kinds";
 import {
   BORDER_WIDTH_SLOTS,
   isValidRole,
@@ -168,9 +169,14 @@ function contextRule(token: StyleSnapToken, ctx: TokenContext): ContextHint | un
   const element = ctx.element?.toLowerCase();
 
   if (token.type === "color") {
-    // State beats everything: a hover/active capture is a state shade.
+    // State beats everything: a hover/active/focus/disabled capture is a state shade.
     if (ctx.state === "hover") return { role: "color/action/primary-hover" };
     if (ctx.state === "active") return { role: "color/action/primary-active" };
+    if (ctx.state === "focus" && ctx.cssProperty === "outline-color") {
+      return { role: "color/border/focus" };
+    }
+    if (ctx.state === "focus") return { role: "color/border/focus" };
+    if (ctx.state === "disabled") return { role: "color/text/muted", fallback: true };
     if (ctx.ariaRole === "alert") return { role: "color/feedback/error" };
     if (ctx.ariaRole === "status") return { role: "color/feedback/success" };
     if (ctx.ariaRole === "note") return { role: "color/feedback/info" };
@@ -206,6 +212,8 @@ function contextRule(token: StyleSnapToken, ctx: TokenContext): ContextHint | un
         return { role: "color/surface/card", fallback: true };
       case "border-color":
         return { role: "color/border/default" };
+      case "outline-color":
+        return { role: "color/border/focus" };
       case "color":
         if (element === "a") return { role: "color/text/link" };
         if (element !== undefined && HEADING_ELEMENTS.has(element)) {
@@ -289,7 +297,9 @@ function assignShadowSlots(
   addHint: AddHint,
 ): void {
   const slots = SHADOW_SLOTS.map((s) => s.role);
-  const group = tokens.filter((t): t is ShadowToken => t.type === "shadow");
+  const group = tokens.filter(
+    (t): t is ShadowToken => t.type === "shadow" && !isBackdropBlurToken(t),
+  );
   const unassigned = group.filter((t) => !hasHints(t.id));
   const sizes = [...new Set(unassigned.map(shadowSize))].sort((a, b) => a - b);
   if (sizes.length === 0 || sizes.length > slots.length) return;

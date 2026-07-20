@@ -11,6 +11,7 @@
 //                 that every export must flag (FR-27).
 
 import type { StyleSnapToken, TokenType } from "../../contract/types";
+import type { CaptureFoundations } from "../../contract/types";
 import { COLOR_ROLES, roleDefinition } from "../roles/taxonomy";
 
 export interface ChecklistItem {
@@ -45,6 +46,8 @@ export function computeChecklist(
   tokens: StyleSnapToken[],
   /** Phase 8 — role → token id (the pool's `assignments`, merge-resolved). */
   assignments: ReadonlyMap<string, string>,
+  /** Schema 2.1 — page foundations from browser scan; clears permanent gaps when present. */
+  foundations?: CaptureFoundations | null,
 ): Checklist {
   const assigned = new Set(assignments.keys());
   const assignedTokenIds = new Set(assignments.values());
@@ -173,14 +176,32 @@ export function computeChecklist(
     });
   }
 
-  // Never capturable — always flagged, resolved manually (FR-27 in exports).
-  items.push({
-    id: "manual-foundations",
-    severity: "info",
-    status: "gap",
-    label: "Breakpoints · motion/easing · z-index",
-    description: "Not capturable — add these by hand. Flagged in every export.",
-  });
+  // Page foundations — permanent gap only for what's still missing (FR-27).
+  const missingFoundation: string[] = [];
+  if (!foundations?.breakpointsPx?.length) missingFoundation.push("breakpoints");
+  if (!foundations?.zIndex?.length) missingFoundation.push("z-index");
+  // Motion can live in System notes or foundations.motion — still flag if neither path filled later.
+  if (!foundations?.motion?.length) missingFoundation.push("motion/easing");
+  if (missingFoundation.length > 0) {
+    items.push({
+      id: "manual-foundations",
+      severity: "info",
+      status: "gap",
+      label: missingFoundation.join(" · "),
+      description:
+        foundations && Object.keys(foundations).length > 0
+          ? `Still undefined: ${missingFoundation.join(", ")}. Add by hand or re-scan the page.`
+          : "Not capturable from this session — add these by hand, or Scan page in the extension.",
+    });
+  } else {
+    items.push({
+      id: "manual-foundations",
+      severity: "info",
+      status: "met",
+      label: "Breakpoints · motion/easing · z-index",
+      description: "Captured via page foundations scan.",
+    });
+  }
 
   const required = items.filter((i) => i.severity === "required");
   const requiredMet = required.filter((i) => i.status === "met").length;

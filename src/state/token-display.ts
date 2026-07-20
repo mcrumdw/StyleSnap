@@ -215,7 +215,7 @@ export function humanValueLabel(token: StyleSnapToken, role?: string): string {
     case "typography": {
       const v = token.value;
       const style = v.fontStyle === "italic" ? " italic" : "";
-      return `${v.fontSize}px ${v.fontFamily}${style} · weight ${v.fontWeight}`;
+      return `${Math.round(v.fontSize)}px ${v.fontFamily}${style} · weight ${v.fontWeight}`;
     }
     case "spacing":
       return `${token.value}px gap or padding`;

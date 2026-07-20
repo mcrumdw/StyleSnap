@@ -30,6 +30,7 @@ import {
   type ShadowStyle,
 } from "./ramps";
 import { scaleRadius, type StyleProfile } from "../style-profile";
+import { isBackdropBlurToken } from "../effect-kinds";
 import { deriveRoleCandidates } from "../roles";
 
 export type { AccentSuggestion, Harmony } from "./color";
@@ -160,9 +161,10 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     accent = deriveAccent(primary.value, capturedHexes);
 
     const harmonySuggestion = harmonyFromPrimary(primary.value);
-    const secondaryAnchor = anchors.secondaryColorId
-      ? byId.get(anchors.secondaryColorId)
-      : undefined;
+    // Opt-in only (§2.38 / §2.41): never fill from auto-detected secondary.
+    // User must set accentHarmony or explicitly override secondaryColorId.
+    const userSecondaryId = input.overrides?.secondaryColorId;
+    const secondaryAnchor = userSecondaryId ? byId.get(userSecondaryId) : undefined;
     const explicitHarmony = input.accentHarmony;
     if (
       secondaryAnchor &&
@@ -176,8 +178,6 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
         "anchor (your secondary color)",
       );
     } else if (explicitHarmony !== undefined) {
-      // Opt-in only: no auto-synthetic secondary when nothing was captured
-      // (DECISIONS §2.38). User presses "Use secondary color" → harmony set.
       const secondaryBase = harmonySuggestion.candidates[explicitHarmony];
       fill(
         "color/action/secondary",
@@ -320,7 +320,10 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   }
 
   const shadows = tokens
-    .filter((t): t is StyleSnapToken & { type: "shadow" } => t.type === "shadow")
+    .filter(
+      (t): t is StyleSnapToken & { type: "shadow" } =>
+        t.type === "shadow" && !isBackdropBlurToken(t),
+    )
     .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
   const inkHex = primary ? deriveNeutrals((primary as { value: string }).value).textPrimary : "#111111";
   const shadowSeed =

@@ -212,7 +212,7 @@ describe("version mismatch (FR-4)", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.versionWarning).toContain("v1.0");
-      expect(result.versionWarning).toContain("v2.0");
+      expect(result.versionWarning).toContain("v2.1");
     }
   });
 });

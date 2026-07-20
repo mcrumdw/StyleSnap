@@ -66,7 +66,7 @@ interface NormalizedType {
 export function normalizeTypography(v: TypographyValue): NormalizedType {
   return {
     family: (v.fontStack?.[0] ?? v.fontFamily).toLowerCase().replace(/["']/g, "").trim(),
-    size: Math.round(v.fontSize * 2) / 2, // 0.5px steps
+    size: Math.round(v.fontSize),
     weight: v.fontWeight,
     style: v.fontStyle ?? "normal",
     letterSpacing: v.letterSpacing ?? 0,

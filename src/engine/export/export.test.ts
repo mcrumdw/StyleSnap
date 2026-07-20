@@ -65,7 +65,7 @@ describe("design.md export (FR-24) — the oracle", () => {
 
   it("header states the token accounting and both captures", () => {
     // 27 reviewed + 8 derived synthetics (active, focus, feedback ×3, link,
-    // subheading, mono, shadow/lg) = 35 — secondary uses captured anchor.
+    // subheading, mono, shadow/lg) = 35 — secondary stays empty until opt-in.
     expect(md).toContain("40 raw tokens → 35 reviewed tokens (7 merges)");
     expect(md).toContain("`lumen.app` (browser extension)");
     expect(md).toContain("`Lumen Design v3` (Figma)");
@@ -87,7 +87,8 @@ describe("design.md export (FR-24) — the oracle", () => {
     expectRow("color/surface/page", "color/gray-50", "#F9FAFB");
     expectRow("color/text/muted", "color/gray-500", "#667085");
     expectRow("color/text/primary", "color/ink", "#101828");
-    expectRow("color/action/secondary", "color/red-600", "#D92D20");
+    // Secondary is opt-in (§2.41) — not filled by derivation alone.
+    expect(md.split("\n").find((l) => l.startsWith("| `color/action/secondary` |"))).toBeUndefined();
   });
 
   it("renders the Figma scrim as ink @ 50%, distinct from text/primary", () => {
@@ -153,7 +154,6 @@ describe("design.md export (FR-24) — the oracle", () => {
     // Derivation filled these — they must be GONE from §Gaps (FR-19).
     for (const cleared of [
       "`color/text/link`",
-      "`color/action/secondary`",
       "`type/mono`",
       "`color/action/primary-active`",
       "`color/border/focus`",
@@ -164,8 +164,10 @@ describe("design.md export (FR-24) — the oracle", () => {
     ]) {
       expect(gapsSection).not.toContain(cleared);
     }
-    // Notes gaps + never-capturable foundations only.
-    expect(gapsSection.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(4);
+    // Secondary remains a recommended gap until the user opts in (§2.41).
+    expect(gapsSection).toContain("`color/action/secondary`");
+    // Notes gaps + never-capturable foundations + secondary.
+    expect(gapsSection.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(5);
   });
 
   it("derived values carry derivation provenance in the role tables (Phase 10)", () => {
@@ -207,7 +209,6 @@ describe("design.md export (FR-24) — the oracle", () => {
       "| white on `color/action/primary` | 4.5:1 | ✅ (no margin — avoid small text) |",
       "| white on `color/action/primary-hover` | 6.4:1 | ✅ |",
       "| white on `color/action/primary-active` | 7.6:1 | ✅ |",
-      "| white on `color/action/secondary` | 4.8:1 | ✅ |",
       "| white on `color/feedback/success` | 4.5:1 | ✅ (no margin — avoid small text) |",
       "| white on `color/feedback/warning` | 4.6:1 | ✅ |",
       "| white on `color/feedback/error` | 4.8:1 | ✅ |",
@@ -359,7 +360,7 @@ describe("cleaned JSON export (FR-25)", () => {
     ));
     // Colors with roles come before role-less primitives, sorted by role.
     expect(cleaned.tokens[0].id).toBe("ext_001"); // color/action/primary
-    expect(cleaned.gaps.length).toBe(4);
+    expect(cleaned.gaps.length).toBe(5);
   });
 
   it("carries the filled System notes and round-trips them (Phase 9b)", () => {

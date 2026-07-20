@@ -59,4 +59,14 @@ describe("backdrop blur effect kind", () => {
     expect(humanValueLabel(blurToken)).toBe("Backdrop blur 16px");
     expect(formatValue(dropToken)).toContain("0 4 8");
   });
+
+  it("detects backdrop blur from encoding when markers were stripped", () => {
+    const stripped: StyleSnapToken = {
+      ...blurToken,
+      source: "manual entry",
+      context: undefined,
+    };
+    expect(isBackdropBlurToken(stripped)).toBe(true);
+    expect(humanValueLabel(stripped)).toBe("Backdrop blur 16px");
+  });
 });

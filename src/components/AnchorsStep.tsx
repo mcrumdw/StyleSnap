@@ -147,6 +147,9 @@ function ColorAnchorCard({
   open,
   onToggle,
   picker,
+  inactive,
+  onActivate,
+  activateLabel = "Add secondary",
 }: {
   anchorRole: string;
   token?: StyleSnapToken & { type: "color"; value: string };
@@ -156,7 +159,40 @@ function ColorAnchorCard({
   open: boolean;
   onToggle: () => void;
   picker: React.ReactNode;
+  /** Greyed placeholder — not part of the system until the user activates. */
+  inactive?: boolean;
+  onActivate?: () => void;
+  activateLabel?: string;
 }) {
+  if (inactive) {
+    return (
+      <div className="relative flex w-full min-w-0 flex-col">
+        <div
+          className="pointer-events-none box-content flex h-[5.5rem] w-full min-w-0 items-stretch overflow-hidden rounded-md border-2 border-border-default bg-surface-card opacity-40 shadow-card grayscale"
+          aria-hidden
+        >
+          <div className="flex h-full w-16 shrink-0 self-stretch border-r-2 border-border-default bg-surface-page sm:w-[5.5rem]" />
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2">
+            <span className="truncate font-mono text-caption font-medium text-brand-primary">{anchorRole}</span>
+            <span className="text-caption text-text-muted">Optional — not in your system yet</span>
+          </div>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center rounded-md bg-surface-page/70">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onActivate}
+            disabled={!onActivate}
+            title={tip}
+          >
+            {activateLabel}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex w-full min-w-0 flex-col gap-3">
       <div className="box-content flex h-[5.5rem] w-full min-w-0 items-stretch overflow-hidden rounded-md border-2 border-border-default bg-surface-card shadow-card">
@@ -386,18 +422,13 @@ export function AnchorsStep({
       t.type === "color" && t.opacity === 1 && !t.id.startsWith("derived_") && !isNeutral(t.value),
   );
 
-  /** Instantiated: captured anchor, explicit harmony opt-in, or a fill/edit. */
-  const secondaryActive =
-    Boolean(capturedSecondary && accentHarmony === undefined) ||
-    accentHarmony !== undefined ||
-    secondaryToken !== undefined;
+  /** Instantiated only after the user opts in (harmony or explicit secondary pick). */
+  const secondaryActive = accentHarmony !== undefined || secondaryToken !== undefined;
 
   const secondaryDisplay =
     secondaryToken?.type === "color"
       ? secondaryToken
-      : capturedSecondary?.type === "color" && accentHarmony === undefined
-        ? capturedSecondary
-        : undefined;
+      : undefined;
 
   const secondarySummaryLabel = (() => {
     if (!secondaryDisplay || secondaryDisplay.type !== "color") return null;
@@ -416,40 +447,35 @@ export function AnchorsStep({
   })();
 
   const enableSecondary = () => {
-    if (!primary || primary.type !== "color" || !onAccentHarmony) return;
-    onAccentHarmony(harmonyFromPrimary(primary.value).suggested);
+    if (!primary || primary.type !== "color") return;
+    // Prefer a distinct captured hue when present; otherwise suggested harmony.
+    if (capturedSecondary?.type === "color") {
+      onSetAnchor({ secondaryColorId: capturedSecondary.id });
+    } else if (onAccentHarmony) {
+      onAccentHarmony(harmonyFromPrimary(primary.value).suggested);
+    }
+    setOpen("secondary");
   };
 
   const secondaryPicker =
     primary && primary.type === "color" ? (
-      secondaryActive ? (
-        <SecondaryHarmonyPicker
-          primaryHex={primary.value}
-          accentHarmony={accentHarmony}
-          secondaryToken={secondaryToken}
-          secondaryOrigin={secondaryOrigin}
-          capturedSecondary={
-            capturedSecondary?.type === "color" ? capturedSecondary : undefined
-          }
-          onAccentHarmony={(harmony) => {
-            onAccentHarmony?.(harmony);
-          }}
-          onEditSecondary={onEditSecondary}
-          onResetSecondary={onResetSecondary}
-          onUseCaptured={() => {
-            if (capturedSecondary) onSetAnchor({ secondaryColorId: capturedSecondary.id });
-          }}
-        />
-      ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-caption text-text-muted">
-            No secondary in this snap. Generate one from primary, then fine-tune if you want.
-          </p>
-          <Button type="button" size="sm" onClick={enableSecondary}>
-            Use secondary color
-          </Button>
-        </div>
-      )
+      <SecondaryHarmonyPicker
+        primaryHex={primary.value}
+        accentHarmony={accentHarmony}
+        secondaryToken={secondaryToken}
+        secondaryOrigin={secondaryOrigin}
+        capturedSecondary={
+          capturedSecondary?.type === "color" ? capturedSecondary : undefined
+        }
+        onAccentHarmony={(harmony) => {
+          onAccentHarmony?.(harmony);
+        }}
+        onEditSecondary={onEditSecondary}
+        onResetSecondary={onResetSecondary}
+        onUseCaptured={() => {
+          if (capturedSecondary) onSetAnchor({ secondaryColorId: capturedSecondary.id });
+        }}
+      />
     ) : (
       <p className="text-caption text-text-muted">Set a primary color first.</p>
     );
@@ -514,13 +540,18 @@ export function AnchorsStep({
           open={open === "secondary"}
           onToggle={() => setOpen(open === "secondary" ? null : "secondary")}
           picker={secondaryPicker}
+          inactive={!secondaryActive}
+          onActivate={primary?.type === "color" ? enableSecondary : undefined}
+          activateLabel="Add secondary"
         />
       </div>
 
       {primary && primary.type === "color" && (
         <div className="rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
           <ColorFamilyPreview
-            primaryHex={primary.value}
+            primaryHex={
+              colorHex(roleDisplayTokens?.get("color/action/primary")) ?? primary.value
+            }
             secondaryHex={
               secondaryDisplay?.type === "color"
                 ? secondaryDisplay.value

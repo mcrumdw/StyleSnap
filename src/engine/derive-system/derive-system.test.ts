@@ -129,7 +129,7 @@ describe("type scale (C.6) and ramps (C.7)", () => {
     expect(size("type/caption")).toBe(13);
     expect(size("type/subheading")).toBe(20);
     expect(size("type/heading")).toBe(25);
-    expect(size("type/display")).toBe(31.5);
+    expect(size("type/display")).toBe(31);
     // One font → every non-body slot is DERIVED from it, nothing captured.
     for (const role of ["type/caption", "type/subheading", "type/heading", "type/display"]) {
       expect(fillValue(r, role).token.id.startsWith("derived_")).toBe(true);
@@ -292,9 +292,18 @@ describe("thin capture → complete system (the point of it all)", () => {
     expect(fillValue(withHarmony, "color/action/secondary").method).toContain("analogous");
   });
 
-  it("uses secondary anchor when a distinct hue is detected", () => {
-    const r = derive(fixtureTokens("capture-ember-app.json"));
-    const secondary = fillValue(r, "color/action/secondary");
+  it("does not fill secondary from auto-detected hue until user override", () => {
+    const tokens = fixtureTokens("capture-ember-app.json");
+    const auto = derive(tokens);
+    expect(auto.anchors.secondaryColorId).toBe("ext_em_12");
+    expect(auto.fills.some((f) => f.role === "color/action/secondary")).toBe(false);
+
+    const opted = deriveSystem({
+      tokens,
+      assignments: new Map(),
+      overrides: { secondaryColorId: "ext_em_12" },
+    });
+    const secondary = fillValue(opted, "color/action/secondary");
     expect(secondary.token.id).toBe("ext_em_12");
     expect(secondary.method).toContain("secondary");
   });
@@ -312,10 +321,10 @@ describe("thin capture → complete system (the point of it all)", () => {
     );
   });
 
-  it("accentHarmony overrides auto-detected secondary anchor", () => {
+  it("accentHarmony fills secondary even when a distinct hue was auto-detected", () => {
     const tokens = fixtureTokens("capture-ember-app.json");
-    const anchored = derive(fixtureTokens("capture-ember-app.json"));
-    expect(fillValue(anchored, "color/action/secondary").token.id).toBe("ext_em_12");
+    const anchored = derive(tokens);
+    expect(anchored.fills.some((f) => f.role === "color/action/secondary")).toBe(false);
 
     const withHarmony = deriveSystem({
       tokens,

@@ -2,6 +2,7 @@
 // group, reconstructed from RAW tokens so a member whose value merged into
 // another group still contributes its role (the oracle's Card radius lives on
 // a Figma survivor). Anatomy beyond what was captured is never invented.
+// Schema 2.1: padding/margin sides, hover/focus, layout recipes.
 
 import type { StyleSnapToken } from "../../contract/types";
 import { fallbackName, roleOrderIndex } from "../roles";
@@ -16,8 +17,10 @@ const PART_ORDER = [
   "radius",
   "shadow",
   "hover →",
+  "focus →",
   "inner gap",
   "padding",
+  "layout",
   "title",
 ] as const;
 type PartLabel = (typeof PART_ORDER)[number];
@@ -37,8 +40,11 @@ function partLabel(raw: StyleSnapToken): PartLabel | undefined {
   switch (raw.type) {
     case "color":
       if (css === "background-color") {
-        return raw.context?.state === "hover" ? "hover →" : "bg";
+        if (raw.context?.state === "hover") return "hover →";
+        if (raw.context?.state === "focus") return "focus →";
+        return "bg";
       }
+      if (css === "outline-color") return "focus →";
       return css === "border-color" ? "border" : undefined;
     case "gradient":
       return css === "background-image" || css === undefined ? "bg" : undefined;
@@ -47,15 +53,38 @@ function partLabel(raw: StyleSnapToken): PartLabel | undefined {
         ? "title"
         : undefined;
     case "spacing":
-      if (css === "gap") return "inner gap";
-      return css === "padding" || css === "margin" ? "padding" : undefined;
+      if (css === "gap" || css === "row-gap" || css === "column-gap") return "inner gap";
+      if (
+        css === "padding" ||
+        css === "margin" ||
+        css?.startsWith("padding-") ||
+        css?.startsWith("margin-")
+      ) {
+        return "padding";
+      }
+      return undefined;
     case "border-radius":
       return "radius";
     case "border-width":
-      return "border";
+      return css === "outline-width" ? "focus →" : "border";
     case "shadow":
       return "shadow";
   }
+}
+
+function layoutPhrase(raw: StyleSnapToken): string | undefined {
+  const layout = raw.context?.layout;
+  if (!layout) return undefined;
+  const bits: string[] = [layout.display];
+  if (layout.flexDirection && layout.flexDirection !== "row") {
+    bits.push(layout.flexDirection);
+  }
+  if (layout.gapPx !== undefined) bits.push(`gap ${layout.gapPx}px`);
+  if (layout.maxWidthPx !== undefined) bits.push(`max-width ${layout.maxWidthPx}px`);
+  if (layout.alignItems && layout.alignItems !== "normal" && layout.alignItems !== "stretch") {
+    bits.push(`align ${layout.alignItems}`);
+  }
+  return bits.join(" ");
 }
 
 export interface SketchLine {
@@ -66,14 +95,12 @@ export interface SketchLine {
 }
 
 export function componentSketches(input: ExportInput): SketchLine[] {
-  // Merge view: raw id → surviving reviewed token.
   const reviewedById = new Map(input.tokens.map((t) => [t.id, t]));
   const survivorOf = new Map<string, StyleSnapToken>();
   for (const token of input.tokens) {
     survivorOf.set(token.id, token);
     for (const id of token.mergedFrom ?? []) survivorOf.set(id, token);
   }
-  // Reverse assignments: token id → its roles, taxonomy order.
   const rolesOf = new Map<string, string[]>();
   for (const [role, tokenId] of input.assignments) {
     rolesOf.set(tokenId, [...(rolesOf.get(tokenId) ?? []), role]);
@@ -82,8 +109,6 @@ export function componentSketches(input: ExportInput): SketchLine[] {
     roles.sort((a, b) => roleOrderIndex(a) - roleOrderIndex(b) || byString(a, b));
   }
 
-  // Group RAW tokens by captureId. Groups sort by their first RENDERABLE
-  // member (the oracle's Hero starts at its gradient, not its text color).
   const rawInOrder = [...input.rawById.values()];
   const rawIndex = new Map(rawInOrder.map((t, i) => [t.id, i]));
   const groups = new Map<string, StyleSnapToken[]>();
@@ -93,8 +118,6 @@ export function componentSketches(input: ExportInput): SketchLine[] {
 
   const lines: SketchLine[] = [];
   for (const [captureId, members] of groups) {
-    // Anchor: a CSS selector, or a non-scaffold element — style-sheet-level
-    // Figma captures (text styles, layout tokens) sketch nothing themselves.
     const anchors = members.filter(
       (m) =>
         m.context?.selector !== undefined ||
@@ -102,8 +125,6 @@ export function componentSketches(input: ExportInput): SketchLine[] {
     );
     if (anchors.length === 0) continue;
 
-    // Renderable members: anatomy-labelled AND role-assigned (or named — the
-    // hero gradient has a user name but no role slot to point at).
     const parts = new Map<PartLabel, string[]>();
     const contributors: StyleSnapToken[] = [];
     let assignedCount = 0;
@@ -120,7 +141,7 @@ export function componentSketches(input: ExportInput): SketchLine[] {
         assignedCount++;
       } else {
         const name = input.names.get(survivor.id) ?? survivor.name;
-        if (!name) continue; // unnamed + unassigned — surfaces in §Gaps instead
+        if (!name) continue;
         ref = `\`${name}\``;
       }
       contributors.push(raw);
@@ -128,12 +149,18 @@ export function componentSketches(input: ExportInput): SketchLine[] {
       const refs = parts.get(label) ?? [];
       if (!refs.includes(ref)) parts.set(label, [...refs, ref]);
     }
+
+    // Layout phrase from any member that carried a layout recipe.
+    for (const raw of members) {
+      const phrase = layoutPhrase(raw);
+      if (!phrase) continue;
+      const refs = parts.get("layout") ?? [];
+      if (!refs.includes(phrase)) parts.set("layout", [...refs, phrase]);
+      break;
+    }
+
     if (assignedCount < 2) continue;
 
-    // Descriptor from the CONTRIBUTING members only (a member whose survivor
-    // absorbed a token from another group must not leak that group's Figma
-    // layer): base selector (pseudo stripped) + the Figma layer when this
-    // component's values came from / merged with Figma.
     const selectors = [
       ...new Set(
         contributors
@@ -160,13 +187,12 @@ export function componentSketches(input: ExportInput): SketchLine[] {
     ];
     const descriptor = descriptorParts.join(" / ");
 
-    // Name: Figma layer's first segment, else a semantic element, else the
-    // selector word capitalized.
     const name = sketchName(figmaSources[0], anchors, selectors[0]);
 
     const body = PART_ORDER.filter((label) => parts.has(label))
       .map((label) => {
         const refs = parts.get(label)!.sort(byString);
+        if (label === "layout") return `layout ${refs.join("; ")}`;
         const joiner = label === "padding" || label === "inner gap" ? "/" : " ";
         return `${label} ${refs.join(joiner)}`;
       })
@@ -174,7 +200,7 @@ export function componentSketches(input: ExportInput): SketchLine[] {
 
     lines.push({
       captureId,
-      text: `**${name}** (${descriptor}): ${body}.`,
+      text: `**${name}** (${descriptor || "capture"}): ${body}.`,
       order: firstRenderable,
     });
   }

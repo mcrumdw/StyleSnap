@@ -191,7 +191,9 @@ describe("naming (§7.7)", () => {
     expect(namePlaceholder("spacing")).toBe("space/md");
     expect(namePlaceholder("border-radius")).toBe("radius/md");
     expect(namePlaceholder("border-width")).toBe("border-width/default");
-    expect(namePlaceholder("shadow")).toBe("shadow/md");
+    expect(namePlaceholder("shadow")).toBe("shadow/card-elevation");
+    expect(namePlaceholder("shadow", { effectKind: "backdrop-blur" })).toBe("effect/backdrop-blur");
+    expect(namePlaceholder("shadow", { effectKind: "inset" })).toBe("shadow/inset-depth");
     expect(namePlaceholder("gradient")).toBe("gradient/hero");
     for (const type of [
       "color",

@@ -220,6 +220,9 @@ export const styleSnapExportSchema = z.object({
 
 export const SCHEMA_VERSION = "2.1";
 
+/** Versions that parse cleanly without an FR-4 drift warning (additive line). */
+const COMPATIBLE_SCHEMA_VERSIONS = new Set(["2.0", "2.1"]);
+
 export type ParseResult =
   | { ok: true; data: StyleSnapExport; versionWarning?: string }
   | { ok: false; error: string; details: string[] };
@@ -279,7 +282,7 @@ export function parseStyleSnapExport(text: string): ParseResult {
   }
 
   const versionWarning =
-    result.data.meta.version !== SCHEMA_VERSION
+    !COMPATIBLE_SCHEMA_VERSIONS.has(result.data.meta.version)
       ? `This capture is schema v${result.data.meta.version}; the app expects v${SCHEMA_VERSION}. Import will proceed, but some fields may be missing or ignored.`
       : undefined;
 

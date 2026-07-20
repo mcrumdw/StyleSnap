@@ -419,7 +419,11 @@ export function AddTokenDialog({
             label="Name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={namePlaceholder(type)}
+            placeholder={
+              type === "shadow"
+                ? namePlaceholder(type, { effectKind })
+                : namePlaceholder(type)
+            }
           />
 
           <label className="flex flex-col gap-1">
