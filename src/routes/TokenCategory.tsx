@@ -17,11 +17,13 @@ import { TypeAnchorStep } from "../components/TypeAnchorStep";
 import { GapPanel } from "../components/GapPanel";
 import { GiveMeaningStep } from "../components/GiveMeaningStep";
 import { PrimitiveInventory } from "../components/PrimitiveInventory";
+import { SpacingScaleStep } from "../components/SpacingScaleStep";
 import { isTokenCategory } from "../components/shell/SideNav";
 import { DEFAULT_ROUTE } from "./AppShell";
 import { useSession } from "../state/SessionProvider";
-import { poolTokens, resolveAssignments } from "../state/pool";
+import { isManualToken, poolTokens, resolveAssignments } from "../state/pool";
 import { effectiveAccentIds } from "../engine/accents";
+import { isEffectsCategoryRole, isSpaceScaleRole, isSpaceSemanticRole } from "../engine/roles";
 import { routeForAddToken, routeForRole } from "./nav";
 
 import type { TokenCategory } from "../components/shell/SideNav";
@@ -198,7 +200,8 @@ export function TokenCategory() {
     if (!category || !isTokenCategory(category)) return [];
     const type = CATEGORY_TOKEN_TYPE[category];
     return poolTokens(pool).filter(
-      (t) => t.type === type && !t.id.startsWith("derived_"),
+      // From snap = captured only — never derived, never user-added primitives.
+      (t) => t.type === type && !t.id.startsWith("derived_") && !isManualToken(t),
     );
   }, [pool, category]);
 
@@ -220,6 +223,8 @@ export function TokenCategory() {
   const workingOfType = vm.workingTokens.filter(
     (t) => t.type === tokenType && !t.id.startsWith("derived_"),
   );
+  // From snap excludes user-added primitives; Primitives (below) still counts them.
+  const fromSnapOfType = workingOfType.filter((t) => !isManualToken(t));
   const primitivesCount =
     category === "colors"
       ? vm.systemTokens.filter((t) => t.type === "color").length
@@ -227,6 +232,10 @@ export function TokenCategory() {
   const excludedOfType = vm.excludedTokens.filter((t) => t.type === tokenType);
   const roleCount = vm.draftFills.filter((f) => {
     if (category === "colors") return f.role.startsWith("color/");
+    if (category === "effects") return isEffectsCategoryRole(f.role);
+    if (category === "spacing") {
+      return isSpaceSemanticRole(f.role) || (f.role.startsWith("space/") && !isSpaceScaleRole(f.role));
+    }
     if (!rolePrefix) return false;
     return f.role.startsWith(rolePrefix);
   }).length;
@@ -242,7 +251,7 @@ export function TokenCategory() {
 
   const handleExclude = (tokenId: string) => {
     exclude(tokenId);
-    setToast("Excluded from system", { undo: () => undo() });
+    setToast("Removed from system", { undo: () => undo() });
   };
 
   const openAdd = () => setAddTokenPreset({ tokenType });
@@ -269,7 +278,7 @@ export function TokenCategory() {
     excludedOfType.length > 0 ? (
       <div className="mt-3 flex flex-col gap-2 rounded-md border-2 border-dashed border-border-default bg-surface-page p-3">
         <p className="font-mono text-badge text-text-muted">
-          Excluded ({excludedOfType.length}) — restore to bring back into the system
+          Removed ({excludedOfType.length}) — restore to bring back into the system
         </p>
         <ul className="flex flex-wrap gap-2">
           {excludedOfType.map((t) => (
@@ -284,26 +293,47 @@ export function TokenCategory() {
     ) : null;
 
   const primitivesPanel = (
-    <PrimitiveInventory
-      tokenType={tokenType}
-      tokens={vm.systemTokens}
-      decisions={pool.decisions}
-      merges={pool.merges}
-      assignments={vm.resolvedAssignments}
-      rawById={vm.exportInput.rawById}
-      mergesLocked={vm.created}
-      onSetName={setName}
-      onUnmerge={(id) => {
-        unmerge(id);
-        setToast("Un-merged", { undo: () => undo() });
-      }}
-      onSetMergeSurvivor={setMergeSurvivor}
-      onExclude={handleExclude}
-      onRemoveManual={(id) => {
-        removeManual(id);
-        setToast("Deleted manual token", { undo: () => undo() });
-      }}
-    />
+    <div className="flex flex-col gap-8">
+      {category === "spacing" && (
+        <>
+          <SpacingScaleStep
+            entries={vm.entries}
+            merges={pool.merges}
+            decisions={pool.decisions}
+            assignments={vm.resolvedAssignments}
+            systemTokens={vm.systemTokens}
+            roleDisplayTokens={vm.roleDisplayTokens}
+            fills={fills}
+            focusRoleId={focusRoleId}
+            onAssign={assign}
+            onUnassign={unassign}
+            userAssignments={userAssignments}
+            onEditDerived={handleEditDerived}
+            onResetDerived={resetDerivedValue}
+          />
+        </>
+      )}
+      <PrimitiveInventory
+        tokenType={tokenType}
+        tokens={vm.systemTokens}
+        decisions={pool.decisions}
+        merges={pool.merges}
+        assignments={vm.resolvedAssignments}
+        rawById={vm.exportInput.rawById}
+        mergesLocked={vm.created}
+        onSetName={setName}
+        onUnmerge={(id) => {
+          unmerge(id);
+          setToast("Un-merged", { undo: () => undo() });
+        }}
+        onSetMergeSurvivor={setMergeSurvivor}
+        onExclude={handleExclude}
+        onRemoveManual={(id) => {
+          removeManual(id);
+          setToast("Deleted manual token", { undo: () => undo() });
+        }}
+      />
+    </div>
   );
 
   const rolesPanel = (
@@ -440,7 +470,7 @@ export function TokenCategory() {
         id="from-snap"
         title="From snap"
         tip={LAYER_TIPS.snap}
-        count={workingOfType.length}
+        count={fromSnapOfType.length}
         open={layerOpen["from-snap"]}
         onToggle={() => toggleLayer("from-snap")}
         insight={insight}
@@ -484,6 +514,7 @@ export function TokenCategory() {
             setToast(role ? `Added — ${role} has a home now.` : `${addLabel.replace(/^Add /, "")} added.`);
           }}
           onClose={() => setAddTokenPreset(undefined)}
+          customRoles={pool.customRoles}
         />
       )}
     </div>

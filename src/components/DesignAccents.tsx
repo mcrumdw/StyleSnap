@@ -13,7 +13,7 @@ interface DesignAccentsProps {
 
 /**
  * "Design accents — use sparingly": captured colors that aren't primary,
- * secondary, or role-assigned. Auto-seeded; chip "auto" until the user touches
+ * secondary, or role-assigned. Auto-seeded; chip "from capture" until the user touches
  * the list (§2.25).
  */
 export function DesignAccents({
@@ -42,8 +42,7 @@ export function DesignAccents({
             {!explicit && (
               <>
                 {" "}
-                <span className="font-mono text-badge text-text-muted">auto</span> from the
-                capture.
+                <span className="font-mono text-badge text-text-muted">from capture</span>.
               </>
             )}
           </p>

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { StyleSnapToken, TokenType } from "../contract/types";
+import { isManualToken } from "../state/pool";
 import { formatValue } from "../state/workspace";
 import { InfoHint } from "./Tooltip";
 
@@ -67,23 +68,26 @@ export function CapturedFoundations({
   const captured = useMemo(
     () =>
       tokens.filter(
-        (t) => t.type === (tokenType as TokenType) && !t.id.startsWith("derived_"),
+        (t) =>
+          t.type === (tokenType as TokenType) &&
+          !t.id.startsWith("derived_") &&
+          !isManualToken(t),
       ),
     [tokens, tokenType],
   );
 
   const rolesByToken = useMemo(() => {
-    const prefix =
+    const prefixes =
       tokenType === "spacing"
-        ? "space/"
+        ? ["space/"]
         : tokenType === "border-radius"
-          ? "radius/"
+          ? ["radius/"]
           : tokenType === "border-width"
-            ? "border-width/"
-            : "shadow/";
+            ? ["border-width/"]
+            : ["shadow/", "effect/", "blur/"];
     const map = new Map<string, string[]>();
     for (const [role, id] of Object.entries(assignments)) {
-      if (!role.startsWith(prefix)) continue;
+      if (!prefixes.some((p) => role.startsWith(p))) continue;
       map.set(id, [...(map.get(id) ?? []), role]);
     }
     return map;

@@ -1,12 +1,28 @@
 import { useMemo, useState } from "react";
 import type { StyleSnapToken, TokenType } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
-import { fallbackName } from "../engine/roles";
+import {
+  effectKindForToken,
+  fallbackName,
+  isSpaceScaleRole,
+  isSpaceSemanticRole,
+  SPACE_SCALE_ROLES,
+} from "../engine/roles";
+import { ELEVATION_ROLE_SET } from "../engine/effect-kinds";
+import { isManualToken } from "../state/pool";
 import { formatValue } from "../state/workspace";
 import { Button } from "./Button";
 import { InlineName } from "./InlineName";
 import { MergeSurvivorDialog } from "./MergeSurvivorDialog";
 import { InfoHint } from "./Tooltip";
+
+/** Assigned foundation slot that can title an unnamed primitive (§2.48 / §2.52). */
+function foundationTitleRole(tokenType: TokenType, usedAs: string[]): string | undefined {
+  if (tokenType === "spacing") return usedAs.find((r) => isSpaceScaleRole(r));
+  if (tokenType === "border-radius") return usedAs.find((r) => r.startsWith("radius/"));
+  if (tokenType === "border-width") return usedAs.find((r) => r.startsWith("border-width/"));
+  return undefined;
+}
 
 interface PrimitiveInventoryProps {
   tokenType: TokenType;
@@ -25,9 +41,6 @@ interface PrimitiveInventoryProps {
   onRemoveManual: (tokenId: string) => void;
 }
 
-function isManual(token: StyleSnapToken): boolean {
-  return token.id.startsWith("manual_") || token.source === "manual entry";
-}
 
 function isSystemCreated(token: StyleSnapToken): boolean {
   return token.id.startsWith("derived_");
@@ -96,21 +109,39 @@ function Preview({ token }: { token: StyleSnapToken }) {
   return <span className={`${frame} bg-surface-page`} aria-hidden />;
 }
 
-function RoleChips({ roles }: { roles: string[] }) {
-  if (roles.length === 0) return null;
+function RoleChips({
+  roles,
+  emphasizeSemantic = false,
+}: {
+  roles: string[];
+  /** Spacing: show jobs (inset/page) as primary chips; scale is the card title. */
+  emphasizeSemantic?: boolean;
+}) {
+  const shown = emphasizeSemantic
+    ? roles.filter((r) => !isSpaceScaleRole(r))
+    : roles;
+  if (shown.length === 0) return null;
   return (
     <span className="flex flex-wrap gap-1">
-      {roles.slice(0, 3).map((role) => (
-        <span
-          key={role}
-          className="rounded-sm border-2 border-border-default bg-surface-card px-2 py-0.5 font-mono text-badge text-text-muted"
-          title={role}
-        >
-          {role.split("/").slice(-1)[0]}
-        </span>
-      ))}
-      {roles.length > 3 && (
-        <span className="font-mono text-badge text-text-muted">+{roles.length - 3}</span>
+      {shown.slice(0, 4).map((role) => {
+        const semantic = isSpaceSemanticRole(role);
+        const label = role.split("/").slice(-1)[0]!;
+        return (
+          <span
+            key={role}
+            className={`rounded-sm border-2 px-2 py-0.5 font-mono text-badge ${
+              semantic
+                ? "border-brand-primary bg-surface-card text-text-primary"
+                : "border-border-default bg-surface-card text-text-muted"
+            }`}
+            title={role}
+          >
+            {label}
+          </span>
+        );
+      })}
+      {shown.length > 4 && (
+        <span className="font-mono text-badge text-text-muted">+{shown.length - 4}</span>
       )}
     </span>
   );
@@ -163,10 +194,50 @@ export function PrimitiveInventory({
     [tokens, tokenType],
   );
 
-  const primitives = useMemo(
-    () => ofType.filter((t) => !isSystemCreated(t)),
-    [ofType],
-  );
+  const rolesByToken = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [role, id] of Object.entries(assignments)) {
+      map.set(id, [...(map.get(id) ?? []), role]);
+    }
+    return map;
+  }, [assignments]);
+
+  /** Tokens already shown on a scale ladder — don't list them again (§2.48 / §2.50). */
+  const scaleTokenIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (tokenType === "spacing") {
+      for (const [role, id] of Object.entries(assignments)) {
+        if (SPACE_SCALE_ROLES.has(role)) ids.add(id);
+      }
+    } else if (tokenType === "shadow") {
+      for (const [role, id] of Object.entries(assignments)) {
+        if (ELEVATION_ROLE_SET.has(role)) ids.add(id);
+      }
+    }
+    return ids;
+  }, [assignments, tokenType]);
+
+  const primitives = useMemo(() => {
+    const list = ofType.filter((t) => {
+      if (isSystemCreated(t)) return false;
+      if ((tokenType === "spacing" || tokenType === "shadow") && scaleTokenIds.has(t.id)) {
+        return false;
+      }
+      return true;
+    });
+    if (
+      tokenType === "spacing" ||
+      tokenType === "border-radius" ||
+      tokenType === "border-width"
+    ) {
+      return [...list].sort((a, b) => {
+        const av = "value" in a && typeof a.value === "number" ? a.value : 0;
+        const bv = "value" in b && typeof b.value === "number" ? b.value : 0;
+        return av - bv || (a.id < b.id ? -1 : 1);
+      });
+    }
+    return list;
+  }, [ofType, tokenType, scaleTokenIds]);
 
   const systemCreated = useMemo(
     () =>
@@ -192,26 +263,25 @@ export function PrimitiveInventory({
       );
   }, [pickerSurvivorId, mergeBySurvivor, rawById, tokenType]);
 
-  const rolesByToken = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const [role, id] of Object.entries(assignments)) {
-      map.set(id, [...(map.get(id) ?? []), role]);
-    }
-    return map;
-  }, [assignments]);
-
   if (primitives.length === 0 && systemCreated.length === 0) {
     return (
       <p className="text-caption text-text-muted">
-        No primitives yet — values appear here after import, or add a token.
+        {tokenType === "spacing"
+          ? "All spacing values sit on the scale above — or add a token for an extra size."
+          : tokenType === "shadow"
+            ? "Elevation steps live under System roles. Inset and blur primitives appear here when not assigned."
+            : "No primitives yet — values appear here after import, or add a token."}
       </p>
     );
   }
 
   const grid =
-    tokenType === "color"
+    tokenType === "color" || tokenType === "spacing"
       ? "grid grid-cols-1 gap-2 md:grid-cols-2"
       : "flex flex-col gap-2";
+
+  const cardSpan =
+    tokenType === "color" || tokenType === "spacing" ? " md:col-span-2" : "";
 
   return (
     <>
@@ -232,37 +302,65 @@ export function PrimitiveInventory({
               }) ??
               [];
             const usedAs = rolesByToken.get(token.id) ?? [];
-            const manual = isManual(token);
+            const scaleRole = foundationTitleRole(tokenType, usedAs);
+            const manual = isManualToken(token);
             const isMerged = mergeCount > 1;
+            // Unnamed foundation primitives — title from assigned slot or derived fallback (§2.52).
+            const derivedLabel = scaleRole ?? fallbackName(token);
+            const titleName = displayName ?? scaleRole ?? null;
+            const suggested = derivedLabel;
+            const showDerivedTitle =
+              !displayName &&
+              (scaleRole !== undefined ||
+                tokenType === "border-radius" ||
+                tokenType === "border-width");
 
             if (isMerged) {
               return (
                 <li
                   key={token.id}
-                  className={`flex flex-col gap-3 rounded-md border-2 border-border-default bg-surface-page p-3${
-                    tokenType === "color" ? " md:col-span-2" : ""
-                  }`}
+                  className={`flex flex-col gap-3 rounded-md border-2 border-border-default bg-surface-card p-3 shadow-card${cardSpan}`}
                 >
-                  {/* Identity: preview + name + value | merge + tags */}
+                  {/* Identity: preview + name + value | merge + job tags */}
                   <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div className="flex min-w-0 items-start gap-3">
                       <Preview token={token} />
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <InlineName
-                          name={displayName ?? null}
-                          onSetName={(name) => onSetName(token.id, name)}
-                          tokenType={token.type}
-                          suggestedName={fallbackName(token)}
-                        />
+                        {showDerivedTitle ? (
+                          <span className="font-mono text-caption font-medium text-text-primary">
+                            {derivedLabel}
+                          </span>
+                        ) : (
+                          <InlineName
+                            name={titleName}
+                            onSetName={(name) => onSetName(token.id, name)}
+                            tokenType={token.type}
+                            effectKind={effectKindForToken(token)}
+                            suggestedName={suggested}
+                          />
+                        )}
                         <span className="truncate font-mono text-badge text-text-muted">
                           {formatValue(token)}
-                          {manual ? " · manual" : ""}
+                          {manual ? " · manual" : " · from capture"}
                         </span>
+                        {showDerivedTitle && (
+                          <button
+                            type="button"
+                            className="self-start font-mono text-badge text-brand-primary underline"
+                            onClick={() => onSetName(token.id, derivedLabel)}
+                            title="Save this path as the primitive name"
+                          >
+                            Keep as name
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
                       <MergeBadge mergeCount={mergeCount} absorbed={absorbed} />
-                      {usedAs.length > 0 && <RoleChips roles={usedAs} />}
+                      <RoleChips
+                        roles={usedAs}
+                        emphasizeSemantic={tokenType === "spacing"}
+                      />
                     </div>
                   </div>
 
@@ -307,10 +405,10 @@ export function PrimitiveInventory({
                         size="sm"
                         variant="ghost"
                         onClick={() => onExclude(token.id)}
-                        title="Exclude from system (undoable)"
-                        aria-label="Exclude"
+                        title="Remove from system (undoable)"
+                        aria-label="Remove"
                       >
-                        Exclude
+                        Remove
                       </Button>
                     )}
                   </div>
@@ -321,22 +419,42 @@ export function PrimitiveInventory({
             return (
               <li
                 key={token.id}
-                className="flex flex-col gap-2 rounded-md border-2 border-border-default bg-surface-page p-3"
+                className="flex flex-col gap-2 rounded-md border-2 border-border-default bg-surface-card p-3 shadow-card"
               >
                 <div className="flex min-w-0 items-start gap-3">
                   <Preview token={token} />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <InlineName
-                      name={displayName ?? null}
-                      onSetName={(name) => onSetName(token.id, name)}
-                      tokenType={token.type}
-                      suggestedName={fallbackName(token)}
-                    />
+                    {showDerivedTitle ? (
+                      <span className="font-mono text-caption font-medium text-text-primary">
+                        {derivedLabel}
+                      </span>
+                    ) : (
+                      <InlineName
+                        name={titleName}
+                        onSetName={(name) => onSetName(token.id, name)}
+                        tokenType={token.type}
+                        effectKind={effectKindForToken(token)}
+                        suggestedName={suggested}
+                      />
+                    )}
                     <span className="truncate font-mono text-badge text-text-muted">
                       {formatValue(token)}
                       {manual ? " · manual" : ""}
                     </span>
-                    <RoleChips roles={usedAs} />
+                    {showDerivedTitle && (
+                      <button
+                        type="button"
+                        className="self-start font-mono text-badge text-brand-primary underline"
+                        onClick={() => onSetName(token.id, derivedLabel)}
+                        title="Save this path as the primitive name"
+                      >
+                        Keep as name
+                      </button>
+                    )}
+                    <RoleChips
+                      roles={usedAs}
+                      emphasizeSemantic={tokenType === "spacing"}
+                    />
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {manual ? (
@@ -348,10 +466,10 @@ export function PrimitiveInventory({
                         size="sm"
                         variant="ghost"
                         onClick={() => onExclude(token.id)}
-                        title="Exclude from system (undoable)"
-                        aria-label="Exclude"
+                        title="Remove from system (undoable)"
+                        aria-label="Remove"
                       >
-                        Exclude
+                        Remove
                       </Button>
                     )}
                   </div>
@@ -399,6 +517,7 @@ export function PrimitiveInventory({
                         name={displayName ?? null}
                         onSetName={(name) => onSetName(token.id, name)}
                         tokenType={token.type}
+                        effectKind={effectKindForToken(token)}
                         suggestedName={fallbackName(token)}
                       />
                       <span className="truncate font-mono text-badge text-text-muted">

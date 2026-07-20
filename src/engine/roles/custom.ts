@@ -1,4 +1,4 @@
-// User-defined semantic roles beyond Appendix B (DECISIONS.md §2.30).
+// User-defined semantic roles beyond Appendix B (DECISIONS.md §2.30 / §2.46).
 // Completeness still uses the lean Appendix B checklist only; custom roles
 // export and assign like any other slot but never count as required gaps.
 
@@ -11,9 +11,31 @@ const CANONICAL = new Set(ALL_ROLES.map((d) => d.role));
 const SEGMENT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
+ * Shadow-typed tokens (box-shadow + encoded backdrop blur) may use these
+ * role prefixes. Appendix B elevation stays `shadow/*`; backdrop blur and
+ * other non-elevation effects use `effect/` or `blur/` (§2.46).
+ */
+export const SHADOW_CUSTOM_PREFIXES = ["shadow/", "effect/", "blur/"] as const;
+export type ShadowCustomPrefix = (typeof SHADOW_CUSTOM_PREFIXES)[number];
+
+/** Role prefixes longer-first so `border-width/` wins over a hypothetical `border/`. */
+const ROLE_PREFIXES = [
+  "border-width/",
+  "color/",
+  "type/",
+  "space/",
+  "radius/",
+  "shadow/",
+  "effect/",
+  "blur/",
+] as const;
+
+/**
  * Role prefix for a capture token type. Gradients have no role taxonomy.
  * Note: border *color* lives under `color/border/*`; border *width* under
  * `border-width/*` — there is no bare `border/` prefix.
+ * Shadow defaults to `shadow/`; callers may pass `effect/` or `blur/` via
+ * `buildCustomRole` for non-elevation effects.
  */
 export function rolePrefixForType(type: TokenType): string | null {
   switch (type) {
@@ -47,10 +69,17 @@ export function tokenTypeForRolePrefix(prefix: string): TokenType | null {
     case "border-width/":
       return "border-width";
     case "shadow/":
+    case "effect/":
+    case "blur/":
       return "shadow";
     default:
       return null;
   }
+}
+
+/** True when a role belongs on the Effects category page. */
+export function isEffectsCategoryRole(role: string): boolean {
+  return (SHADOW_CUSTOM_PREFIXES as readonly string[]).some((p) => role.startsWith(p));
 }
 
 /** Normalize free text into slash-nested kebab segments, or null if invalid. */
@@ -71,13 +100,31 @@ export function isCanonicalRole(role: string): boolean {
   return CANONICAL.has(role);
 }
 
+function resolvePrefix(type: TokenType, prefixOverride?: string): string | null {
+  const defaultPrefix = rolePrefixForType(type);
+  if (!defaultPrefix) return null;
+  if (!prefixOverride) return defaultPrefix;
+  if (type === "shadow") {
+    return (SHADOW_CUSTOM_PREFIXES as readonly string[]).includes(prefixOverride)
+      ? prefixOverride
+      : null;
+  }
+  return prefixOverride === defaultPrefix ? defaultPrefix : null;
+}
+
 /**
  * Build a custom role under the type prefix. Rejects Appendix B collisions and
  * invalid paths. Example: type `border-width` + path `table-cell` →
  * `border-width/table-cell`; type `color` + `border/card` → `color/border/card`.
+ * For shadow tokens, pass `prefixOverride` of `effect/` or `blur/` for
+ * backdrop-blur roles (default remains `shadow/`).
  */
-export function buildCustomRole(type: TokenType, pathAfterPrefix: string): string | null {
-  const prefix = rolePrefixForType(type);
+export function buildCustomRole(
+  type: TokenType,
+  pathAfterPrefix: string,
+  prefixOverride?: string,
+): string | null {
+  const prefix = resolvePrefix(type, prefixOverride);
   if (!prefix) return null;
   const path = normalizeRolePath(pathAfterPrefix);
   if (!path) return null;
@@ -88,6 +135,14 @@ export function buildCustomRole(type: TokenType, pathAfterPrefix: string): strin
 
 export function isAllowedCustomRole(role: string, type: TokenType): boolean {
   if (isCanonicalRole(role)) return false;
+  if (type === "shadow") {
+    for (const prefix of SHADOW_CUSTOM_PREFIXES) {
+      if (!role.startsWith(prefix)) continue;
+      const rest = role.slice(prefix.length);
+      return rest.length > 0 && normalizeRolePath(rest) === rest;
+    }
+    return false;
+  }
   const prefix = rolePrefixForType(type);
   if (!prefix || !role.startsWith(prefix)) return false;
   const rest = role.slice(prefix.length);
@@ -115,7 +170,7 @@ export function inferCustomRoles(assignments: Record<string, string>): string[] 
 }
 
 export function tokenTypeFromRole(role: string): TokenType | null {
-  for (const prefix of ["border-width/", "color/", "type/", "space/", "radius/", "shadow/"] as const) {
+  for (const prefix of ROLE_PREFIXES) {
     if (role.startsWith(prefix)) return tokenTypeForRolePrefix(prefix);
   }
   return null;

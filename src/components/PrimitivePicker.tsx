@@ -1,5 +1,10 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { StyleSnapToken } from "../contract/types";
+import {
+  isBackdropBlurToken,
+  isDropShadowToken,
+  isInsetShadowToken,
+} from "../engine/effect-kinds";
 import { fallbackName, type RoleDefinition } from "../engine/roles";
 import { formatValue } from "../state/workspace";
 import { RoleChip } from "./RoleChip";
@@ -192,9 +197,19 @@ export function PrimitivePicker({
         if (t.type !== def.tokenType) return false;
         // Colors: include system-created (derived_*). Other types: snap/manual only.
         if (!isColor && t.id.startsWith("derived_")) return false;
+        if (t.type === "shadow") {
+          const blur = isBackdropBlurToken(t);
+          const inset = isInsetShadowToken(t);
+          const drop = isDropShadowToken(t);
+          const blurRole = role.startsWith("effect/") || role.startsWith("blur/");
+          if (blurRole) return blur;
+          if (role === "shadow/inset") return inset;
+          if (role === "shadow/sm" || role === "shadow/md" || role === "shadow/lg") return drop;
+          if (role.startsWith("shadow/")) return !blur;
+        }
         return true;
       }),
-    [tokens, def.tokenType, isColor],
+    [tokens, def.tokenType, isColor, role],
   );
 
   const snapCandidates = useMemo(

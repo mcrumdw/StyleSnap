@@ -14,14 +14,18 @@ export function projectSlug(projectName: string): string {
   return projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-export function downloadDesignMd(_projectName: string, designMd: string) {
-  downloadFile("design.md", designMd, "text/markdown");
+/** Safe download basename from the project name (fallback: stylesnap). */
+export function exportBasename(projectName: string): string {
+  return projectSlug(projectName) || "stylesnap";
+}
+
+export function downloadDesignMd(projectName: string, designMd: string) {
+  downloadFile(`${exportBasename(projectName)}.md`, designMd, "text/markdown");
 }
 
 export function downloadCleanedJson(projectName: string, exportInput: ExportInput) {
-  const slug = projectSlug(projectName);
   downloadFile(
-    `${slug || "stylesnap"}-tokens.json`,
+    `${exportBasename(projectName)}.json`,
     JSON.stringify(generateCleanedJson(exportInput), null, 2),
     "application/json",
   );

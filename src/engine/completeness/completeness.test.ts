@@ -18,6 +18,7 @@ describe("completeness checklist (FR-18 / B.5) — the oracle acceptance", () =>
         "color/feedback/warning",
         "color/feedback/info",
         "type/mono",
+        "space/page",
         "manual-foundations",
       ].sort(),
     );
@@ -27,9 +28,9 @@ describe("completeness checklist (FR-18 / B.5) — the oracle acceptance", () =>
     expect(checklist.items.some((i) => i.id === "unassigned-ext_021")).toBe(false);
   });
 
-  it("counts required progress: 4 required gaps (focus + 3 feedback colors)", () => {
-    expect(checklist.requiredTotal).toBe(18); // 12 colors + 2 type + 4 scales
-    expect(checklist.requiredTotal - checklist.requiredMet).toBe(4);
+  it("counts required progress: 5 required gaps (focus + 3 feedback + space/page)", () => {
+    expect(checklist.requiredTotal).toBe(19); // 12 colors + 2 type + 4 scales + space/page
+    expect(checklist.requiredTotal - checklist.requiredMet).toBe(5);
     expect(checklist.complete).toBe(false);
   });
 });
@@ -52,7 +53,7 @@ describe("gaps clear live (FR-19 acceptance)", () => {
     const checklist = computeChecklist([...oracleView(), focusColor], assignments);
     const focus = checklist.items.find((i) => i.id === "color/border/focus")!;
     expect(focus.status).toBe("met");
-    expect(checklist.requiredTotal - checklist.requiredMet).toBe(3);
+    expect(checklist.requiredTotal - checklist.requiredMet).toBe(4);
   });
 
   it("completing every required item flips `complete`", () => {
@@ -67,6 +68,7 @@ describe("gaps clear live (FR-19 acceptance)", () => {
     assignments.set("color/feedback/success", "manual_success");
     assignments.set("color/feedback/warning", "manual_warning");
     assignments.set("color/feedback/info", "manual_info");
+    assignments.set("space/page", "ext_025"); // user override; default is 2× xl (32–160)
     const checklist = computeChecklist([...oracleView(), ...extras], assignments);
     expect(checklist.complete).toBe(true);
     // Recommended/info gaps remain — completeness ≠ silence.

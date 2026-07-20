@@ -7,6 +7,7 @@ import { deriveSystem, type Anchors, type AccentSuggestion } from "../engine/der
 import { styleProfileFromFamily } from "../engine/style-profile";
 import {
   generateDesignMd,
+  mergeCaptureFoundations,
   NOTE_FIELDS,
   type DerivedProvenance,
   type ExportInput,
@@ -14,6 +15,7 @@ import {
 import {
   defaultProjectName,
   isSystemCreated,
+  isManualToken,
   allPoolTokens,
   excludedPoolTokens,
   poolTokenCount,
@@ -40,10 +42,15 @@ export interface DraftFill {
   method: string;
 }
 
-/** Filled-row tokens — pool.derivedEdits always override draft fills. */
+/** Filled-row tokens — pool.derivedEdits always override draft fills.
+ *  Assigned roles (e.g. after Save as primitive) are included when missing from
+ *  fills — otherwise the color-family strip falls back to re-deriving from the
+ *  primary anchor and looks stale (§2.37 vs strip). */
 export function buildRoleDisplayTokens(
   draftFills: DraftFill[],
   derivedEdits?: TokenPool["derivedEdits"],
+  assignments?: Readonly<Record<string, string>>,
+  tokensById?: ReadonlyMap<string, StyleSnapToken>,
 ): Map<string, StyleSnapToken> {
   const map = new Map<string, StyleSnapToken>();
   for (const fill of draftFills) {
@@ -51,6 +58,13 @@ export function buildRoleDisplayTokens(
   }
   for (const [role, entry] of Object.entries(derivedEdits ?? {})) {
     map.set(role, entry.token);
+  }
+  if (assignments && tokensById) {
+    for (const [role, id] of Object.entries(assignments)) {
+      if (map.has(role)) continue;
+      const token = tokensById.get(id);
+      if (token) map.set(role, token);
+    }
   }
   return map;
 }
@@ -106,6 +120,11 @@ export function useSessionViewModel(pool: TokenPool) {
           fill.derivedFrom === "convention" ? ("default" as const) : ("derived" as const);
         return { ...fill, origin };
       }
+      // Manual Add-token: never "from capture" (§2.64). User-assigned → snap
+      // (no chip); if derivation somehow linked one, still treat as snap.
+      if (isManualToken(fill.token)) {
+        return { ...fill, origin: "snap" as const };
+      }
       // Captured token: user-assigned → snap (no chip); auto-placed → seeded.
       const userPlaced = userAssignments[fill.role] === fill.token.id;
       return { ...fill, origin: userPlaced ? ("snap" as const) : ("seeded" as const) };
@@ -125,11 +144,23 @@ export function useSessionViewModel(pool: TokenPool) {
     return fills;
   }, [draft, pool.derivedEdits, pool.assignments, pool.merges]);
 
-  /** Filled-row display tokens — derivedEdits always win over derivation (DECISIONS §2.8). */
-  const roleDisplayTokens = useMemo(
-    () => buildRoleDisplayTokens(draftFills, pool.derivedEdits),
-    [draftFills, pool.derivedEdits],
-  );
+  /** Filled-row display tokens — derivedEdits always win over derivation (DECISIONS §2.8).
+   *  Also merges user assignments so Save-as-primitive edits reach the color-family strip. */
+  const roleDisplayTokens = useMemo(() => {
+    const byId = new Map<string, StyleSnapToken>();
+    for (const t of view.tokens) byId.set(t.id, t);
+    for (const t of pool.manual) byId.set(t.id, t);
+    for (const fill of draftFills) byId.set(fill.token.id, fill.token);
+    for (const entry of Object.values(pool.derivedEdits ?? {})) {
+      byId.set(entry.token.id, entry.token);
+    }
+    return buildRoleDisplayTokens(
+      draftFills,
+      pool.derivedEdits,
+      view.assignments,
+      byId,
+    );
+  }, [draftFills, pool.derivedEdits, pool.manual, view.tokens, view.assignments]);
 
   const anchors: Anchors = draft.anchors;
   const accent: AccentSuggestion | null = pool.accentChoice?.dismissed ? null : draft.accent;
@@ -211,7 +242,12 @@ export function useSessionViewModel(pool: TokenPool) {
   );
 
   const checklist = useMemo(
-    () => computeChecklist(exportInput.tokens, exportInput.assignments),
+    () =>
+      computeChecklist(
+        exportInput.tokens,
+        exportInput.assignments,
+        mergeCaptureFoundations(exportInput.captures),
+      ),
     [exportInput],
   );
 

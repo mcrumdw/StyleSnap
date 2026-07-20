@@ -33,7 +33,14 @@ export function applyMerges<T extends HasToken>(items: T[], merges: MergeRecord[
 
   for (const merge of merges) {
     const survivor = byId.get(merge.survivorId);
-    if (!survivor) continue;
+    if (!survivor) {
+      // Survivor soft-removed from the working set — still hide absorbed members
+      // so Remove ≠ Un-merge (§2.53).
+      for (const id of merge.mergedIds) {
+        if (id !== merge.survivorId) byId.delete(id);
+      }
+      continue;
+    }
     let absorbedOccurrences = 0;
     const absorbedIds: string[] = [];
     for (const id of merge.mergedIds) {

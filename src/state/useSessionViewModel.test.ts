@@ -4,7 +4,7 @@ import type { ColorToken } from "../contract/types";
 import { parseStyleSnapExport } from "../contract/schema";
 import { applyMerges } from "../engine/dedup";
 import { deriveSystem } from "../engine/derive-system";
-import { editDerived, poolTokens, type TokenPool } from "./pool";
+import { editDerived, poolTokens, saveRoleEditAsPrimitive, type TokenPool } from "./pool";
 import { emptyHistory, type HistoryState, canRedoHistory, canUndoHistory } from "./history";
 import { poolReducer } from "./usePool";
 import { buildRoleDisplayTokens, type DraftFill } from "./useSessionViewModel";
@@ -194,5 +194,46 @@ describe("derivedEdits overlay", () => {
     });
     const display = buildRoleDisplayTokens(draftFills, state.pool.derivedEdits);
     expect(display.get(role)?.value).toBe("#112233");
+  });
+
+  it("Save as primitive keeps roleDisplayTokens in sync for the color-family strip", () => {
+    const role = "color/action/primary-hover";
+    const pool = poolFromFixture("capture-test-drive.json");
+    const entries = poolEntries(pool);
+    const tokens = applyMerges(entries, pool.merges).map((e) => e.token);
+    const rawById = new Map(poolTokens(pool).map((t) => [t.id, t]));
+    const draft = deriveSystem({ tokens, rawById, assignments: new Map() });
+    const token = draft.fills.find((f) => f.role === role)!.token as ColorToken;
+
+    const saved = saveRoleEditAsPrimitive(pool, role, { ...token, value: "#FEED01" }, "manual_hover");
+    expect(saved.assignments[role]).toBe("manual_hover");
+    expect(saved.derivedEdits?.[role]).toBeUndefined();
+
+    // After assign, derivation skips this role — fills no longer carry it.
+    const after = deriveSystem({
+      tokens: [...tokens, ...saved.manual],
+      rawById,
+      assignments: new Map(Object.entries(saved.assignments)),
+    });
+    expect(after.fills.some((f) => f.role === role)).toBe(false);
+
+    const byId = new Map<string, (typeof tokens)[number]>();
+    for (const t of tokens) byId.set(t.id, t);
+    for (const t of saved.manual) byId.set(t.id, t);
+
+    // Old builder (fills + edits only) misses the assignment → strip would stale.
+    const stale = buildRoleDisplayTokens(
+      after.fills.map((f) => ({ ...f, origin: "derived" as const })),
+      saved.derivedEdits,
+    );
+    expect(stale.get(role)).toBeUndefined();
+
+    const display = buildRoleDisplayTokens(
+      after.fills.map((f) => ({ ...f, origin: "derived" as const })),
+      saved.derivedEdits,
+      saved.assignments,
+      byId,
+    );
+    expect(display.get(role)?.value).toBe("#FEED01");
   });
 });

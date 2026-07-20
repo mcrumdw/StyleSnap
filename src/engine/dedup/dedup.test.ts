@@ -149,6 +149,23 @@ describe("sensitivity slider (A.6)", () => {
     value,
   });
 
+  it("rounds spacing decimals then clusters near values (8.5 ≈ 9.4 → 9)", () => {
+    const pair = [spacing("a", 8.5, 3), spacing("b", 9.4, 2)];
+    // Values are clustered as-captured; pool normalizes on import — simulate that.
+    const rounded = pair.map((t) => ({ ...t, value: Math.round(t.value) }));
+    const clusters = detectClusters(rounded);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].members.every((m) => m.level === "duplicate")).toBe(true);
+    expect((clusters[0].canonical as SpacingToken).value).toBe(9);
+  });
+
+  it("spacing similar floor is 2px — 8 and 9 flag as similar", () => {
+    const pair = [spacing("a", 8, 5), spacing("b", 9, 2)];
+    const clusters = detectClusters(pair);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].members[0].level).toBe("similar");
+  });
+
   it("×1.5 loose picks up a pair that ×1 default leaves apart — flags only", () => {
     const pair = [spacing("a", 100, 5), spacing("b", 107, 2)];
     expect(detectClusters(pair, "default")).toHaveLength(0); // gap 7 > tol 5
@@ -202,5 +219,18 @@ describe("merge + un-merge (§7.4, FR-12/13)", () => {
     const survivor = view.find((e) => e.token.id === "ext_001")!;
     expect(survivor.token.mergedFrom!.sort()).toEqual(["ext_002", "ext_003"]);
     expect(survivor.token.occurrences).toBe(18 + 3 + 1);
+  });
+
+  it("missing survivor still hides absorbed members — Remove ≠ Un-merge (§2.53)", () => {
+    const merge = {
+      survivorId: "ext_001",
+      mergedIds: ["ext_002", "ext_003"],
+      mergedAt: "t",
+    };
+    const withoutSurvivor = wrap(tokens).filter((e) => e.token.id !== "ext_001");
+    const view = applyMerges(withoutSurvivor, [merge]);
+    expect(view.find((e) => e.token.id === "ext_001")).toBeUndefined();
+    expect(view.find((e) => e.token.id === "ext_002")).toBeUndefined();
+    expect(view.find((e) => e.token.id === "ext_003")).toBeUndefined();
   });
 });

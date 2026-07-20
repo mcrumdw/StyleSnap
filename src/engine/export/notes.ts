@@ -38,7 +38,7 @@ export const NOTE_FIELDS: ReadonlyArray<{
     key: "motion",
     label: "Motion",
     gapText: "no durations/easing specified",
-    hint: "Durations, easing, and what animates (tokens can't capture this).",
+    hint: "Durations, easing, and what animates — or Scan page in the extension.",
   },
   {
     key: "voice",
@@ -50,7 +50,7 @@ export const NOTE_FIELDS: ReadonlyArray<{
     key: "layout",
     label: "Layout",
     gapText: "no container/grid notes specified",
-    hint: "Container widths, grid, breakpoint intent.",
+    hint: "Container widths, grid, breakpoint intent — or Scan page in the extension.",
   },
 ];
 

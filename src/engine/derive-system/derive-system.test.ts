@@ -72,19 +72,39 @@ describe("anchor detection (C.1)", () => {
 describe("color derivation (C.2–C.4) — exact values from #17A673", () => {
   const r = derive(fixtureTokens("capture-test-drive.json"));
 
-  it("interaction states by OKLCH lightness shifts", () => {
+  it("interaction states: captured :hover claims the slot; else ΔL formula", () => {
     expect(fillValue(r, "color/action/primary").token.id).toBe("ext_td_01"); // anchor claims
-    expect(fillValue(r, "color/action/primary-hover").token.value).toBe("#009263");
+    const hover = fillValue(r, "color/action/primary-hover");
+    expect(hover.token.id).toBe("ext_td_04");
+    expect(hover.token.value).toBe("#0F8259");
+    expect(hover.method).toContain("captured :hover");
     expect(fillValue(r, "color/action/primary-active").token.value).toBe("#007E55");
     expect(fillValue(r, "color/border/focus").token.id).toBe("ext_td_01"); // focus = primary
   });
 
-  it("tinted neutrals wear the brand hue at chroma ≤ 0.02", () => {
-    expect(fillValue(r, "color/text/primary").token.value).toBe("#121E18");
-    expect(fillValue(r, "color/text/muted").token.value).toBe("#5F6D65");
-    expect(fillValue(r, "color/surface/page").token.value).toBe("#EFFFF6");
-    expect(fillValue(r, "color/surface/card").token.value).toBe("#FFFFFF");
-    expect(fillValue(r, "color/border/default").token.value).toBe("#D3E2DA");
+  it("ΔL hover formula when no :hover capture exists", () => {
+    const thin = derive(fixtureTokens("capture-thin.json"));
+    const hover = fillValue(thin, "color/action/primary-hover");
+    expect(hover.token.id).toMatch(/^derived_/);
+    expect(hover.method).toContain("ΔL");
+  });
+
+  it("tinted neutrals: captured page/card/text claim slots when present", () => {
+    expect(fillValue(r, "color/text/primary").token.id).toBe("ext_td_05");
+    expect(fillValue(r, "color/surface/page").token.id).toBe("ext_td_07");
+    expect(fillValue(r, "color/surface/card").token.id).toBe("ext_td_08");
+    expect(fillValue(r, "color/surface/page").method).toContain("captured");
+    expect(fillValue(r, "color/surface/card").method).toContain("captured");
+    // Muted only claims when context hints it — meta gray stays a primitive here.
+    expect(fillValue(r, "color/text/muted").token.id).toMatch(/^derived_/);
+  });
+
+  it("ΔL page surface when no page background is captured", () => {
+    const thin = derive(fixtureTokens("capture-thin.json"));
+    // Panel white claims card; page still formula (no body/html bg in thin).
+    expect(fillValue(thin, "color/surface/card").token.id).toBe("ext_th_03");
+    expect(fillValue(thin, "color/surface/page").token.id).toMatch(/^derived_/);
+    expect(fillValue(thin, "color/surface/page").method).toContain("tinted neutral");
   });
 
   it("feedback colors: conventional hues, brand chroma, AA-tuned", () => {
@@ -129,7 +149,7 @@ describe("type scale (C.6) and ramps (C.7)", () => {
     expect(size("type/caption")).toBe(13);
     expect(size("type/subheading")).toBe(20);
     expect(size("type/heading")).toBe(25);
-    expect(size("type/display")).toBe(31.5);
+    expect(size("type/display")).toBe(31);
     // One font → every non-body slot is DERIVED from it, nothing captured.
     for (const role of ["type/caption", "type/subheading", "type/heading", "type/display"]) {
       expect(fillValue(r, role).token.id.startsWith("derived_")).toBe(true);
@@ -172,6 +192,15 @@ describe("type scale (C.6) and ramps (C.7)", () => {
     expect(value("space/2xl")).toBe(64);
   });
 
+  it("seeds semantic spacing roles from the scale (§2.47 / §2.49)", () => {
+    // page = clamp(2 × xl, 32–160); thin-capture xl is 48 → 96
+    expect(fillValue(r, "space/page").token.value).toBe(96);
+    expect(fillValue(r, "space/page").method).toMatch(/2× space\/xl/);
+    expect(fillValue(r, "space/section").token.value).toBe(fillValue(r, "space/2xl").token.value);
+    expect(fillValue(r, "space/stack").token.value).toBe(fillValue(r, "space/lg").token.value);
+    expect(fillValue(r, "space/inset").token.value).toBe(fillValue(r, "space/sm").token.value);
+  });
+
   it("radius ×0.5/×1/×2 from captured 8; border-width falls back to the 1px convention", () => {
     expect(fillValue(r, "radius/sm").token.value).toBe(4);
     expect(fillValue(r, "radius/md").token.id).toBe("ext_th_06");
@@ -181,18 +210,8 @@ describe("type scale (C.6) and ramps (C.7)", () => {
     expect(width.derivedFrom).toBe("convention");
   });
 
-  it("shadow ramp reuses ink at 8% when nothing was captured", () => {
-    const sm = fillValue(r, "shadow/sm").token;
-    if (sm.type !== "shadow") throw new Error("expected shadow");
-    expect(sm.value[0]).toEqual({
-      inset: false,
-      offsetX: 0,
-      offsetY: 1,
-      blur: 2,
-      spread: 0,
-      color: "#1B1923", // the derived ink
-      opacity: 0.08,
-    });
+  it("leaves elevation empty when nothing was captured (§2.63)", () => {
+    expect(r.fills.some((f) => f.role.startsWith("shadow/"))).toBe(false);
   });
 });
 
@@ -229,11 +248,13 @@ describe("precedence and cascade (C.8)", () => {
     expect(r.fills.some((f) => f.role === "color/text/primary")).toBe(false);
   });
 
-  it("changing the primary anchor regenerates the derived colors", () => {
+  it("changing the primary anchor regenerates formula-derived colors", () => {
     const before = derive(tokens);
     const after = derive(tokens, { primaryColorId: "ext_td_04" }); // darker green
-    expect(fillValue(after, "color/action/primary-hover").token.value).not.toBe(
-      fillValue(before, "color/action/primary-hover").token.value,
+    // Captured :hover still claims the slot; ΔL active cascades with the new primary.
+    expect(fillValue(after, "color/action/primary-hover").token.id).toBe("ext_td_04");
+    expect(fillValue(after, "color/action/primary-active").token.value).not.toBe(
+      fillValue(before, "color/action/primary-active").token.value,
     );
     // Non-color derivations are untouched by a color anchor swap.
     expect(fillValue(after, "space/2xl").token.value).toBe(
@@ -292,9 +313,18 @@ describe("thin capture → complete system (the point of it all)", () => {
     expect(fillValue(withHarmony, "color/action/secondary").method).toContain("analogous");
   });
 
-  it("uses secondary anchor when a distinct hue is detected", () => {
-    const r = derive(fixtureTokens("capture-ember-app.json"));
-    const secondary = fillValue(r, "color/action/secondary");
+  it("does not fill secondary from auto-detected hue until user override", () => {
+    const tokens = fixtureTokens("capture-ember-app.json");
+    const auto = derive(tokens);
+    expect(auto.anchors.secondaryColorId).toBe("ext_em_12");
+    expect(auto.fills.some((f) => f.role === "color/action/secondary")).toBe(false);
+
+    const opted = deriveSystem({
+      tokens,
+      assignments: new Map(),
+      overrides: { secondaryColorId: "ext_em_12" },
+    });
+    const secondary = fillValue(opted, "color/action/secondary");
     expect(secondary.token.id).toBe("ext_em_12");
     expect(secondary.method).toContain("secondary");
   });
@@ -312,10 +342,10 @@ describe("thin capture → complete system (the point of it all)", () => {
     );
   });
 
-  it("accentHarmony overrides auto-detected secondary anchor", () => {
+  it("accentHarmony fills secondary even when a distinct hue was auto-detected", () => {
     const tokens = fixtureTokens("capture-ember-app.json");
-    const anchored = derive(fixtureTokens("capture-ember-app.json"));
-    expect(fillValue(anchored, "color/action/secondary").token.id).toBe("ext_em_12");
+    const anchored = derive(tokens);
+    expect(anchored.fills.some((f) => f.role === "color/action/secondary")).toBe(false);
 
     const withHarmony = deriveSystem({
       tokens,
@@ -326,5 +356,41 @@ describe("thin capture → complete system (the point of it all)", () => {
     expect(secondary.token.id).toMatch(/^derived_/);
     expect(secondary.method).toContain("complementary");
     expect(secondary.token.value).not.toBe("#D92D20");
+  });
+
+  it("seeds shadow/inset and blur/backdrop from capture (§2.50)", () => {
+    const tokens = fixtureTokens("capture-effects-kinds.json");
+    const r = derive(tokens);
+    expect(fillValue(r, "shadow/inset").token.id).toBe("fx_inset");
+    expect(fillValue(r, "blur/backdrop").token.id).toBe("fx_blur");
+    // Elevation uses the drop only — not inset or blur.
+    const md = fillValue(r, "shadow/md");
+    expect(md.token.id).toBe("fx_drop");
+  });
+
+  it("does not seed blur/backdrop from a manual Add-token (§2.64)", () => {
+    const manualBlur: StyleSnapToken = {
+      id: "manual_blur1",
+      captureId: "manual-blur",
+      source: "manual entry:backdrop-blur",
+      name: "blur/blue",
+      occurrences: 1,
+      merged: false,
+      type: "shadow",
+      context: { cssProperty: "backdrop-filter" },
+      value: [
+        {
+          inset: false,
+          offsetX: 0,
+          offsetY: 0,
+          blur: 12,
+          spread: 0,
+          color: "#000000",
+          opacity: 0,
+        },
+      ],
+    };
+    const r = derive([manualBlur]);
+    expect(r.fills.some((f) => f.role === "blur/backdrop")).toBe(false);
   });
 });

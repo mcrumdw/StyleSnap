@@ -10,9 +10,18 @@ import type {
   TypographyToken,
 } from "../contract/types";
 import { isBackdropBlurToken } from "../engine/effect-kinds";
-import { rolesForType, validateSlashName, namePlaceholder } from "../engine/roles";
+import {
+  isAllowedCustomRole,
+  rolesForType,
+  composeSlashName,
+  namePrefixForType,
+  nameSuffixPlaceholder,
+  stripNamePrefix,
+  effectKindForToken,
+} from "../engine/roles";
 import { Button } from "./Button";
 import { Input } from "./Input";
+import { SlashNameField } from "./SlashNameField";
 import { useDialog } from "./useDialog";
 
 /** Types the manual form supports (FR-19). */
@@ -45,6 +54,8 @@ interface AddTokenDialogProps {
   lockType?: boolean;
   /** Captured font families for typography add. */
   fontOptions?: string[];
+  /** Declared custom roles (Effects: effect/…, blur/…). */
+  customRoles?: string[];
   /** When set, the dialog edits this manual token in place. */
   editing?: StyleSnapToken;
   editingRole?: string;
@@ -68,6 +79,7 @@ export function AddTokenDialog({
   addLabel = "Add token",
   lockType = false,
   fontOptions = [],
+  customRoles = [],
   editing,
   editingRole,
   onSave,
@@ -77,7 +89,19 @@ export function AddTokenDialog({
   const [type, setType] = useState<TokenType>(
     MANUAL_TYPES.includes(initialType) ? initialType : "color",
   );
-  const [name, setName] = useState(editing?.name ?? "");
+  const [effectKind, setEffectKind] = useState<EffectKind>(initialEffectKind(editing));
+  const nameOpts = type === "shadow" ? { effectKind } : undefined;
+  const namePrefix = namePrefixForType(type, nameOpts);
+  // Suffix-only draft (§2.65) — prefix is locked in the field.
+  const [nameSuffix, setNameSuffix] = useState(() => {
+    const full = editing?.name ?? "";
+    if (!full) return "";
+    const prefix = namePrefixForType(
+      editing!.type,
+      editing!.type === "shadow" ? { effectKind: effectKindForToken(editing!) } : undefined,
+    );
+    return stripNamePrefix(full, prefix);
+  });
   const [role, setRole] = useState(editingRole ?? presetRole ?? "");
   const [error, setError] = useState<string | null>(null);
   const [familyOther, setFamilyOther] = useState(false);
@@ -99,7 +123,6 @@ export function AddTokenDialog({
   const [weight, setWeight] = useState(editingTypo?.value.fontWeight ?? 400);
   const [lineHeight, setLineHeight] = useState(editingTypo?.value.lineHeight ?? 1.5);
   const [numeric, setNumeric] = useState(editingNumeric?.value ?? 16);
-  const [effectKind, setEffectKind] = useState<EffectKind>(initialEffectKind(editing));
   const [shadowY, setShadowY] = useState(shadowLayer?.offsetY ?? 4);
   const [shadowBlur, setShadowBlur] = useState(shadowLayer?.blur ?? 8);
   const [shadowColor, setShadowColor] = useState(shadowLayer?.color ?? "#101828");
@@ -114,11 +137,9 @@ export function AddTokenDialog({
   const hasSnapFonts = fontOptions.length > 0;
 
   function save() {
-    const trimmedName = name.trim();
-    if (trimmedName) {
-      const problem = validateSlashName(trimmedName);
-      if (problem) return setError(problem);
-    }
+    const composed = composeSlashName(namePrefix, nameSuffix);
+    if ("error" in composed) return setError(composed.error);
+    const trimmedName = composed.name;
 
     const id = editing?.id ?? `manual_${crypto.randomUUID().slice(0, 8)}`;
     const base = {
@@ -192,8 +213,65 @@ export function AddTokenDialog({
       }
     }
 
-    onSave(token, role || undefined);
+    // Effect semantics (§2.50): empty role → canonical job, or name-as-role for customs.
+    let resolvedRole = role || undefined;
+    if (!resolvedRole && type === "shadow") {
+      if (effectKind === "backdrop-blur") {
+        if (
+          trimmedName &&
+          (trimmedName === "blur/backdrop" ||
+            ((trimmedName.startsWith("effect/") || trimmedName.startsWith("blur/")) &&
+              isAllowedCustomRole(trimmedName, "shadow")))
+        ) {
+          resolvedRole = trimmedName;
+        } else {
+          resolvedRole = "blur/backdrop";
+        }
+      } else if (effectKind === "inset") {
+        resolvedRole = trimmedName === "shadow/inset" ? trimmedName : "shadow/inset";
+      }
+    }
+
+    onSave(token, resolvedRole);
   }
+
+  const composedPreview = (() => {
+    const r = composeSlashName(namePrefix, nameSuffix);
+    return "name" in r && r.name ? r.name : "";
+  })();
+
+  const roleOptions = (() => {
+    if (type !== "shadow") return rolesForType(type).map((d) => d.role);
+    if (effectKind === "backdrop-blur") {
+      const fromCustoms = customRoles.filter(
+        (r) => r.startsWith("effect/") || r.startsWith("blur/"),
+      );
+      const fromName =
+        composedPreview &&
+        isAllowedCustomRole(composedPreview, "shadow") &&
+        (composedPreview.startsWith("effect/") || composedPreview.startsWith("blur/"))
+          ? [composedPreview]
+          : [];
+      return [...new Set(["blur/backdrop", ...fromCustoms, ...fromName])].sort();
+    }
+    if (effectKind === "inset") {
+      const fromCustoms = customRoles.filter(
+        (r) => r.startsWith("shadow/") && !["shadow/sm", "shadow/md", "shadow/lg"].includes(r),
+      );
+      return [...new Set(["shadow/inset", ...fromCustoms])].sort();
+    }
+    return [
+      ...rolesForType(type)
+        .map((d) => d.role)
+        .filter((r) => r.startsWith("shadow/") && r !== "shadow/inset"),
+      ...customRoles.filter(
+        (r) =>
+          r.startsWith("shadow/") &&
+          !rolesForType(type).some((d) => d.role === r) &&
+          r !== "shadow/inset",
+      ),
+    ];
+  })();
 
   return (
     <div
@@ -223,6 +301,7 @@ export function AddTokenDialog({
                 onChange={(e) => {
                   setType(e.target.value as TokenType);
                   setRole("");
+                  setNameSuffix("");
                 }}
               >
                 {MANUAL_TYPES.map((t) => (
@@ -349,7 +428,10 @@ export function AddTokenDialog({
                 <select
                   className={field}
                   value={effectKind}
-                  onChange={(e) => setEffectKind(e.target.value as EffectKind)}
+                  onChange={(e) => {
+                    setEffectKind(e.target.value as EffectKind);
+                    setRole(""); // §2.50 — never keep elevation role on blur/inset
+                  }}
                 >
                   <option value="drop">Outer drop shadow</option>
                   <option value="inset">Inner (inset) shadow</option>
@@ -415,23 +497,52 @@ export function AddTokenDialog({
             </>
           )}
 
-          <Input
-            label="Name (optional)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={namePlaceholder(type)}
+          <SlashNameField
+            label="Name"
+            optional
+            prefix={namePrefix}
+            value={nameSuffix}
+            onChange={(v) => {
+              setNameSuffix(v);
+              setError(null);
+            }}
+            placeholder={nameSuffixPlaceholder(type, nameOpts)}
+            hint="Type folder is locked. Add / for nesting (e.g. soft/medium)."
           />
 
           <label className="flex flex-col gap-1">
             <span className="text-caption font-medium text-text-muted">Role (optional)</span>
             <select className={field} value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="">No role (primitive)</option>
-              {rolesForType(type).map((def) => (
-                <option key={def.role} value={def.role}>
-                  {def.role}
+              <option value="">
+                {type === "shadow" &&
+                effectKind === "backdrop-blur" &&
+                composedPreview.startsWith("blur/") &&
+                composedPreview !== "blur/backdrop"
+                  ? `Use name as role (${composedPreview})`
+                  : type === "shadow" &&
+                      effectKind === "backdrop-blur" &&
+                      composedPreview.startsWith("effect/")
+                    ? `Use name as role (${composedPreview})`
+                    : "No role (primitive)"}
+              </option>
+              {roleOptions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
                 </option>
               ))}
             </select>
+            {type === "shadow" && effectKind === "backdrop-blur" && (
+              <p className="text-badge text-text-muted">
+                Defaults to <span className="font-mono">blur/backdrop</span>. Or name a custom path
+                under <span className="font-mono">blur/</span> — never{" "}
+                <span className="font-mono">shadow/sm</span>.
+              </p>
+            )}
+            {type === "shadow" && effectKind === "inset" && (
+              <p className="text-badge text-text-muted">
+                Defaults to <span className="font-mono">shadow/inset</span> — not the elevation scale.
+              </p>
+            )}
           </label>
 
           {error && <p className="text-caption text-error">{error}</p>}

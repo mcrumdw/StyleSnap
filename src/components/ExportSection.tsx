@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { generateCleanedJson, type ExportInput } from "../engine/export";
-import { downloadFile, projectSlug } from "../routes/exportActions";
+import { downloadCleanedJson, downloadDesignMd } from "../routes/exportActions";
 import { Button } from "./Button";
 import { Toast } from "./Toast";
 
@@ -12,10 +12,6 @@ interface ExportSectionProps {
   onCopyDesignMd?: () => void;
   /** FR-19b — wrap design.md copy/download behind the system-notes gate only. */
   withAgentExportReady?: (action: () => void) => void;
-}
-
-function download(filename: string, content: string, mime: string) {
-  downloadFile(filename, content, mime);
 }
 
 type ExportTab = "design" | "json";
@@ -55,16 +51,13 @@ export function ExportSection({
     gateIfDesign(run);
   };
 
-  const slug = projectSlug(projectName);
   const content = tab === "design" ? designMd : cleanedJson;
 
   const downloadExport = () => {
-    const run = () =>
-      download(
-        tab === "design" ? "design.md" : `${slug || "stylesnap"}-tokens.json`,
-        content,
-        tab === "design" ? "text/markdown" : "application/json",
-      );
+    const run = () => {
+      if (tab === "design") downloadDesignMd(projectName, designMd);
+      else downloadCleanedJson(projectName, exportInput);
+    };
     gateIfDesign(run);
   };
 

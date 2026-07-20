@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { backdropBlurPx, isBackdropBlurToken } from "./effect-kinds";
+import {
+  backdropBlurPx,
+  isBackdropBlurToken,
+  isDropShadowToken,
+  isInsetShadowToken,
+  roleCompatibleWithToken,
+} from "./effect-kinds";
 import { formatValue } from "../state/workspace";
 import { humanValueLabel } from "../state/token-display";
 import type { StyleSnapToken } from "../contract/types";
@@ -47,6 +53,28 @@ const dropToken: StyleSnapToken = {
   ],
 };
 
+const insetToken: StyleSnapToken = {
+  id: "manual_inset",
+  captureId: "manual-inset",
+  source: "manual entry",
+  name: null,
+  occurrences: 1,
+  merged: false,
+  context: { cssProperty: "box-shadow" },
+  type: "shadow",
+  value: [
+    {
+      inset: true,
+      offsetX: 0,
+      offsetY: 1,
+      blur: 2,
+      spread: 0,
+      color: "#101828",
+      opacity: 0.08,
+    },
+  ],
+};
+
 describe("backdrop blur effect kind", () => {
   it("detects backdrop-filter encoding", () => {
     expect(isBackdropBlurToken(blurToken)).toBe(true);
@@ -58,5 +86,27 @@ describe("backdrop blur effect kind", () => {
     expect(formatValue(blurToken)).toBe("backdrop blur 16px");
     expect(humanValueLabel(blurToken)).toBe("Backdrop blur 16px");
     expect(formatValue(dropToken)).toContain("0 4 8");
+  });
+
+  it("detects backdrop blur from encoding when markers were stripped", () => {
+    const stripped: StyleSnapToken = {
+      ...blurToken,
+      source: "manual entry",
+      context: undefined,
+    };
+    expect(isBackdropBlurToken(stripped)).toBe(true);
+    expect(humanValueLabel(stripped)).toBe("Backdrop blur 16px");
+  });
+
+  it("classifies drop / inset / blur for role linkage (§2.50)", () => {
+    expect(isDropShadowToken(dropToken)).toBe(true);
+    expect(isInsetShadowToken(insetToken)).toBe(true);
+    expect(isDropShadowToken(insetToken)).toBe(false);
+    expect(roleCompatibleWithToken("shadow/md", blurToken)).toBe(false);
+    expect(roleCompatibleWithToken("shadow/md", dropToken)).toBe(true);
+    expect(roleCompatibleWithToken("shadow/inset", insetToken)).toBe(true);
+    expect(roleCompatibleWithToken("shadow/inset", dropToken)).toBe(false);
+    expect(roleCompatibleWithToken("blur/backdrop", blurToken)).toBe(true);
+    expect(roleCompatibleWithToken("blur/backdrop", dropToken)).toBe(false);
   });
 });

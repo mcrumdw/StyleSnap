@@ -91,45 +91,48 @@ export function shadowMagnitude(value: ShadowValue): number {
   return Math.max(...value.map((l) => l.offsetY + l.blur));
 }
 
-/** Map 1–3 captured shadows onto sm/md/lg; synthesize missing steps. */
+/**
+ * Map 1–3 captured shadows onto sm/md/lg; synthesize missing steps.
+ * Empty capture → no slots (§2.63): never invent elevation when the snap
+ * had no drop shadows (borders/outlines often carry elevation instead).
+ * `shadowStyle` biases geometry when synthesizing missing steps of a partial ramp.
+ */
 export function shadowSlotPlan(
   captured: Array<{ id: string; value: ShadowValue }>,
-  fallbackColor: string,
-  fallbackOpacity: number,
   shadowStyle: ShadowStyle = "soft",
 ): Array<{ role: string; value: ShadowValue; tokenId?: string; method: string }> {
-  const layer = (offsetY: number, blur: number, spread: number, color: string, opacity: number) =>
-    [{ inset: false, offsetX: 0, offsetY, blur, spread, color, opacity }] as ShadowValue;
-
   const sorted = [...captured].sort(
     (a, b) => shadowMagnitude(a.value) - shadowMagnitude(b.value) || (a.id < b.id ? -1 : 1),
   );
 
   if (sorted.length === 0) {
-    return deriveShadowRamp(fallbackColor, fallbackOpacity, shadowStyle).map(({ role, value }) => ({
-      role,
-      value,
-      method: `shadow ramp (${shadowStyle}, neutral ink @ 8%)`,
-    }));
+    return [];
   }
 
   if (sorted.length === 1) {
     const seed = sorted[0].value[0];
     const color = seed.color;
     const opacity = seed.opacity;
+    const ramp = deriveShadowRamp(color, opacity, shadowStyle);
+    const sm = ramp.find((s) => s.role === "shadow/sm")!;
+    const lg = ramp.find((s) => s.role === "shadow/lg")!;
     return [
-      { role: "shadow/sm", value: layer(1, 2, 0, color, opacity), method: "shadow ramp (sm)" },
+      { role: "shadow/sm", value: sm.value, method: `shadow ramp (sm, ${shadowStyle})` },
       {
         role: "shadow/md",
         value: sorted[0].value,
         tokenId: sorted[0].id,
         method: "captured card shadow",
       },
-      { role: "shadow/lg", value: layer(12, 24, -4, color, opacity), method: "shadow ramp (lg)" },
+      { role: "shadow/lg", value: lg.value, method: `shadow ramp (lg, ${shadowStyle})` },
     ];
   }
 
   if (sorted.length === 2) {
+    const heavy = sorted[1].value[0];
+    const lg = deriveShadowRamp(heavy.color, heavy.opacity, shadowStyle).find(
+      (s) => s.role === "shadow/lg",
+    )!;
     return [
       {
         role: "shadow/sm",
@@ -145,8 +148,8 @@ export function shadowSlotPlan(
       },
       {
         role: "shadow/lg",
-        value: layer(12, 24, -4, sorted[1].value[0].color, sorted[1].value[0].opacity),
-        method: "shadow ramp (lg)",
+        value: lg.value,
+        method: `shadow ramp (lg, ${shadowStyle})`,
       },
     ];
   }

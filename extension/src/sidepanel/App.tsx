@@ -4,8 +4,13 @@ import type {
   Capture,
   StyleSnapExport,
   StyleSnapToken,
+  CaptureFoundations,
 } from "../shared/types";
 import { CaptureList } from "./CaptureList";
+import { InfoHint } from "./InfoHint";
+
+/** Production webtool — paste copied JSON here. */
+const WEBAPP_URL = "https://stylesnap-lac.vercel.app";
 
 /** Sequential ids owned by the side panel — survives page navigations. */
 const nextExtId = (n: number) => `ext_${String(n).padStart(3, "0")}`;
@@ -28,11 +33,12 @@ function withUniqueIds(prev: Capture[], incoming: Capture): Capture {
 
 export function App() {
   const [active, setActive] = useState(false);
+  const [patternMode, setPatternMode] = useState(false);
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [pageUrl, setPageUrl] = useState<string>("");
+  const [foundations, setFoundations] = useState<CaptureFoundations | undefined>();
   const [toast, setToast] = useState<string | null>(null);
 
-  // Listen for captures + state changes from the content script.
   useEffect(() => {
     const handler = (msg: PickerMessage) => {
       if (msg.kind === "picker/captured") {
@@ -51,24 +57,137 @@ export function App() {
     setTimeout(() => setToast(null), 2600);
   };
 
+  /** Prefer the browsing window the user was on — not an odd side-panel focus edge case. */
+  const getTargetTab = useCallback(async () => {
+    const [tab] =
+      (await chrome.tabs.query({ active: true, lastFocusedWindow: true })) ?? [];
+    if (tab?.id && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://")) {
+      return tab;
+    }
+    const [fallback] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return fallback?.id ? fallback : null;
+  }, []);
+
+  /** Inject picker if the page loaded before the extension (or script was killed). */
+  const ensurePicker = useCallback(async (tabId: number): Promise<boolean> => {
+    try {
+      const pong = (await chrome.tabs.sendMessage(tabId, {
+        kind: "picker/ping",
+      } satisfies PickerMessage)) as PickerMessage | undefined;
+      if (pong?.kind === "picker/pong") return true;
+    } catch {
+      /* not injected yet */
+    }
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["src/content/picker.ts"],
+      });
+      // Brief pause so the listener is registered before the next message.
+      await new Promise((r) => setTimeout(r, 50));
+      const pong = (await chrome.tabs.sendMessage(tabId, {
+        kind: "picker/ping",
+      } satisfies PickerMessage)) as PickerMessage | undefined;
+      return pong?.kind === "picker/pong";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const sendToTab = useCallback(
+    async (msg: PickerMessage) => {
+      const tab = await getTargetTab();
+      if (!tab?.id) {
+        flash("No active page tab — open a website and try again.");
+        return null;
+      }
+      const url = tab.url ?? "";
+      if (
+        url.startsWith("chrome://") ||
+        url.startsWith("chrome-extension://") ||
+        url.startsWith("https://chrome.google.com/webstore") ||
+        url.startsWith("https://chromewebstore.google.com")
+      ) {
+        flash("Picking doesn't work on this page.");
+        return null;
+      }
+
+      const ready = await ensurePicker(tab.id);
+      if (!ready) {
+        flash("Picking doesn't work on this page.");
+        return null;
+      }
+
+      try {
+        return await chrome.tabs.sendMessage(tab.id, msg);
+      } catch {
+        flash("Picking doesn't work on this page.");
+        return null;
+      }
+    },
+    [ensurePicker, getTargetTab],
+  );
+
   const togglePick = useCallback(async () => {
     const next = !active;
-    setActive(next);
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      chrome.tabs
-        .sendMessage(tab.id, {
-          kind: "picker/setActive",
-          active: next,
-        } as PickerMessage)
-        .catch(() => flash("Picking doesn't work on this page."));
+    const res = await sendToTab({
+      kind: "picker/setActive",
+      active: next,
+      patternMode,
+    });
+    if (res === null) {
+      setActive(false);
+      return;
     }
-  }, [active]);
+    setActive(next);
+    if (next) {
+      flash(
+        patternMode
+          ? "Picking with parent — click an element"
+          : "Click an element on the page",
+      );
+    }
+  }, [active, patternMode, sendToTab]);
+
+  const togglePattern = useCallback(async () => {
+    const next = !patternMode;
+    const res = await sendToTab({ kind: "picker/setPatternMode", enabled: next });
+    if (res === null) return;
+    setPatternMode(next);
+    flash(
+      next
+        ? "Include parent on — next picks also capture the parent"
+        : "Include parent off",
+    );
+  }, [patternMode, sendToTab]);
+
+  const scanFoundations = useCallback(async () => {
+    const res = (await sendToTab({
+      kind: "picker/scanFoundations",
+    })) as PickerMessage | null;
+    if (!res) return;
+    if (res.kind === "picker/foundations") {
+      setFoundations(res.foundations);
+      const bp = res.foundations.breakpointsPx?.length ?? 0;
+      const motion = res.foundations.motion?.length ?? 0;
+      const z = res.foundations.zIndex?.length ?? 0;
+      flash(
+        bp + motion + z > 0
+          ? `Scanned — ${bp} breakpoints · ${motion} motion · ${z} z-index`
+          : "No page foundations found on this page",
+      );
+      return;
+    }
+    flash("Scan failed — try Start picking once, then Scan page again.");
+  }, [sendToTab]);
 
   const removeCapture = (captureId: string) =>
     setCaptures((prev) => prev.filter((c) => c.captureId !== captureId));
 
-  const clearAll = () => setCaptures([]);
+  const clearAll = () => {
+    setCaptures([]);
+    setFoundations(undefined);
+  };
 
   const tokens = captures.flatMap((c) => c.tokens);
   const tokenCount = tokens.length;
@@ -79,16 +198,14 @@ export function App() {
         source: "browser-extension",
         exportedAt: new Date().toISOString(),
         pageUrl: pageUrl || undefined,
-        version: "2.0",
+        version: "2.1",
+        foundations,
       },
       tokens,
     };
 
-    // Light structural guard. The Webtool is the validating authority — it runs
-    // the full zod schema on import (docs/schema.ts, PRD FR-2) — so we only sanity
-    // check here to fail loudly on an obviously broken export.
     const invalid = payload.tokens.find(
-      (t) => !t.id || !t.captureId || !t.type
+      (t) => !t.id || !t.captureId || !t.type,
     );
     if (payload.tokens.length === 0 || invalid) {
       flash("Nothing valid to export");
@@ -114,12 +231,56 @@ export function App() {
         </button>
       </header>
 
+      <div className="toolbar">
+        <div className="toolbar-group">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={patternMode}
+              onChange={() => void togglePattern()}
+              aria-label="Include parent"
+            />
+            <span className="switch-track" aria-hidden="true">
+              <span className="switch-thumb" />
+            </span>
+            <span className="switch-label">Include parent</span>
+          </label>
+          <InfoHint
+            label="What Include parent does"
+            content="When you click an element, also capture its parent. That gives StyleSnap denser structure for component sketches."
+          />
+        </div>
+        <div className="toolbar-group">
+          <button className="btn btn-ghost btn-sm" onClick={scanFoundations}>
+            Scan page
+          </button>
+          <InfoHint
+            label="What Scan page does"
+            content="Reads this page’s breakpoints, motion timings, and z-index layers for design.md Agent rules. Doesn’t add tokens to your capture list."
+          />
+        </div>
+        {foundations && (
+          <span className="foundations-chip">
+            {[
+              foundations.breakpointsPx?.length
+                ? `${foundations.breakpointsPx.length} bp`
+                : null,
+              foundations.motion?.length ? `${foundations.motion.length} motion` : null,
+              foundations.zIndex?.length ? `z×${foundations.zIndex.length}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "scanned"}
+          </span>
+        )}
+      </div>
+
       <main className="body">
         {captures.length === 0 ? (
           <div className="empty">
             <h2 className="empty-title">Nothing snapped yet</h2>
             <p className="empty-sub">
-              Start picking and click any element on the page.
+              Start picking and click any element on the page. Turn on Include
+              parent for denser sketches; Scan page for breakpoints and motion.
             </p>
           </div>
         ) : (
@@ -128,25 +289,38 @@ export function App() {
       </main>
 
       <footer className="footer">
-        <button
-          className="btn btn-primary"
-          onClick={copy}
-          disabled={captures.length === 0}
+        <div className="footer-actions">
+          <button
+            className="btn btn-primary"
+            onClick={copy}
+            disabled={captures.length === 0}
+          >
+            Copy to StyleSnap
+            {captures.length > 0 && (
+              <span className="badge-inline">
+                {captures.length} el · {tokenCount} tk
+              </span>
+            )}
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={clearAll}
+            disabled={captures.length === 0 && !foundations}
+          >
+            Clear all
+          </button>
+        </div>
+        <a
+          className="webapp-link"
+          href={WEBAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
         >
-          Copy to StyleSnap
-          {captures.length > 0 && (
-            <span className="badge-inline">
-              {captures.length} el · {tokenCount} tk
-            </span>
-          )}
-        </button>
-        <button
-          className="btn btn-ghost"
-          onClick={clearAll}
-          disabled={captures.length === 0}
-        >
-          Clear all
-        </button>
+          Open StyleSnap web app
+          <span className="webapp-link-arrow" aria-hidden="true">
+            →
+          </span>
+        </a>
       </footer>
 
       {toast && (

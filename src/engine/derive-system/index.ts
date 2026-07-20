@@ -30,7 +30,14 @@ import {
   type ShadowStyle,
 } from "./ramps";
 import { scaleRadius, type StyleProfile } from "../style-profile";
+import { isBackdropBlurToken, isDropShadowToken, isInsetShadowToken } from "../effect-kinds";
+import { isManualToken } from "../normalize";
 import { deriveRoleCandidates } from "../roles";
+import {
+  SPACE_SEMANTIC_FROM_SCALE,
+  SPACE_SCALE_ROLES,
+  derivePageInsetPx,
+} from "../roles/taxonomy";
 
 export type { AccentSuggestion, Harmony } from "./color";
 export { harmonyFromPrimary } from "./color";
@@ -92,6 +99,38 @@ function syntheticColor(role: string, hex: string): StyleSnapToken {
   };
 }
 
+/**
+ * Prefer a captured interaction shade (context.state) over the ΔL formula —
+ * same precedence as spacing "captured value claims the slot" (C.8).
+ */
+function capturedInteractionColor(
+  tokens: StyleSnapToken[],
+  rawById: ReadonlyMap<string, StyleSnapToken>,
+  state: "hover" | "active",
+): StyleSnapToken | undefined {
+  const paintScore = (prop: string | undefined) => {
+    if (prop === "background-color" || prop === "background-image") return 3;
+    if (prop === "fill" || prop === "stroke" || prop === "stop-color") return 2;
+    if (prop === "border-color" || prop === "outline-color") return 1;
+    return 0;
+  };
+  const matches = tokens.filter((t) => {
+    if (t.type !== "color" || t.opacity < 0.5) return false;
+    const raw = rawById.get(t.id) ?? t;
+    return raw.context?.state === state;
+  });
+  matches.sort((a, b) => {
+    const ra = rawById.get(a.id) ?? a;
+    const rb = rawById.get(b.id) ?? b;
+    return (
+      paintScore(rb.context?.cssProperty) - paintScore(ra.context?.cssProperty) ||
+      b.occurrences - a.occurrences ||
+      (a.id < b.id ? -1 : 1)
+    );
+  });
+  return matches[0];
+}
+
 export function deriveSystem(input: DeriveInput): DeriveResult {
   const { tokens, assignments } = input;
   const rawById = input.rawById ?? new Map();
@@ -111,29 +150,89 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     fill("color/action/primary", primary, from, "anchor (your primary color)");
 
     const states = deriveStates(primary.value);
-    fill("color/action/primary-hover", syntheticColor("color/action/primary-hover", states.hover), from, "hover (ΔL −0.06)");
-    fill("color/action/primary-active", syntheticColor("color/action/primary-active", states.active), from, "active (ΔL −0.12)");
+    const hoverCaptured = capturedInteractionColor(tokens, rawById, "hover");
+    fill(
+      "color/action/primary-hover",
+      hoverCaptured ?? syntheticColor("color/action/primary-hover", states.hover),
+      hoverCaptured ? hoverCaptured.id : from,
+      hoverCaptured ? "captured :hover state" : "hover (ΔL −0.06)",
+    );
+    const activeCaptured = capturedInteractionColor(tokens, rawById, "active");
+    fill(
+      "color/action/primary-active",
+      activeCaptured ?? syntheticColor("color/action/primary-active", states.active),
+      activeCaptured ? activeCaptured.id : from,
+      activeCaptured ? "captured :active state" : "active (ΔL −0.12)",
+    );
     fill("color/border/focus", primary, from, "focus ring = primary");
 
     const neutrals = deriveNeutrals(primary.value);
+    const colorCandidates = deriveRoleCandidates(tokens, rawById);
+    const claimColor = (
+      role: string,
+      fallback: StyleSnapToken,
+      derivedFrom: string,
+      formulaMethod: string,
+      capturedMethod: string,
+    ) => {
+      const cand = colorCandidates.get(role)?.[0];
+      const captured = cand ? byId.get(cand.tokenId) : undefined;
+      if (captured && captured.type === "color" && !captured.id.startsWith("derived_")) {
+        fill(role, captured, captured.id, capturedMethod);
+      } else {
+        fill(role, fallback, derivedFrom, formulaMethod);
+      }
+    };
+
     const linkHex = deriveLinkColor(primary.value, neutrals.surfacePage);
     if (linkHex.toLowerCase() === primary.value.toLowerCase()) {
       fill("color/text/link", primary, from, "link = brand primary");
     } else {
-      fill(
+      claimColor(
         "color/text/link",
         syntheticColor("color/text/link", linkHex),
         from,
         "link (brand hue, AA-tuned for page surface)",
+        "captured link color",
       );
     }
 
     const neutralMethod = (l: string) => `tinted neutral (brand hue, ${l})`;
-    fill("color/text/primary", syntheticColor("color/text/primary", neutrals.textPrimary), from, neutralMethod("L 0.22"));
-    fill("color/text/muted", syntheticColor("color/text/muted", neutrals.textMuted), from, neutralMethod("L 0.52"));
-    fill("color/surface/page", syntheticColor("color/surface/page", neutrals.surfacePage), from, neutralMethod("L 0.985"));
-    fill("color/surface/card", syntheticColor("color/surface/card", neutrals.surfaceCard), from, "white card surface");
-    fill("color/border/default", syntheticColor("color/border/default", neutrals.border), from, neutralMethod("L 0.90"));
+    claimColor(
+      "color/text/primary",
+      syntheticColor("color/text/primary", neutrals.textPrimary),
+      from,
+      neutralMethod("L 0.22"),
+      "captured text color",
+    );
+    claimColor(
+      "color/text/muted",
+      syntheticColor("color/text/muted", neutrals.textMuted),
+      from,
+      neutralMethod("L 0.52"),
+      "captured muted text",
+    );
+    claimColor(
+      "color/surface/page",
+      syntheticColor("color/surface/page", neutrals.surfacePage),
+      from,
+      neutralMethod("L 0.985"),
+      "captured page background",
+    );
+    claimColor(
+      "color/surface/card",
+      syntheticColor("color/surface/card", neutrals.surfaceCard),
+      from,
+      "white card surface",
+      "captured card background",
+    );
+    claimColor(
+      "color/border/default",
+      syntheticColor("color/border/default", neutrals.border),
+      from,
+      neutralMethod("L 0.90"),
+      "captured border color",
+    );
 
     const harvested = harvestFeedbackColors(tokens, assignments, primary.value, rawById);
     for (const { role, token, method } of harvested) {
@@ -160,9 +259,10 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     accent = deriveAccent(primary.value, capturedHexes);
 
     const harmonySuggestion = harmonyFromPrimary(primary.value);
-    const secondaryAnchor = anchors.secondaryColorId
-      ? byId.get(anchors.secondaryColorId)
-      : undefined;
+    // Opt-in only (§2.38 / §2.41): never fill from auto-detected secondary.
+    // User must set accentHarmony or explicitly override secondaryColorId.
+    const userSecondaryId = input.overrides?.secondaryColorId;
+    const secondaryAnchor = userSecondaryId ? byId.get(userSecondaryId) : undefined;
     const explicitHarmony = input.accentHarmony;
     if (
       secondaryAnchor &&
@@ -176,8 +276,6 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
         "anchor (your secondary color)",
       );
     } else if (explicitHarmony !== undefined) {
-      // Opt-in only: no auto-synthetic secondary when nothing was captured
-      // (DECISIONS §2.38). User presses "Use secondary color" → harmony set.
       const secondaryBase = harmonySuggestion.candidates[explicitHarmony];
       fill(
         "color/action/secondary",
@@ -320,18 +418,11 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   }
 
   const shadows = tokens
-    .filter((t): t is StyleSnapToken & { type: "shadow" } => t.type === "shadow")
+    .filter((t): t is StyleSnapToken & { type: "shadow" } => isDropShadowToken(t))
     .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
-  const inkHex = primary ? deriveNeutrals((primary as { value: string }).value).textPrimary : "#111111";
-  const shadowSeed =
-    shadows[0] !== undefined
-      ? { color: shadows[0].value[0].color, opacity: shadows[0].value[0].opacity, from: shadows[0].id }
-      : { color: inkHex, opacity: 0.08, from: "convention" };
   const shadowStyle: ShadowStyle = input.styleProfile?.shadowStyle ?? "soft";
   for (const slot of shadowSlotPlan(
     shadows.map((s) => ({ id: s.id, value: s.value })),
-    shadowSeed.color,
-    shadowSeed.opacity,
     shadowStyle,
   )) {
     fill(
@@ -348,9 +439,25 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
             type: "shadow",
             value: slot.value,
           },
-      slot.tokenId ?? shadowSeed.from,
+      slot.tokenId ?? "convention",
       slot.method,
     );
+  }
+
+  // Effect semantics (§2.50 / §2.63 / §2.64) — elevation only when drop
+  // shadows were captured (empty → leave slots open). Inset / blur: seed from
+  // snap only — never treat Add-token manuals as "from capture".
+  if (open("shadow/inset")) {
+    const inset = tokens
+      .filter((t) => isInsetShadowToken(t) && !isManualToken(t))
+      .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1))[0];
+    if (inset) fill("shadow/inset", inset, inset.id, "captured inset shadow");
+  }
+  if (open("blur/backdrop")) {
+    const blur = tokens
+      .filter((t) => isBackdropBlurToken(t) && !isManualToken(t))
+      .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1))[0];
+    if (blur) fill("blur/backdrop", blur, blur.id, "captured backdrop blur");
   }
 
   const capturedWidth = tokens.find((t) => t.type === "border-width");
@@ -366,9 +473,12 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   for (const token of tokens) {
     if (token.type !== "spacing" && token.type !== "border-radius") continue;
     if (fills.some((f) => f.token.id === token.id)) continue;
-    const prefix = token.type === "spacing" ? "space/" : "radius/";
     const near = fills
-      .filter((f) => f.role.startsWith(prefix))
+      .filter((f) =>
+        token.type === "spacing"
+          ? SPACE_SCALE_ROLES.has(f.role)
+          : f.role.startsWith("radius/"),
+      )
       .map((f) => ({
         fill: f,
         dist: Math.abs((f.token.value as number) - (token.type === "spacing" ? snap4(token.value) : token.value)),
@@ -378,6 +488,44 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     if (!near.fill.token.id.startsWith("derived_")) continue;
     near.fill.token = token;
     near.fill.method = "captured value claims the nearest slot";
+  }
+
+  // Semantic spacing jobs ← scale steps (§2.47 / §2.49), after near-slot.
+  // Prefer live fills; fall back to already-assigned scale slots.
+  const resolveScaleToken = (
+    scaleRole: string,
+  ): { token: StyleSnapToken; derivedFrom: string } | undefined => {
+    const source = fills.find((f) => f.role === scaleRole);
+    if (source) return { token: source.token, derivedFrom: source.derivedFrom };
+    const assignedId = assignments.get(scaleRole);
+    const token = assignedId ? byId.get(assignedId) : undefined;
+    if (token) return { token, derivedFrom: assignedId! };
+    return undefined;
+  };
+
+  // space/page = clamp(2 × space/xl, 32, 160) — not a direct alias of xl.
+  if (open("space/page")) {
+    const xl = resolveScaleToken("space/xl");
+    if (xl && typeof xl.token.value === "number") {
+      const value = derivePageInsetPx(xl.token.value);
+      const captured = tokens.find((t) => t.type === "spacing" && t.value === value);
+      fill(
+        "space/page",
+        captured ?? numericToken("space/page", "spacing", value),
+        xl.derivedFrom,
+        `2× space/xl (${xl.token.value}→${value}px), clamped 32–160`,
+      );
+    }
+  }
+
+  for (const { role, from: scaleRoles } of SPACE_SEMANTIC_FROM_SCALE) {
+    if (!open(role)) continue;
+    for (const scaleRole of scaleRoles) {
+      const source = resolveScaleToken(scaleRole);
+      if (!source) continue;
+      fill(role, source.token, source.derivedFrom, `from scale (${scaleRole})`);
+      break;
+    }
   }
 
   return {

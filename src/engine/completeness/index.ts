@@ -11,7 +11,9 @@
 //                 that every export must flag (FR-27).
 
 import type { StyleSnapToken, TokenType } from "../../contract/types";
-import { COLOR_ROLES, roleDefinition } from "../roles/taxonomy";
+import type { CaptureFoundations } from "../../contract/types";
+import { ELEVATION_ROLE_SET, isDropShadowToken } from "../effect-kinds";
+import { COLOR_ROLES, SPACE_SCALE_ROLES, roleDefinition } from "../roles/taxonomy";
 
 export interface ChecklistItem {
   id: string;
@@ -45,6 +47,8 @@ export function computeChecklist(
   tokens: StyleSnapToken[],
   /** Phase 8 — role → token id (the pool's `assignments`, merge-resolved). */
   assignments: ReadonlyMap<string, string>,
+  /** Schema 2.1 — page foundations from browser scan; clears permanent gaps when present. */
+  foundations?: CaptureFoundations | null,
 ): Checklist {
   const assigned = new Set(assignments.keys());
   const assignedTokenIds = new Set(assignments.values());
@@ -83,11 +87,11 @@ export function computeChecklist(
     action: { tokenType: "typography", role: "type/heading" },
   });
 
-  // B.3 — foundation scale minima.
+  // B.3 — foundation scale minima (spacing scale steps only — not semantic roles).
   const slotCount = (prefix: string) =>
     new Set([...assigned].filter((r) => r.startsWith(prefix))).size;
 
-  const spaceSteps = slotCount("space/");
+  const spaceSteps = [...assigned].filter((r) => SPACE_SCALE_ROLES.has(r)).length;
   items.push({
     id: "space-scale",
     severity: "required",
@@ -95,10 +99,11 @@ export function computeChecklist(
     label: "space/* scale (≥ 4 steps)",
     description:
       spaceSteps >= 4
-        ? `${spaceSteps} spacing steps assigned`
-        : `Only ${spaceSteps} spacing step${spaceSteps === 1 ? "" : "s"}. Need at least 4.`,
-    action: { tokenType: "spacing" },
+        ? `${spaceSteps} spacing scale steps assigned`
+        : `Only ${spaceSteps} spacing scale step${spaceSteps === 1 ? "" : "s"}. Need at least 4.`,
+    action: { tokenType: "spacing", role: "space/md" },
   });
+  items.push(roleItem("space/page", "required"));
   items.push({
     id: "radius-scale",
     severity: "required",
@@ -110,15 +115,21 @@ export function computeChecklist(
         : "Missing a radius. Assign radius/sm.",
     action: { tokenType: "border-radius", role: "radius/sm" },
   });
+  const elevationCount = [...assigned].filter((r) => ELEVATION_ROLE_SET.has(r)).length;
+  // §2.63 — require elevation only when the snap had drop shadows; otherwise
+  // recommend (borders/outlines often carry elevation instead).
+  const snapHadDropShadow = tokens.some((t) => isDropShadowToken(t));
   items.push({
     id: "shadow-scale",
-    severity: "required",
-    status: slotCount("shadow/") >= 1 ? "met" : "gap",
-    label: "shadow/* (≥ 1)",
+    severity: snapHadDropShadow ? "required" : "recommended",
+    status: elevationCount >= 1 ? "met" : "gap",
+    label: "shadow/sm|md|lg (≥ 1)",
     description:
-      slotCount("shadow/") >= 1
-        ? "Shadow assigned"
-        : "Missing a shadow. Assign shadow/sm.",
+      elevationCount >= 1
+        ? "Elevation shadow assigned"
+        : snapHadDropShadow
+          ? "Missing a drop shadow. Assign shadow/sm."
+          : "No drop shadows in snap — leave empty if elevation uses borders/outlines, or add shadow/sm.",
     action: { tokenType: "shadow", role: "shadow/sm" },
   });
   items.push({
@@ -140,7 +151,11 @@ export function computeChecklist(
   // Captured foundation values no slot points at (oracle: the 12px).
   const slotValue = (rolePrefix: string): number[] =>
     [...assignments.entries()]
-      .filter(([role]) => role.startsWith(rolePrefix))
+      .filter(([role]) =>
+        rolePrefix === "space/"
+          ? SPACE_SCALE_ROLES.has(role)
+          : role.startsWith(rolePrefix),
+      )
       .map(([, id]) => tokens.find((t) => t.id === id)?.value)
       .filter((v): v is number => typeof v === "number");
 
@@ -173,14 +188,32 @@ export function computeChecklist(
     });
   }
 
-  // Never capturable — always flagged, resolved manually (FR-27 in exports).
-  items.push({
-    id: "manual-foundations",
-    severity: "info",
-    status: "gap",
-    label: "Breakpoints · motion/easing · z-index",
-    description: "Not capturable — add these by hand. Flagged in every export.",
-  });
+  // Page foundations — permanent gap only for what's still missing (FR-27).
+  const missingFoundation: string[] = [];
+  if (!foundations?.breakpointsPx?.length) missingFoundation.push("breakpoints");
+  if (!foundations?.zIndex?.length) missingFoundation.push("z-index");
+  // Motion can live in System notes or foundations.motion — still flag if neither path filled later.
+  if (!foundations?.motion?.length) missingFoundation.push("motion/easing");
+  if (missingFoundation.length > 0) {
+    items.push({
+      id: "manual-foundations",
+      severity: "info",
+      status: "gap",
+      label: missingFoundation.join(" · "),
+      description:
+        foundations && Object.keys(foundations).length > 0
+          ? `Still undefined: ${missingFoundation.join(", ")}. Add by hand or re-scan the page.`
+          : "Not capturable from this session — add these by hand, or Scan page in the extension.",
+    });
+  } else {
+    items.push({
+      id: "manual-foundations",
+      severity: "info",
+      status: "met",
+      label: "Breakpoints · motion/easing · z-index",
+      description: "Captured via page foundations scan.",
+    });
+  }
 
   const required = items.filter((i) => i.severity === "required");
   const requiredMet = required.filter((i) => i.status === "met").length;

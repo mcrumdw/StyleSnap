@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 Tags in §6 change history (and on new §2.x when useful):
 
@@ -309,7 +309,8 @@ matching) biases **derived** tokens — not captured primitives. User edits
 - `typeRatio` — modular scale (C.6)
 - `harmony` — secondary color when no captured secondary anchor (C.5)
 - `radiusScale` — multiplier on derived radius ramp slots only
-- `shadowStyle` — `soft` | `hard` | `minimal` when no captured shadows
+- `shadowStyle` — `soft` | `hard` | `minimal` when synthesizing missing steps of a
+  partial captured shadow ramp (never invents a full ramp from nothing — §2.63)
 
 Applied in `applyNoteTemplate` / `applyStyleProfile` alongside note snippets.
 Harmony updates on refresh only when not dismissed and harmony was unset (avoids
@@ -871,22 +872,420 @@ System (when re-wired) remains the lock point.
 ---
 
 ### 2.42 Extension side panel matches team DESIGN.md `[Change]`
-Decided 2026-07-19. The browser extension's provisional dark side panel
-(neutral surfaces + `#6E56F7` accent) is replaced with the team brand system
-from root `DESIGN.md` / the web app: light `surface-page` canvas, `brand-primary`
-`#5B2EFF`, 2px `border-default`, hard `shadow-card`, Space Grotesk / Inter /
-JetBrains Mono (bundled via `@fontsource`), chunky press buttons, success toast.
+Decided 2026-07-19. Extension side panel reskinned to team `DESIGN.md` / web app
+tokens (light canvas, brand-primary, hard shadows, Space Grotesk / Inter /
+JetBrains Mono). In-page overlay keeps a solid dark chip for legibility.
 
-**Why:** capture → paste into the webtool should feel like one product. The
-extension's own `DESIGN.md` had deferred to team tokens "once filled"; those
-tokens landed with the web app.
+---
 
-**Kept local:** in-page overlay stays outline + solid dark chip (legible on
-arbitrary host pages); dense 32×32 swatches in the narrow panel (workspace
-token cards remain 48×48).
+### 2.43 Capture v2.1 → coherent design.md `[New feature]`
+Decided 2026-07-19. Browser capture deepens so exported `design.md` can drive
+faithful AI rebuilds — not only a color palette.
 
-**Key files:** `extension/src/sidepanel/styles.css`, `App.tsx`, `main.tsx`,
-`content/picker.ts`, `extension/DESIGN.md`.
+**Contract (schema 2.1, additive):** optional `meta.foundations` (breakpoints,
+motion, z-index, content max-widths, spacing base) and optional
+`context.layout` on tokens. 2.0 captures still import without FR-4 warning.
+
+**Extension:** per-side spacing/margin/gaps; CSS `var(--*)` authoredNames;
+hover/focus/disabled sampling; outline/focus ring; modern color parsing;
+opt-in **Scan page** + **Pattern pick** (element + parent).
+
+**Webtool:** role hints for focus/disabled/outline; richer component sketches;
+Agent rules + Foundations lines from scanned meta; Layout/Motion notes prefill
+from capture; completeness no longer permanently flags foundations that were
+scanned.
+
+**Key files:** `docs/types.ts`, `extension/src/content/extract.ts`,
+`foundations.ts`, `src/engine/export/{index,sketches,foundations}.ts`,
+`extension/CAPTURE_V2.md`.
+
+---
+
+### 2.44 Secondary opt-in via Add secondary `[Change]`
+Decided 2026-07-19. Extends §2.38: secondary must never auto-fill — not from
+default harmony, **and not from an auto-detected second hue**.
+
+**Problem:** Captures with a distinct alert/accent hue still auto-filled
+`color/action/secondary`, and mood style profiles silently set
+`accentChoice.harmony`, so the role appeared filled without a user choice.
+
+**Decision:**
+- Derivation fills secondary only when the user has set `accentChoice.harmony`
+  **or** an explicit `anchorOverrides.secondaryColorId` (not auto-detect alone).
+- `applyStyleProfile` no longer writes harmony — secondary stays opt-in.
+- Inactive **anchor/secondary** card is greyed (`opacity` + `grayscale`) with an
+  overlay **Add secondary** button. Activate prefers a suggested captured hue
+  when present, else the suggested harmony; then opens the existing picker.
+
+**Key files:** `derive-system/index.ts`, `pool.ts` (`applyStyleProfile`),
+`AnchorsStep.tsx`.
+
+---
+
+### 2.45 Origin chip "from capture" + whole-px typography `[Change]`
+Decided 2026-07-20. Two UX polish items from the System roles layer.
+
+**Origin vocabulary:** The muted mono chip for `seeded` fills read **auto**,
+which sounded like automation rather than capture provenance. Relabeled to
+**from capture** (tooltip: "From your capture") on role rows, the System view
+legend, and Design accents helper copy.
+
+**Typography sizes:** Modular type scale derivation rounded to 0.5px (PRD C.6),
+producing values like 31.5px in the editor. Product now rounds all font sizes
+to whole px: derivation (`derive-system/type.ts`), dedup size key, extension
+capture, role editor save/display, and `humanValueLabel`.
+
+**Rejected:** Keeping 0.5px steps for derived slots only — inconsistent with
+capture rounding and confusing in the size input.
+
+**Key files:** `derive-system/type.ts`, `dedup/distances.ts`,
+`RoleValueEditor.tsx`, `SystemView.tsx`, `DesignAccents.tsx`,
+`token-display.ts`, `extension/src/content/extract.ts`.
+
+---
+
+### 2.46 Backdrop blur roles are `effect/` / `blur/`, not `shadow/*` `[Bug fix]`
+Decided 2026-07-20. Background blur (§2.28) is still encoded as a `shadow`
+token in `types.ts`, so custom System roles were forced under the `shadow/`
+prefix — naming a blur `blur/blur1` produced `shadow/blur/blur1`, and the Add
+dialog only offered `shadow/sm|md|lg`.
+
+**Fix:** shadow-typed customs may use `shadow/`, `effect/`, or `blur/`
+(`SHADOW_CUSTOM_PREFIXES`). Appendix B elevation slots stay `shadow/sm|md|lg`.
+Effects page splits **Elevation** vs **Background blur & other effects**;
+adding a backdrop blur named `blur/…` or `effect/…` auto-assigns that System
+role. Primitive pickers keep blur tokens out of elevation slots and vice versa.
+
+**Rejected:** New Appendix B blur slots; changing `types.ts` to a dedicated
+`backdrop-blur` type (team contract).
+
+**Key files:** `engine/roles/custom.ts`, `EditRolesPanel.tsx`,
+`AddTokenDialog.tsx`, `PrimitivePicker.tsx`, `nav.ts`.
+
+---
+
+### 2.47 Two-tier spacing — scale primitives + lean semantic roles `[New feature]`
+Decided 2026-07-20. `space/xs…2xl` were System roles that are really a **scale**.
+Coding agents following `design.md` still built pages flush to the viewport
+edge because no role meant “page inset.” Soft Layout prose (“use 2× xl”) is
+too weak — agents follow tokens/roles.
+
+**Model (mirrors color):**
+- **Scale (Primitives):** `space/xs · sm · md · lg · xl · 2xl` — completeness
+  still ≥ 4 steps.
+- **Semantic System roles (lean 4):** `space/page` (required ✅) ·
+  `space/section` · `space/stack` · `space/inset`. Seeded from scale when empty
+  (`section`←`2xl`, `stack`←`lg`, `inset`←`sm`; `page` derived per §2.49).
+- **design.md:** Foundations keep the scale line; add Spacing roles; Agent
+  rules require `space/page` on page/container inset.
+
+**Rejected:** Prose-only margin rule; long semantic lists (after-title,
+button-padding, gutter as separate roles); renaming the scale away from
+`space/xs…2xl`.
+
+**Key files:** `taxonomy.ts`, `derive-system/index.ts`, `completeness`,
+`EditRolesPanel`, `export/index.ts`, `design.example.md`.
+
+---
+
+### 2.48 Spacing Primitives — one card, no double listing `[Change]`
+Decided 2026-07-20. After §2.47, Spacing → Primitives showed each value twice:
+a System-style `RoleFilledRow` for `space/sm` and a PrimitiveInventory row for
+the same 8px merge (“unnamed · sm · inset”). Colors never do that — one card
+per primitive.
+
+**Fix:**
+- **Scale ladder always lists every step** (`xs · sm · md · lg · xl · 2xl`) —
+  filled or empty — so derived sizes never vanish.
+- **Extra values** below = orphans only (not already on the ladder). No double
+  listing of the same 8px.
+- Cards use color-like chrome for merges where inventory still shows orphans.
+
+**Rejected:** Gaps-only strip (hid derived filled steps); inventory-only without
+a fixed ladder (incomplete scale).
+
+**Key files:** `PrimitiveInventory.tsx`, `SpacingScalePanel.tsx`,
+`TokenCategory.tsx`.
+
+---
+
+### 2.49 Page inset = 2× xl, clamped 32–160 `[Change]`
+Decided 2026-07-20. §2.47 seeded `space/page` as an alias of `space/xl`, but
+page margin should read larger than the xl scale step. Soft Layout prose already
+said “use 2× xl”; agents ignored it when the token equaled xl.
+
+**Rule:** `space/page` = **clamp(2 × `space/xl`, 32px, 160px)** — prefer a
+matching captured spacing token when one exists; otherwise synthesize. Other
+semantics stay scale aliases. Agent rules and role meaning document the formula.
+
+**Rejected:** Alias of xl; fixed 48/64; viewport `%` without a px token.
+
+**Key files:** `taxonomy.ts` (`derivePageInsetPx`), `derive-system/index.ts`,
+`export/index.ts`, `design.example.md`.
+
+---
+
+### 2.50 Effects two-tier — elevation vs inset vs blur `[Change]` `[Bug fix]` `[New feature]`
+Decided 2026-07-20. Background blur and inset shadows shared the `shadow` token
+type and competed with elevation slots. A stale Add-dialog role could link
+`blur/blur1` to `shadow/md` (**bug**). Extension never captured `backdrop-filter`.
+
+**Model (mirrors spacing §2.47) — new capability:**
+- **Elevation scale:** `shadow/sm · md · lg` — drop/outset only; completeness ≥ 1.
+- **Semantics (seed from capture when present):** `shadow/inset` · `blur/backdrop`.
+  Not required when absent. Customs remain `effect/…` / `blur/…` / extra `shadow/…`.
+- **Hard linkage:** elevation ↔ drop; `shadow/inset` ↔ inset; blur roles ↔
+  backdrop encoding. Clear role on effect-kind switch; reject mismatches in
+  `assignRole`; scrub bad assignments on draft load.
+- **Extension:** emit backdrop-filter as encoded blur with
+  `context.cssProperty: "backdrop-filter"`. Figma BACKGROUND_BLUR deferred.
+
+**Rejected:** New `backdrop-blur` TokenType; requiring inset/blur for Create
+System when capture has none.
+
+**Key files:** `effect-kinds.ts`, `taxonomy.ts`, `derive.ts`,
+`derive-system/index.ts`, `pool.ts`, `EditRolesPanel.tsx`, `AddTokenDialog.tsx`,
+`extension/src/content/extract.ts`.
+
+---
+
+### 2.51 Missing primary — prompt user to choose `[Change]`
+Decided 2026-07-20. Auto-detect never picks neutrals as primary (§C.1). Neutral-only
+snaps left System color roles empty with the misleading label “No color captured
+yet,” and the primary picker hid neutrals so the user could not choose.
+
+**Fix:** When no primary is detected, show an alert + open the Primary picker.
+Copy explains detection failed and asks the user to pick a primitive. Manual
+picker lists brand colors and neutrals (auto-detect still skips neutrals).
+
+**Key files:** `AnchorsStep.tsx`.
+
+---
+
+### 2.52 Derived names for radius / border-width primitives `[Change]`
+Decided 2026-07-20. Unnamed radius and border-width cards showed italic
+“unnamed” even though FR-22 already had value fallbacks (`radius/8`,
+`border-width/1`). Spacing already titled scale steps from assignments.
+
+**Fix:** Prefer authored context (`--radius-md`, `rounded-lg`, …); map extreme
+radii to `radius/full`; when a foundation role is assigned, title the card with
+that path; otherwise show the derived fallback. “Keep as name” persists it.
+InlineName also shows `suggestedName` instead of “unnamed” when provided.
+
+**Key files:** `naming.ts`, `PrimitiveInventory.tsx`, `InlineName.tsx`.
+
+---
+
+### 2.53 Remove (not Exclude) — keep merges intact `[Bug fix]` `[Change]`
+Decided 2026-07-20. Soft-removing a merge survivor dropped it from
+`poolEntries` before `applyMerges`. With no survivor, the merge was skipped and
+absorbed members reappeared as separate primitives — looking like Un-merge
+(**bug**).
+
+**Fix:** when the survivor is missing, `applyMerges` still hides absorbed ids.
+Rename the Primitives action **Exclude → Remove** (toast / undo label / strip)
+(**change**).
+
+**Key files:** `dedup/merge.ts`, `PrimitiveInventory.tsx`, `TokenCategory.tsx`,
+`usePool.ts`.
+
+---
+
+### 2.54 Extension Pattern pick / Scan page feedback `[Bug fix]`
+Decided 2026-07-20. Side-panel **Pattern pick** and **Scan page** often looked
+dead: content script missing on already-open tabs (sendMessage failed or returned
+undefined), scan used `return true` without a reliable response path, and Pattern
+pick only flipped a quiet CSS state with no toast.
+
+**Fix:** ping + programmatic inject of `picker.ts` when needed; sync
+`sendResponse` for all picker commands; toast on Pattern pick toggle and Scan
+results; prefer `lastFocusedWindow` for the target tab; clearer restricted-page
+copy.
+
+**Key files:** `extension/src/sidepanel/App.tsx`, `extension/src/content/picker.ts`,
+`extension/src/shared/types.ts`.
+
+---
+
+### 2.55 Extension “Include parent” toggle + tips `[Change]`
+Decided 2026-07-20. Renamed **Pattern pick** → **Include parent** (clearer
+outcome: each pick also captures the parent). Replaced the ghost button with a
+real switch, and added `?` hover tips next to Include parent and Scan page
+(aligned with webtool `InfoHint`). Overlay chip prefix is now `Parent ·`.
+
+**Key files:** `extension/src/sidepanel/App.tsx`, `InfoHint.tsx`, `styles.css`,
+`picker.ts`, `extension/README.md`.
+
+---
+
+### 2.56 Export download filenames use project name `[Change]`
+Decided 2026-07-20. Downloading design.md or cleaned JSON for Figma now names
+the file from the project name (slugified), e.g. `Lumen Design` → `lumen-design.md`
+/ `lumen-design.json`, instead of fixed `design.md` / `{slug}-tokens.json`.
+Empty/invalid names fall back to `stylesnap`.
+
+**Key files:** `src/routes/exportActions.ts`, `src/components/ExportSection.tsx`.
+
+---
+
+### 2.57 Extension capture — default fill vs :hover `[Bug fix]`
+Decided 2026-07-20. Clicking a button while the pointer still hovered it made
+`getComputedStyle` return the **hover** look (white / outline) labeled as
+`state: default`, so primary fills (often green gradients on the element or on
+`::before`) never appeared — only text/`border` colors did.
+
+**Fix:**
+1. Full-viewport hover shield for one frame before extract so `:hover` lifts.
+2. Sample `::before` / `::after` background / gradient / border-color.
+3. If the node has no fill, sample large `position: absolute|fixed` children.
+4. Include `background-image` in stylesheet hover/focus overrides; parse the
+   first gradient in multi-layer `background-image`.
+
+**Follow-up (same day):** stacked CTA fills like
+`.btn-fancy--green:after { background-image: linear-gradient(...), ... }` failed
+because the first layer fades to `rgba(..., 0)` and the parser dropped
+zero-opacity stops → `< 2` stops → whole parse returned null. Now: keep
+transparent stops, parse **every** gradient layer, emit opaque stop swatches,
+and walk ancestors for `::after` when the click hits an inner label.
+
+**Key files:** `extension/src/content/picker.ts`, `extract.ts`, `CAPTURE_V2.md`.
+
+---
+
+### 2.58 Extension — SVG fill / stroke capture `[New feature]`
+Decided 2026-07-20. Picking an inline `<svg>` (or a host that contains one)
+now samples `fill`, `stroke`, and SVG gradient `stop-color`s (including
+`url(#…)` paint servers). Deduped; capped. External `<img src="*.svg">` stays
+out of reach (no DOM). SVG `className` handling fixed for source labels.
+
+**Key files:** `extension/src/content/extract.ts`, `CAPTURE_V2.md`.
+
+---
+
+### 2.59 Extension context invalidated — quiet teardown `[Bug fix]`
+Decided 2026-07-20. Reloading the unpacked extension leaves the previous
+content script alive on open tabs; any later `chrome.runtime.sendMessage`
+throws **Extension context invalidated**. Guard with `chrome.runtime.id`,
+catch sends, and tear down listeners/overlay so the page console stays clean
+until the tab is refreshed.
+
+**Key files:** `extension/src/content/picker.ts`.
+
+---
+
+### 2.60 Extension link to Vercel web app `[Change]`
+Decided 2026-07-20. Side panel footer adds **Open StyleSnap web app** →
+`https://stylesnap-lac.vercel.app` (new tab) so copy → paste has an obvious path.
+
+**Key files:** `extension/src/sidepanel/App.tsx`, `styles.css`, `README.md`.
+
+---
+
+### 2.61 Captured :hover claims primary-hover `[Bug fix]`
+Decided 2026-07-20. `color/action/primary-hover` (and `-active`) always filled
+from the ΔL formula even when the import had a color with `context.state:
+"hover"`. The chip said **derived** while the real hover sat unused in
+Primitives — violating C.8 (captured > derived).
+
+**Fix:** prefer a captured interaction color (background/fill ranked above
+text/border) for those roles; fall back to ΔL only when none exist. Origin
+then shows **from capture** (seeded) instead of derived.
+
+**Follow-up (same day):** same C.8 claim for `surface/page`, `surface/card`,
+`text/primary`, `text/muted`, `border/default`, and `text/link` via top role
+candidates — button-only snaps still leave surfaces formula-derived until a
+page/card background is captured.
+
+**Key files:** `src/engine/derive-system/index.ts`.
+
+---
+
+### 2.62 Spacing primitives — whole px + wider similar + sort `[Change]`
+Decided 2026-07-20. Sub-pixel spacing (8.5 / 9.4) cluttered Primitives and
+failed to look mergeable. **Round spacing to whole px** on capture, import,
+read, and draft save. **Spacing similar floor = 2px** (radius stays 1px) so
+near sizes flag SIM. Primitive spacing / radius / border-width lists sort
+**small → large**.
+
+**Key files:** `engine/normalize.ts`, `dedup/index.ts`, `pool.ts`,
+`PrimitiveInventory.tsx`, `extension/…/extract.ts`, PRD A.3.
+
+---
+
+### 2.63 No invented elevation when snap has none `[Change]`
+Decided 2026-07-20. Derivation used to fill `shadow/sm|md|lg` with a stock soft
+ramp (neutral ink @ 8%) whenever the capture had **no** drop shadows, so every
+system looked "complete." Many designs use **borders, outlines, or surface
+contrast** for elevation instead — inventing shadows misrepresents the snap.
+
+**Behavior:**
+- Zero drop shadows in capture → leave elevation slots empty (same capture-only
+  stance as `shadow/inset` / `blur/backdrop`, §2.50).
+- One or more drop shadows → map onto sm/md/lg; synthesize only **missing**
+  steps of that ramp (style profile still biases those steps).
+- Completeness: elevation is **required** only when the snap had a drop shadow;
+  otherwise **recommended**, with copy noting borders/outlines as alternatives.
+
+**What the capture already records (no new "elevation" type):**
+- `box-shadow` → shadow tokens (elevation / inset)
+- `border-*` / `outline-*` → `border-width` + `color/border/*`
+- `backdrop-filter` → `blur/backdrop`
+
+We do **not** auto-infer "thick border ⇒ skip shadows" — borders keep their
+own roles; empty elevation is the faithful signal.
+
+**Rejected:** Inventing hard/minimal ramps from mood alone with no shadow
+tokens; treating outline as a shadow role.
+
+**Key files:** `derive-system/ramps.ts`, `derive-system/index.ts`,
+`completeness/index.ts`, PRD Appendix B / C.7.
+
+---
+
+### 2.64 Manual effects are not "from capture" `[Bug fix]`
+Decided 2026-07-20. Adding a backdrop blur (or inset) via **Add token** still
+let derivation seed `blur/backdrop` / `shadow/inset` from that manual token,
+and the origin chip showed **from capture**. Root cause: seed filters used
+`isBackdropBlurToken` / `isInsetShadowToken` only — manuals share the same
+encoding as extension captures.
+
+**Fix:** Seed those roles from **snap tokens only** (`!isManualToken`). Origin
+marking never treats a manual fill as `seeded`. Role hints in `roles/derive`
+match. `isManualToken` lives in `engine/normalize.ts` (re-exported from pool).
+
+**Rejected:** A separate "manual" origin chip for every Add-token assignment
+(user-assigned manuals stay unmarked like snap assignments).
+
+**Key files:** `normalize.ts`, `derive-system/index.ts`, `roles/derive.ts`,
+`useSessionViewModel.ts`.
+
+---
+
+### 2.65 Prefix-locked token naming `[Change]`
+Decided 2026-07-20. Add-token and inline rename forced users to re-type the
+type folder (`shadow/…`, `color/…`) every time. Easy to mistype; inconsistent
+with custom-role UI which already locked the prefix.
+
+**UI:** Name field shows a fixed prefix from the token type (and effect kind:
+backdrop blur → `blur/`, else shadows → `shadow/`). User types only the path
+after it (`medium`, `card-elevation`, or nested `soft/medium`). Pasting a
+path that already includes the prefix is de-duplicated.
+
+| Type | Locked prefix |
+|---|---|
+| Color | `color/` |
+| Typography | `type/` |
+| Spacing | `space/` |
+| Border radius | `radius/` |
+| Border width | `border-width/` |
+| Drop / inset shadow | `shadow/` |
+| Backdrop blur | `blur/` |
+| Gradient | `gradient/` |
+
+Custom role forms were already prefix-locked (§2.30 / §2.46) — unchanged.
+
+**Key files:** `roles/naming.ts`, `SlashNameField.tsx`, `AddTokenDialog.tsx`,
+`InlineName.tsx`.
 
 ---
 
@@ -1000,6 +1399,29 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-20 | `[Change]` **Prefix-locked naming** (§2.65): Add/rename type folder fixed; user types path after it (optional `/` nesting). | — |
+| 2026-07-20 | `[Bug fix]` **Manual blur ≠ from capture** (§2.64): don’t seed inset/backdrop roles from Add-token manuals. | — |
+| 2026-07-20 | `[Change]` **No invented elevation** (§2.63): empty snap → empty `shadow/sm|md|lg`; completeness recommended unless drop shadows were captured. | — |
+| 2026-07-20 | `[Change]` **Spacing tidy** (§2.62): whole-px rounding; 2px similar floor; primitives sort small→large. | — |
+| 2026-07-20 | `[Bug fix]` **Captured :hover → primary-hover** (§2.61): prefer snap interaction + surface/text/border candidates over ΔL synthetics. | — |
+| 2026-07-20 | `[Change]` **Extension → web app link** (§2.60): footer “Open StyleSnap web app” to stylesnap-lac.vercel.app. | — |
+| 2026-07-20 | `[Bug fix]` **Extension context invalidated** (§2.59): orphaned picker tears down quietly after extension reload. | — |
+| 2026-07-20 | `[New feature]` **SVG fill/stroke capture** (§2.58): picker samples inline SVG paints + gradient stops. | — |
+| 2026-07-20 | `[Bug fix]` **Button default fill capture** (§2.57): clear `:hover` before extract; sample `::before`/`::after` + decorative child fills; multi-layer gradients keep transparent stops. | — |
+| 2026-07-20 | `[Change]` **Export filenames = project name** (§2.56): downloads use `{slug}.md` / `{slug}.json` instead of fixed `design.md` / `*-tokens.json`. | — |
+| 2026-07-20 | `[Change]` **Include parent toggle + tips** (§2.55): Pattern pick → switch labeled Include parent; `?` hover tips for Include parent and Scan page. | — |
+| 2026-07-20 | `[Bug fix]` **Extension Pattern pick / Scan page** (§2.54): inject picker if missing; reliable scan response; toast feedback. | — |
+| 2026-07-20 | `[Bug fix]` `[Change]` **Remove ≠ Un-merge** (§2.53): hide absorbed members when survivor soft-removed; label Exclude → Remove. | — |
+| 2026-07-20 | `[Change]` **Derived radius/border names** (§2.52): show authored/role/value fallbacks instead of “unnamed”; Keep as name. | — |
+| 2026-07-20 | `[Change]` **Missing primary prompt** (§2.51): alert + open picker; neutrals choosable manually when auto-detect finds none. | — |
+| 2026-07-20 | `[Change]` `[Bug fix]` `[New feature]` **Effects two-tier** (§2.50): `shadow/inset` + `blur/backdrop`; kind↔role harden; extension backdrop-filter capture. | — |
+| 2026-07-20 | `[Change]` **Spacing Extra values label** removed (orphans still list under primitives without the heading). | — |
+| 2026-07-20 | `[Change]` **Page inset formula** (§2.49): `space/page` = clamp(2 × `space/xl`, 32–160); not an xl alias. | — |
+| 2026-07-20 | `[Change]` **Spacing primitives one card** (§2.48): drop duplicate RoleFilledRow scale vs inventory; color-like merged cards; full scale ladder always shown. | — |
+| 2026-07-20 | `[New feature]` **Two-tier spacing** (§2.47): scale `space/xs…2xl` as primitives; semantic roles `page/section/stack/inset` (`space/page` required); seed from scale; design.md Agent rules. | — |
+| 2026-07-20 | `[Bug fix]` **Backdrop blur roles** (§2.46): `effect/` / `blur/` customs for non-elevation effects; Add blur named `blur/blur1` assigns that role, not `shadow/*`. | — |
+| 2026-07-20 | `[Change]` **From capture chip + whole-px fonts** (§2.45): seeded origin chip → "from capture"; type scale / capture / edit round font sizes to integer px. | — |
+| 2026-07-19 | `[Change]` **Secondary Add secondary** (§2.44): no auto-fill from detected hue or style profile; greyed card + overlay CTA until user opts in. | — |
 | 2026-07-19 | `[Bug fix]` **Color family Hover live update:** strip reads `roleDisplayTokens` (incl. derivedEdits) instead of only re-deriving hover from primary. | — |
 | 2026-07-19 | `[Change]` **Merged primitive cards:** banded layout (identity → merge badge + tags → actions); Colors merged cards `md:col-span-2`. | — |
 | 2026-07-19 | `[Bug fix]` **Un-merge undo** (§2.41): Home no longer auto Create-System on import; clear legacy stamp on draft load; gate merge actions when locked. | — |
@@ -1009,6 +1431,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |
 | 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` **Layer nav under mobile chrome:** sticky `top` = session header height. | `eb38f79` |
+| 2026-07-19 | `[New feature]` **Capture v2.1 → coherent design.md** (§2.43): foundations scan, layout context, richer extract; Agent rules / Layout / Motion from capture. | — |
 | 2026-07-19 | `[Change]` **Extension UI = team DESIGN.md** (§2.42): light brand side panel + brand-primary pick overlay; dark provisional chrome retired. | — |
 | 2026-07-19 | `[Change]` **Undo in layer nav (desktop):** sticky `CategoryLayerNav`; mobile uses floating undo (§2.39). | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` `[Change]` **Secondary opt-in** (§2.38): no auto-synthetic secondary; Use secondary color; fine-tune uses derivedEdits; harmony unassigns role. | `eb38f79` |

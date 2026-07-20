@@ -147,6 +147,9 @@ function ColorAnchorCard({
   open,
   onToggle,
   picker,
+  inactive,
+  onActivate,
+  activateLabel = "Add secondary",
 }: {
   anchorRole: string;
   token?: StyleSnapToken & { type: "color"; value: string };
@@ -156,7 +159,40 @@ function ColorAnchorCard({
   open: boolean;
   onToggle: () => void;
   picker: React.ReactNode;
+  /** Greyed placeholder — not part of the system until the user activates. */
+  inactive?: boolean;
+  onActivate?: () => void;
+  activateLabel?: string;
 }) {
+  if (inactive) {
+    return (
+      <div className="relative flex w-full min-w-0 flex-col">
+        <div
+          className="pointer-events-none box-content flex h-[5.5rem] w-full min-w-0 items-stretch overflow-hidden rounded-md border-2 border-border-default bg-surface-card opacity-40 shadow-card grayscale"
+          aria-hidden
+        >
+          <div className="flex h-full w-16 shrink-0 self-stretch border-r-2 border-border-default bg-surface-page sm:w-[5.5rem]" />
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2">
+            <span className="truncate font-mono text-caption font-medium text-brand-primary">{anchorRole}</span>
+            <span className="text-caption text-text-muted">Optional — not in your system yet</span>
+          </div>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center rounded-md bg-surface-page/70">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onActivate}
+            disabled={!onActivate}
+            title={tip}
+          >
+            {activateLabel}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex w-full min-w-0 flex-col gap-3">
       <div className="box-content flex h-[5.5rem] w-full min-w-0 items-stretch overflow-hidden rounded-md border-2 border-border-default bg-surface-card shadow-card">
@@ -375,29 +411,34 @@ export function AnchorsStep({
   roleDisplayTokens,
   children,
 }: AnchorsStepProps) {
-  const [open, setOpen] = useState<null | "primary" | "secondary">(null);
+  const [open, setOpen] = useState<null | "primary" | "secondary">(
+    anchors.primaryColorId ? null : "primary",
+  );
   const byId = new Map(tokens.map((t) => [t.id, t]));
 
   const primary = anchors.primaryColorId ? byId.get(anchors.primaryColorId) : undefined;
   const capturedSecondary = anchors.secondaryColorId ? byId.get(anchors.secondaryColorId) : undefined;
 
-  const colorCandidates = tokens.filter(
+  /** Manual primary pick: any opaque snap color (neutrals allowed — auto-detect still skips them). */
+  const primaryCandidates = tokens.filter(
     (t): t is StyleSnapToken & { type: "color"; value: string } =>
-      t.type === "color" && t.opacity === 1 && !t.id.startsWith("derived_") && !isNeutral(t.value),
+      t.type === "color" && t.opacity === 1 && !t.id.startsWith("derived_"),
   );
+  const brandCandidates = primaryCandidates.filter((t) => !isNeutral(t.value));
+  const neutralCandidates = primaryCandidates.filter((t) => isNeutral(t.value));
 
-  /** Instantiated: captured anchor, explicit harmony opt-in, or a fill/edit. */
-  const secondaryActive =
-    Boolean(capturedSecondary && accentHarmony === undefined) ||
-    accentHarmony !== undefined ||
-    secondaryToken !== undefined;
+  const primaryMissing = primary?.type !== "color";
+  const onlyNeutrals =
+    primaryMissing && brandCandidates.length === 0 && neutralCandidates.length > 0;
+  const noColorsAtAll = primaryMissing && primaryCandidates.length === 0;
+
+  /** Instantiated only after the user opts in (harmony or explicit secondary pick). */
+  const secondaryActive = accentHarmony !== undefined || secondaryToken !== undefined;
 
   const secondaryDisplay =
     secondaryToken?.type === "color"
       ? secondaryToken
-      : capturedSecondary?.type === "color" && accentHarmony === undefined
-        ? capturedSecondary
-        : undefined;
+      : undefined;
 
   const secondarySummaryLabel = (() => {
     if (!secondaryDisplay || secondaryDisplay.type !== "color") return null;
@@ -416,71 +457,160 @@ export function AnchorsStep({
   })();
 
   const enableSecondary = () => {
-    if (!primary || primary.type !== "color" || !onAccentHarmony) return;
-    onAccentHarmony(harmonyFromPrimary(primary.value).suggested);
+    if (!primary || primary.type !== "color") return;
+    // Prefer a distinct captured hue when present; otherwise suggested harmony.
+    if (capturedSecondary?.type === "color") {
+      onSetAnchor({ secondaryColorId: capturedSecondary.id });
+    } else if (onAccentHarmony) {
+      onAccentHarmony(harmonyFromPrimary(primary.value).suggested);
+    }
+    setOpen("secondary");
   };
 
   const secondaryPicker =
     primary && primary.type === "color" ? (
-      secondaryActive ? (
-        <SecondaryHarmonyPicker
-          primaryHex={primary.value}
-          accentHarmony={accentHarmony}
-          secondaryToken={secondaryToken}
-          secondaryOrigin={secondaryOrigin}
-          capturedSecondary={
-            capturedSecondary?.type === "color" ? capturedSecondary : undefined
-          }
-          onAccentHarmony={(harmony) => {
-            onAccentHarmony?.(harmony);
-          }}
-          onEditSecondary={onEditSecondary}
-          onResetSecondary={onResetSecondary}
-          onUseCaptured={() => {
-            if (capturedSecondary) onSetAnchor({ secondaryColorId: capturedSecondary.id });
-          }}
-        />
-      ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-caption text-text-muted">
-            No secondary in this snap. Generate one from primary, then fine-tune if you want.
-          </p>
-          <Button type="button" size="sm" onClick={enableSecondary}>
-            Use secondary color
-          </Button>
-        </div>
-      )
+      <SecondaryHarmonyPicker
+        primaryHex={primary.value}
+        accentHarmony={accentHarmony}
+        secondaryToken={secondaryToken}
+        secondaryOrigin={secondaryOrigin}
+        capturedSecondary={
+          capturedSecondary?.type === "color" ? capturedSecondary : undefined
+        }
+        onAccentHarmony={(harmony) => {
+          onAccentHarmony?.(harmony);
+        }}
+        onEditSecondary={onEditSecondary}
+        onResetSecondary={onResetSecondary}
+        onUseCaptured={() => {
+          if (capturedSecondary) onSetAnchor({ secondaryColorId: capturedSecondary.id });
+        }}
+      />
     ) : (
       <p className="text-caption text-text-muted">Set a primary color first.</p>
     );
 
-  const primaryPicker = colorCandidates
-    .filter((t) => t.id !== anchors.secondaryColorId)
-    .map((t) => (
-      <button
-        key={t.id}
-        type="button"
-        onClick={() => {
-          onSetAnchor({ primaryColorId: t.id });
-          setOpen(null);
-        }}
-        aria-pressed={t.id === anchors.primaryColorId}
-        title={`${nameOf(t)} · ${t.value}`}
-        className={`flex items-center gap-2 rounded-sm border-2 px-2 py-1 ${
-          t.id === anchors.primaryColorId ? "border-brand-primary" : "border-border-default"
-        }`}
-      >
-        <span
-          className="h-6 w-6 rounded-sm border-2 border-border-default"
-          style={{ backgroundColor: t.value }}
-          aria-hidden
-        />
-        <span className="font-mono text-badge">{t.value}</span>
-      </button>
-    ));
+  const primaryPicker = (
+    <div className="flex w-full flex-col gap-4">
+      {primaryMissing && (
+        <div
+          role="status"
+          className="rounded-md border-2 border-dashed border-border-default bg-surface-page p-3"
+        >
+          <p className="text-caption font-medium text-text-primary">
+            {noColorsAtAll
+              ? "No colors in this snap yet."
+              : "No primary color was detected in your snap."}
+          </p>
+          <p className="mt-1 text-caption text-text-muted">
+            {noColorsAtAll
+              ? "Add a color under Primitives, then set it as primary here — roles fill from that."
+              : onlyNeutrals
+                ? "Your snap is only neutrals (blacks, whites, greys). Choose which one is primary so text, surfaces, and actions can fill — or Add a brand color under Primitives."
+                : "Choose which primitive is your brand primary. Color roles fill from that choice."}
+          </p>
+        </div>
+      )}
+      {brandCandidates.filter((t) => t.id !== anchors.secondaryColorId).length > 0 && (
+        <div className="flex flex-col gap-2">
+          {!primaryMissing && (
+            <p className="text-caption font-medium text-text-primary">From your snap</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {brandCandidates
+              .filter((t) => t.id !== anchors.secondaryColorId)
+              .map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    onSetAnchor({ primaryColorId: t.id });
+                    setOpen(null);
+                  }}
+                  aria-pressed={t.id === anchors.primaryColorId}
+                  title={`${nameOf(t)} · ${t.value}`}
+                  className={`flex items-center gap-2 rounded-sm border-2 px-2 py-1 ${
+                    t.id === anchors.primaryColorId ? "border-brand-primary" : "border-border-default"
+                  }`}
+                >
+                  <span
+                    className="h-6 w-6 rounded-sm border-2 border-border-default"
+                    style={{ backgroundColor: t.value }}
+                    aria-hidden
+                  />
+                  <span className="font-mono text-badge">{t.value}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+      {neutralCandidates.filter((t) => t.id !== anchors.secondaryColorId).length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-caption font-medium text-text-primary">
+            {onlyNeutrals ? "Primitives from your snap" : "Neutrals from your snap"}
+          </p>
+          {!onlyNeutrals && (
+            <p className="text-badge text-text-muted">
+              Auto-detect skips these — you can still pick one as primary.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {neutralCandidates
+              .filter((t) => t.id !== anchors.secondaryColorId)
+              .map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    onSetAnchor({ primaryColorId: t.id });
+                    setOpen(null);
+                  }}
+                  aria-pressed={t.id === anchors.primaryColorId}
+                  title={`${nameOf(t)} · ${t.value}`}
+                  className={`flex items-center gap-2 rounded-sm border-2 px-2 py-1 ${
+                    t.id === anchors.primaryColorId ? "border-brand-primary" : "border-border-default"
+                  }`}
+                >
+                  <span
+                    className="h-6 w-6 rounded-sm border-2 border-border-default"
+                    style={{ backgroundColor: t.value }}
+                    aria-hidden
+                  />
+                  <span className="font-mono text-badge">{t.value}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+      {noColorsAtAll && (
+        <p className="text-caption text-text-muted">
+          Use <span className="font-medium text-text-primary">Add color</span> in Primitives, then
+          return here to set primary.
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <section className="flex w-full flex-col gap-8">
+      {primaryMissing && (
+        <div
+          role="alert"
+          className="rounded-md border-2 border-brand-primary bg-surface-page p-4 shadow-card"
+        >
+          <p className="text-caption font-medium text-text-primary">
+            {noColorsAtAll
+              ? "No primary color — add a color, then choose it here"
+              : "No primary color detected in your snap"}
+          </p>
+          <p className="mt-1 text-caption text-text-muted">
+            {noColorsAtAll
+              ? "Color system roles stay empty until you set a primary under Primitives → Add color, then pick it on the Primary card."
+              : "Choose which primitive is primary on the card below. Text, surfaces, buttons, and feedback fill from that."}
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         <ColorAnchorCard
           anchorRole="anchor/primary"
@@ -488,15 +618,19 @@ export function AnchorsStep({
           humanLabel={
             primary?.type === "color"
               ? humanValueLabel(primary)
-              : "No color captured yet."
+              : noColorsAtAll
+                ? "Add a color, then set primary."
+                : "Choose a primitive as primary."
           }
           detailLine={
-            primary?.type === "color" ? `${nameOf(primary)} · ${primary.value}` : undefined
+            primary?.type === "color"
+              ? `${nameOf(primary)} · ${primary.value}`
+              : "Required — roles fill from this"
           }
           tip={PRIMARY_ANCHOR_TIP}
           open={open === "primary"}
           onToggle={() => setOpen(open === "primary" ? null : "primary")}
-          picker={<div className="flex flex-wrap gap-2">{primaryPicker}</div>}
+          picker={primaryPicker}
         />
 
         <ColorAnchorCard
@@ -514,13 +648,18 @@ export function AnchorsStep({
           open={open === "secondary"}
           onToggle={() => setOpen(open === "secondary" ? null : "secondary")}
           picker={secondaryPicker}
+          inactive={!secondaryActive}
+          onActivate={primary?.type === "color" ? enableSecondary : undefined}
+          activateLabel="Add secondary"
         />
       </div>
 
       {primary && primary.type === "color" && (
         <div className="rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
           <ColorFamilyPreview
-            primaryHex={primary.value}
+            primaryHex={
+              colorHex(roleDisplayTokens?.get("color/action/primary")) ?? primary.value
+            }
             secondaryHex={
               secondaryDisplay?.type === "color"
                 ? secondaryDisplay.value

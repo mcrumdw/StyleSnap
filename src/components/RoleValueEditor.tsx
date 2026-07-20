@@ -128,7 +128,7 @@ export function RoleValueEditor({
       : "",
   );
   const [editFontSize, setEditFontSize] = useState(
-    token.type === "typography" ? String(token.value.fontSize) : "",
+    token.type === "typography" ? String(Math.round(token.value.fontSize)) : "",
   );
   const [pending, setPending] = useState<StyleSnapToken | null>(null);
 
@@ -141,7 +141,7 @@ export function RoleValueEditor({
     if (token.type === "spacing" || token.type === "border-radius" || token.type === "border-width") {
       setEditNumber(String(token.value));
     }
-    if (token.type === "typography") setEditFontSize(String(token.value.fontSize));
+    if (token.type === "typography") setEditFontSize(String(Math.round(token.value.fontSize)));
   }, [open, token]);
 
   if (!open) return null;
@@ -186,7 +186,7 @@ export function RoleValueEditor({
 
   const saveFontSize = () => {
     if (token.type !== "typography") return;
-    const n = Number(editFontSize);
+    const n = Math.round(Number(editFontSize));
     if (!Number.isFinite(n) || n <= 0) return;
     requestSave({ ...token, value: { ...token.value, fontSize: n } });
   };
@@ -369,9 +369,9 @@ export function RoleFilledRow({
     origin === "seeded" ? (
       <span
         className="font-mono text-badge text-text-muted"
-        title="Auto-placed from your capture"
+        title="From your capture"
       >
-        auto
+        from capture
       </span>
     ) : origin === "derived" ? (
       <span className="font-mono text-badge text-text-muted" title="Computed from your snap colors">

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { StyleSnapToken, TypographyToken } from "../contract/types";
+import { isManualToken } from "../state/pool";
 
 interface CapturedFontsProps {
   /** The effective token set (captured + derived); we show captured only. */
@@ -15,7 +16,8 @@ export function CapturedFonts({ tokens, assignments }: CapturedFontsProps) {
   const captured = useMemo(
     () =>
       tokens.filter(
-        (t): t is TypographyToken => t.type === "typography" && !t.id.startsWith("derived_"),
+        (t): t is TypographyToken =>
+          t.type === "typography" && !t.id.startsWith("derived_") && !isManualToken(t),
       ),
     [tokens],
   );
