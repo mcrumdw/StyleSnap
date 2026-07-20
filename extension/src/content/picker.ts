@@ -2,13 +2,15 @@
 // Draws a hover outline + inspector chip, captures tokens on click, and reports
 // them to the side panel via the background worker. Pick mode is toggled by message.
 
-import type { PickerMessage } from "../shared/types";
+import type { CaptureFoundations, PickerMessage } from "../shared/types";
 import { extractTokens, previewLabel, describeSource } from "./extract";
+import { scanPageFoundations } from "./foundations";
 
 // DESIGN.md brand-primary / success — high-contrast outline over arbitrary pages.
 const ACCENT = "#5B2EFF";
 const SUCCESS = "#1FB877";
 let active = false;
+let patternMode = false;
 let hovered: Element | null = null;
 let captureCounter = 0;
 const nextCaptureId = () => `cap-${++captureCounter}`;
@@ -30,7 +32,6 @@ function ensureOverlay() {
     boxShadow: `4px 4px 0 0 #14121F`,
   } as CSSStyleDeclaration);
 
-  // Solid dark chip stays legible on any site background (not a panel surface).
   chip = document.createElement("div");
   Object.assign(chip.style, {
     position: "fixed",
@@ -61,7 +62,8 @@ function showOverlay(el: Element) {
     width: `${r.width}px`,
     height: `${r.height}px`,
   });
-  chip!.textContent = previewLabel(el);
+  const prefix = patternMode ? "Pattern · " : "";
+  chip!.textContent = prefix + previewLabel(el);
   chip!.style.display = "block";
   chip!.style.top = `${Math.max(4, r.top - 28)}px`;
   chip!.style.left = `${r.left}px`;
@@ -72,7 +74,24 @@ function hideOverlay() {
   if (chip) chip.style.display = "none";
 }
 
-// ── Event handlers ─────────────────────────────────────────────────
+function emitCapture(el: Element, patternId?: string) {
+  const captureId = nextCaptureId();
+  const tokens = extractTokens(el, captureId);
+  if (tokens.length === 0) return false;
+  const msg: PickerMessage = {
+    kind: "picker/captured",
+    capture: {
+      captureId,
+      source: describeSource(el),
+      tokens,
+      patternId,
+    },
+    pageUrl: location.href,
+  };
+  chrome.runtime.sendMessage(msg);
+  return true;
+}
+
 function onMove(e: MouseEvent) {
   if (!active) return;
   const el = e.target as Element;
@@ -86,16 +105,18 @@ function onClick(e: MouseEvent) {
   e.preventDefault();
   e.stopPropagation();
   const el = e.target as Element;
-  const captureId = nextCaptureId();
-  const tokens = extractTokens(el, captureId);
-  if (tokens.length === 0) return; // "Nothing to grab here" — no-op
-  const msg: PickerMessage = {
-    kind: "picker/captured",
-    capture: { captureId, source: describeSource(el), tokens },
-    pageUrl: location.href,
-  };
-  chrome.runtime.sendMessage(msg);
-  // brief confirmation pulse
+  let ok = false;
+  if (patternMode) {
+    const patternId = `pat-${Date.now()}`;
+    ok = emitCapture(el, patternId);
+    const parent = el.parentElement;
+    if (parent && parent !== document.body && parent !== document.documentElement) {
+      emitCapture(parent, patternId);
+    }
+  } else {
+    ok = emitCapture(el);
+  }
+  if (!ok) return;
   if (outline) {
     outline.style.borderColor = SUCCESS;
     setTimeout(() => outline && (outline.style.borderColor = ACCENT), 250);
@@ -120,6 +141,16 @@ document.addEventListener("mousemove", onMove, true);
 document.addEventListener("click", onClick, true);
 document.addEventListener("keydown", onKey, true);
 
-chrome.runtime.onMessage.addListener((msg: PickerMessage) => {
-  if (msg.kind === "picker/setActive") setActive(msg.active);
+chrome.runtime.onMessage.addListener((msg: PickerMessage, _sender, sendResponse) => {
+  if (msg.kind === "picker/setActive") {
+    setActive(msg.active);
+    if (msg.patternMode !== undefined) patternMode = msg.patternMode;
+  } else if (msg.kind === "picker/setPatternMode") {
+    patternMode = msg.enabled;
+  } else if (msg.kind === "picker/scanFoundations") {
+    const foundations: CaptureFoundations = scanPageFoundations();
+    sendResponse({ kind: "picker/foundations", foundations } satisfies PickerMessage);
+    return true;
+  }
+  return undefined;
 });

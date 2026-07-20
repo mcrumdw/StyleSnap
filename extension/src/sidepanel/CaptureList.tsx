@@ -51,6 +51,9 @@ function TokenRow({ t }: { t: StyleSnapToken }) {
       <Swatch t={t} />
       <span className="token-type">{TYPE_LABEL[t.type]}</span>
       <span className="token-value">{valueLabel(t)}</span>
+      {t.context?.state && t.context.state !== "default" && (
+        <span className="token-state">{t.context.state}</span>
+      )}
       {t.context?.cssProperty && (
         <span className="token-ctx">{t.context.cssProperty}</span>
       )}

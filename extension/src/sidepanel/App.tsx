@@ -4,6 +4,7 @@ import type {
   Capture,
   StyleSnapExport,
   StyleSnapToken,
+  CaptureFoundations,
 } from "../shared/types";
 import { CaptureList } from "./CaptureList";
 
@@ -28,11 +29,12 @@ function withUniqueIds(prev: Capture[], incoming: Capture): Capture {
 
 export function App() {
   const [active, setActive] = useState(false);
+  const [patternMode, setPatternMode] = useState(false);
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [pageUrl, setPageUrl] = useState<string>("");
+  const [foundations, setFoundations] = useState<CaptureFoundations | undefined>();
   const [toast, setToast] = useState<string | null>(null);
 
-  // Listen for captures + state changes from the content script.
   useEffect(() => {
     const handler = (msg: PickerMessage) => {
       if (msg.kind === "picker/captured") {
@@ -51,24 +53,58 @@ export function App() {
     setTimeout(() => setToast(null), 2600);
   };
 
+  const sendToTab = useCallback(async (msg: PickerMessage) => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return null;
+    try {
+      return await chrome.tabs.sendMessage(tab.id, msg);
+    } catch {
+      flash("Picking doesn't work on this page.");
+      return null;
+    }
+  }, []);
+
   const togglePick = useCallback(async () => {
     const next = !active;
     setActive(next);
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      chrome.tabs
-        .sendMessage(tab.id, {
-          kind: "picker/setActive",
-          active: next,
-        } as PickerMessage)
-        .catch(() => flash("Picking doesn't work on this page."));
+    await sendToTab({
+      kind: "picker/setActive",
+      active: next,
+      patternMode,
+    });
+  }, [active, patternMode, sendToTab]);
+
+  const togglePattern = useCallback(async () => {
+    const next = !patternMode;
+    setPatternMode(next);
+    await sendToTab({ kind: "picker/setPatternMode", enabled: next });
+  }, [patternMode, sendToTab]);
+
+  const scanFoundations = useCallback(async () => {
+    const res = (await sendToTab({
+      kind: "picker/scanFoundations",
+    })) as PickerMessage | null;
+    if (res && res.kind === "picker/foundations") {
+      setFoundations(res.foundations);
+      const n =
+        (res.foundations.breakpointsPx?.length ?? 0) +
+        (res.foundations.motion?.length ?? 0) +
+        (res.foundations.zIndex?.length ?? 0);
+      flash(
+        n > 0
+          ? `Scanned foundations — ${res.foundations.breakpointsPx?.length ?? 0} breakpoints`
+          : "No page foundations found",
+      );
     }
-  }, [active]);
+  }, [sendToTab]);
 
   const removeCapture = (captureId: string) =>
     setCaptures((prev) => prev.filter((c) => c.captureId !== captureId));
 
-  const clearAll = () => setCaptures([]);
+  const clearAll = () => {
+    setCaptures([]);
+    setFoundations(undefined);
+  };
 
   const tokens = captures.flatMap((c) => c.tokens);
   const tokenCount = tokens.length;
@@ -79,16 +115,14 @@ export function App() {
         source: "browser-extension",
         exportedAt: new Date().toISOString(),
         pageUrl: pageUrl || undefined,
-        version: "2.0",
+        version: "2.1",
+        foundations,
       },
       tokens,
     };
 
-    // Light structural guard. The Webtool is the validating authority — it runs
-    // the full zod schema on import (docs/schema.ts, PRD FR-2) — so we only sanity
-    // check here to fail loudly on an obviously broken export.
     const invalid = payload.tokens.find(
-      (t) => !t.id || !t.captureId || !t.type
+      (t) => !t.id || !t.captureId || !t.type,
     );
     if (payload.tokens.length === 0 || invalid) {
       flash("Nothing valid to export");
@@ -114,12 +148,40 @@ export function App() {
         </button>
       </header>
 
+      <div className="toolbar">
+        <button
+          className={`btn btn-ghost btn-sm ${patternMode ? "on" : ""}`}
+          onClick={togglePattern}
+          aria-pressed={patternMode}
+          title="Also capture the parent element for denser component sketches"
+        >
+          Pattern pick
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={scanFoundations}>
+          Scan page
+        </button>
+        {foundations && (
+          <span className="foundations-chip">
+            {[
+              foundations.breakpointsPx?.length
+                ? `${foundations.breakpointsPx.length} bp`
+                : null,
+              foundations.motion?.length ? `${foundations.motion.length} motion` : null,
+              foundations.zIndex?.length ? `z×${foundations.zIndex.length}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "scanned"}
+          </span>
+        )}
+      </div>
+
       <main className="body">
         {captures.length === 0 ? (
           <div className="empty">
             <h2 className="empty-title">Nothing snapped yet</h2>
             <p className="empty-sub">
-              Start picking and click any element on the page.
+              Start picking and click any element on the page. Scan page for
+              breakpoints and motion.
             </p>
           </div>
         ) : (
@@ -143,7 +205,7 @@ export function App() {
         <button
           className="btn btn-ghost"
           onClick={clearAll}
-          disabled={captures.length === 0}
+          disabled={captures.length === 0 && !foundations}
         >
           Clear all
         </button>

@@ -42,8 +42,10 @@ npm run typecheck
 ## How it works
 1. Open the side panel (click the extension icon).
 2. **Start picking** → hover the page (outline + inspector chip preview) → click to capture.
-3. Review/remove tokens in the panel.
-4. **Copy to StyleSnap** → schema-v2.0 JSON on clipboard: a flat `tokens[]` list where
-   tokens from the same element share a `captureId` and carry a best-effort `context`
-   (`cssProperty`, `element`, `ariaRole`, `selector`, `authoredName`). `meta.source =
-   "browser-extension"`. The Webtool derives semantic roles from that context.
+3. Optional: **Pattern pick** (also captures the parent) · **Scan page** (breakpoints / motion / z-index).
+4. Review/remove tokens in the panel (state badges show hover/focus when sampled).
+5. **Copy to StyleSnap** → schema-v2.1 JSON on clipboard: flat `tokens[]` plus optional
+   `meta.foundations`. Tokens from the same element share a `captureId` and carry
+   `context` (`cssProperty`, `element`, `ariaRole`, `selector`, `state`, `authoredName`,
+   `layout`). `meta.source = "browser-extension"`. The Webtool derives roles and
+   fills design.md Agent rules / Layout / Motion from foundations when present.
