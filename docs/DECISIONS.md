@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 Tags in §6 change history (and on new §2.x when useful):
 
@@ -871,22 +871,75 @@ System (when re-wired) remains the lock point.
 ---
 
 ### 2.42 Extension side panel matches team DESIGN.md `[Change]`
-Decided 2026-07-19. The browser extension's provisional dark side panel
-(neutral surfaces + `#6E56F7` accent) is replaced with the team brand system
-from root `DESIGN.md` / the web app: light `surface-page` canvas, `brand-primary`
-`#5B2EFF`, 2px `border-default`, hard `shadow-card`, Space Grotesk / Inter /
-JetBrains Mono (bundled via `@fontsource`), chunky press buttons, success toast.
+Decided 2026-07-19. Extension side panel reskinned to team `DESIGN.md` / web app
+tokens (light canvas, brand-primary, hard shadows, Space Grotesk / Inter /
+JetBrains Mono). In-page overlay keeps a solid dark chip for legibility.
 
-**Why:** capture → paste into the webtool should feel like one product. The
-extension's own `DESIGN.md` had deferred to team tokens "once filled"; those
-tokens landed with the web app.
+---
 
-**Kept local:** in-page overlay stays outline + solid dark chip (legible on
-arbitrary host pages); dense 32×32 swatches in the narrow panel (workspace
-token cards remain 48×48).
+### 2.43 Capture v2.1 → coherent design.md `[New feature]`
+Decided 2026-07-19. Browser capture deepens so exported `design.md` can drive
+faithful AI rebuilds — not only a color palette.
 
-**Key files:** `extension/src/sidepanel/styles.css`, `App.tsx`, `main.tsx`,
-`content/picker.ts`, `extension/DESIGN.md`.
+**Contract (schema 2.1, additive):** optional `meta.foundations` (breakpoints,
+motion, z-index, content max-widths, spacing base) and optional
+`context.layout` on tokens. 2.0 captures still import without FR-4 warning.
+
+**Extension:** per-side spacing/margin/gaps; CSS `var(--*)` authoredNames;
+hover/focus/disabled sampling; outline/focus ring; modern color parsing;
+opt-in **Scan page** + **Pattern pick** (element + parent).
+
+**Webtool:** role hints for focus/disabled/outline; richer component sketches;
+Agent rules + Foundations lines from scanned meta; Layout/Motion notes prefill
+from capture; completeness no longer permanently flags foundations that were
+scanned.
+
+**Key files:** `docs/types.ts`, `extension/src/content/extract.ts`,
+`foundations.ts`, `src/engine/export/{index,sketches,foundations}.ts`,
+`extension/CAPTURE_V2.md`.
+
+---
+
+### 2.44 Secondary opt-in via Add secondary `[Change]`
+Decided 2026-07-19. Extends §2.38: secondary must never auto-fill — not from
+default harmony, **and not from an auto-detected second hue**.
+
+**Problem:** Captures with a distinct alert/accent hue still auto-filled
+`color/action/secondary`, and mood style profiles silently set
+`accentChoice.harmony`, so the role appeared filled without a user choice.
+
+**Decision:**
+- Derivation fills secondary only when the user has set `accentChoice.harmony`
+  **or** an explicit `anchorOverrides.secondaryColorId` (not auto-detect alone).
+- `applyStyleProfile` no longer writes harmony — secondary stays opt-in.
+- Inactive **anchor/secondary** card is greyed (`opacity` + `grayscale`) with an
+  overlay **Add secondary** button. Activate prefers a suggested captured hue
+  when present, else the suggested harmony; then opens the existing picker.
+
+**Key files:** `derive-system/index.ts`, `pool.ts` (`applyStyleProfile`),
+`AnchorsStep.tsx`.
+
+---
+
+### 2.45 Origin chip "from capture" + whole-px typography `[Change]`
+Decided 2026-07-20. Two UX polish items from the System roles layer.
+
+**Origin vocabulary:** The muted mono chip for `seeded` fills read **auto**,
+which sounded like automation rather than capture provenance. Relabeled to
+**from capture** (tooltip: "From your capture") on role rows, the System view
+legend, and Design accents helper copy.
+
+**Typography sizes:** Modular type scale derivation rounded to 0.5px (PRD C.6),
+producing values like 31.5px in the editor. Product now rounds all font sizes
+to whole px: derivation (`derive-system/type.ts`), dedup size key, extension
+capture, role editor save/display, and `humanValueLabel`.
+
+**Rejected:** Keeping 0.5px steps for derived slots only — inconsistent with
+capture rounding and confusing in the size input.
+
+**Key files:** `derive-system/type.ts`, `dedup/distances.ts`,
+`RoleValueEditor.tsx`, `SystemView.tsx`, `DesignAccents.tsx`,
+`token-display.ts`, `extension/src/content/extract.ts`.
 
 ---
 
@@ -1000,6 +1053,8 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-20 | `[Change]` **From capture chip + whole-px fonts** (§2.45): seeded origin chip → "from capture"; type scale / capture / edit round font sizes to integer px. | — |
+| 2026-07-19 | `[Change]` **Secondary Add secondary** (§2.44): no auto-fill from detected hue or style profile; greyed card + overlay CTA until user opts in. | — |
 | 2026-07-19 | `[Bug fix]` **Color family Hover live update:** strip reads `roleDisplayTokens` (incl. derivedEdits) instead of only re-deriving hover from primary. | — |
 | 2026-07-19 | `[Change]` **Merged primitive cards:** banded layout (identity → merge badge + tags → actions); Colors merged cards `md:col-span-2`. | — |
 | 2026-07-19 | `[Bug fix]` **Un-merge undo** (§2.41): Home no longer auto Create-System on import; clear legacy stamp on draft load; gate merge actions when locked. | — |
@@ -1009,6 +1064,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 | 2026-07-19 | `[Change]` **Simpler teaching copy:** shorter tips on layers, anchors, welcome, Describe, merges, and role provenance. | `eb38f79` |
 | 2026-07-19 | `[New feature]` **Instant teaching tips:** portaled hover tooltips; InfoHint brand-pop “?”. | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` **Layer nav under mobile chrome:** sticky `top` = session header height. | `eb38f79` |
+| 2026-07-19 | `[New feature]` **Capture v2.1 → coherent design.md** (§2.43): foundations scan, layout context, richer extract; Agent rules / Layout / Motion from capture. | — |
 | 2026-07-19 | `[Change]` **Extension UI = team DESIGN.md** (§2.42): light brand side panel + brand-primary pick overlay; dark provisional chrome retired. | — |
 | 2026-07-19 | `[Change]` **Undo in layer nav (desktop):** sticky `CategoryLayerNav`; mobile uses floating undo (§2.39). | `eb38f79` |
 | 2026-07-19 | `[Bug fix]` `[Change]` **Secondary opt-in** (§2.38): no auto-synthetic secondary; Use secondary color; fine-tune uses derivedEdits; harmony unassigns role. | `eb38f79` |
