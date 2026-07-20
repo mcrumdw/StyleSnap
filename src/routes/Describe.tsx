@@ -67,7 +67,7 @@ export function Describe() {
             Description
             <InfoHint
               label="Why fill this in?"
-              content="Picks shape empty slots only — type scale, secondary, radius, shadows. Your captured colors stay. Notes go in design.md for your AI agent; Figma export works without them."
+              content="Picks shape empty slots only — type scale, secondary, radius. Elevation shadows stay empty unless your snap captured them. Notes go in design.md for your AI agent; Figma export works without them."
             />
           </h1>
           <p className="max-w-2xl text-caption text-text-muted">

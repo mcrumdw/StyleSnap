@@ -1,5 +1,5 @@
 import type { PoolEntry } from "../state/workspace";
-import { fallbackName } from "../engine/roles";
+import { effectKindForToken, fallbackName } from "../engine/roles";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
 import { InlineName } from "./InlineName";
@@ -71,6 +71,7 @@ export function TokenCard({
             name={token.name}
             onSetName={onSetName}
             tokenType={token.type}
+            effectKind={effectKindForToken(token)}
             suggestedName={fallbackName(token)}
           />
         ) : token.name ? (

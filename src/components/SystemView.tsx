@@ -512,10 +512,108 @@ export function SystemView({
             </section>
           ) : null;
         })()}
-        {foundationSection("Spacing", "space/")}
+        {(() => {
+          const scaleRows = [...roleEntries]
+            .filter(([role]) =>
+              ["space/xs", "space/sm", "space/md", "space/lg", "space/xl", "space/2xl"].includes(role),
+            )
+            .sort(([a], [b]) => roleOrderIndex(a) - roleOrderIndex(b));
+          const semanticRows = [...roleEntries]
+            .filter(([role]) =>
+              ["space/page", "space/section", "space/stack", "space/inset"].includes(role),
+            )
+            .sort(([a], [b]) => roleOrderIndex(a) - roleOrderIndex(b) || a.localeCompare(b));
+          return (
+            <>
+              {scaleRows.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <h3 className="font-heading text-card-title font-bold">Spacing scale</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {scaleRows.map(([role, token]) => (
+                      <div key={role} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => openPopover(role, token)}
+                          className={`relative flex items-center gap-2 rounded-md border-2 bg-surface-card px-3 py-2 ${rowBorder(role)}`}
+                        >
+                          {originMark(role)}
+                          <span className="font-mono text-badge text-brand-primary">{role}</span>
+                          <span className="font-mono text-badge text-text-muted">{formatValue(token)}</span>
+                        </button>
+                        {popover(role, token)}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {semanticRows.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <h3 className="font-heading text-card-title font-bold">Spacing roles</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {semanticRows.map(([role, token]) => (
+                      <div key={role} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => openPopover(role, token)}
+                          className={`relative flex items-center gap-2 rounded-md border-2 bg-surface-card px-3 py-2 ${rowBorder(role)}`}
+                        >
+                          {originMark(role)}
+                          <span className="font-mono text-badge text-brand-primary">{role}</span>
+                          <span className="font-mono text-badge text-text-muted">{formatValue(token)}</span>
+                        </button>
+                        {popover(role, token)}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          );
+        })()}
         {foundationSection("Radius", "radius/")}
         {foundationSection("Border width", "border-width/")}
-        {foundationSection("Shadow", "shadow/")}
+        {(() => {
+          const elevationRows = [...roleEntries]
+            .filter(([role]) => role === "shadow/sm" || role === "shadow/md" || role === "shadow/lg")
+            .sort(([a], [b]) => roleOrderIndex(a) - roleOrderIndex(b) || a.localeCompare(b));
+          const insetRows = [...roleEntries].filter(([role]) => role === "shadow/inset");
+          const blurRows = [...roleEntries]
+            .filter(([role]) => role.startsWith("effect/") || role.startsWith("blur/"))
+            .sort(([a], [b]) => roleOrderIndex(a) - roleOrderIndex(b) || a.localeCompare(b));
+
+          const chipSection = (title: string, rows: typeof elevationRows) => {
+            if (rows.length === 0) return null;
+            return (
+              <section className="flex flex-col gap-3">
+                <h3 className="font-heading text-card-title font-bold">{title}</h3>
+                <div className="flex flex-wrap gap-3">
+                  {rows.map(([role, token]) => (
+                    <div key={role} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => openPopover(role, token)}
+                        className={`relative flex items-center gap-2 rounded-md border-2 bg-surface-card px-3 py-2 ${rowBorder(role)}`}
+                      >
+                        {originMark(role)}
+                        <span className="font-mono text-badge text-brand-primary">{role}</span>
+                        <span className="font-mono text-badge text-text-muted">{formatValue(token)}</span>
+                      </button>
+                      {popover(role, token)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          };
+
+          return (
+            <>
+              {chipSection("Elevation", elevationRows)}
+              {chipSection("Inner shadow", insetRows)}
+              {chipSection("Background blur", blurRows)}
+            </>
+          );
+        })()}
       </section>
 
       {(() => {

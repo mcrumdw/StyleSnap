@@ -15,6 +15,7 @@ import {
 import {
   defaultProjectName,
   isSystemCreated,
+  isManualToken,
   allPoolTokens,
   excludedPoolTokens,
   poolTokenCount,
@@ -118,6 +119,11 @@ export function useSessionViewModel(pool: TokenPool) {
         const origin =
           fill.derivedFrom === "convention" ? ("default" as const) : ("derived" as const);
         return { ...fill, origin };
+      }
+      // Manual Add-token: never "from capture" (§2.64). User-assigned → snap
+      // (no chip); if derivation somehow linked one, still treat as snap.
+      if (isManualToken(fill.token)) {
+        return { ...fill, origin: "snap" as const };
       }
       // Captured token: user-assigned → snap (no chip); auto-placed → seeded.
       const userPlaced = userAssignments[fill.role] === fill.token.id;

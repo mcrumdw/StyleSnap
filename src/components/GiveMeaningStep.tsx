@@ -31,7 +31,7 @@ interface GiveMeaningStepProps {
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
   customRoles?: string[];
-  onAddCustomRole?: (type: TokenType, pathAfterPrefix: string) => void;
+  onAddCustomRole?: (type: TokenType, pathAfterPrefix: string, prefixOverride?: string) => void;
   onRemoveCustomRole?: (role: string) => void;
 }
 

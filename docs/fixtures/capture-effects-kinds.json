@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "source": "browser-extension",
+    "exportedAt": "2026-07-20T12:00:00Z",
+    "pageUrl": "https://example.test/effects",
+    "version": "2.0"
+  },
+  "tokens": [
+    {
+      "id": "fx_drop",
+      "captureId": "cap_card",
+      "source": "div.card",
+      "name": null,
+      "occurrences": 4,
+      "merged": false,
+      "context": { "cssProperty": "box-shadow", "element": "div" },
+      "type": "shadow",
+      "value": [
+        {
+          "inset": false,
+          "offsetX": 0,
+          "offsetY": 4,
+          "blur": 8,
+          "spread": -2,
+          "color": "#101828",
+          "opacity": 0.1
+        }
+      ]
+    },
+    {
+      "id": "fx_inset",
+      "captureId": "cap_input",
+      "source": "input.field",
+      "name": null,
+      "occurrences": 3,
+      "merged": false,
+      "context": { "cssProperty": "box-shadow", "element": "input" },
+      "type": "shadow",
+      "value": [
+        {
+          "inset": true,
+          "offsetX": 0,
+          "offsetY": 1,
+          "blur": 2,
+          "spread": 0,
+          "color": "#101828",
+          "opacity": 0.08
+        }
+      ]
+    },
+    {
+      "id": "fx_blur",
+      "captureId": "cap_glass",
+      "source": "div.glass",
+      "name": null,
+      "occurrences": 2,
+      "merged": false,
+      "context": { "cssProperty": "backdrop-filter", "element": "div" },
+      "type": "shadow",
+      "value": [
+        {
+          "inset": false,
+          "offsetX": 0,
+          "offsetY": 0,
+          "blur": 16,
+          "spread": 0,
+          "color": "#000000",
+          "opacity": 0
+        }
+      ]
+    },
+    {
+      "id": "fx_space",
+      "captureId": "cap_body",
+      "source": "body",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": { "cssProperty": "padding-left", "element": "body" },
+      "type": "spacing",
+      "value": 16
+    },
+    {
+      "id": "fx_color",
+      "captureId": "cap_body",
+      "source": "body",
+      "name": null,
+      "occurrences": 8,
+      "merged": false,
+      "context": { "cssProperty": "background-color", "element": "body" },
+      "type": "color",
+      "value": "#FFFFFF",
+      "opacity": 1
+    },
+    {
+      "id": "fx_type",
+      "captureId": "cap_p",
+      "source": "p",
+      "name": null,
+      "occurrences": 5,
+      "merged": false,
+      "context": { "cssProperty": "font", "element": "p" },
+      "type": "typography",
+      "value": {
+        "fontFamily": "Inter",
+        "fontSize": 16,
+        "fontWeight": 400,
+        "lineHeight": 1.5
+      }
+    }
+  ]
+}

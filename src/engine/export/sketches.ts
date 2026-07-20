@@ -5,7 +5,7 @@
 // Schema 2.1: padding/margin sides, hover/focus, layout recipes.
 
 import type { StyleSnapToken } from "../../contract/types";
-import { fallbackName, roleOrderIndex } from "../roles";
+import { fallbackName, isSpaceSemanticRole, roleOrderIndex } from "../roles";
 import type { ExportInput } from "./index";
 
 const byString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -87,6 +87,25 @@ function layoutPhrase(raw: StyleSnapToken): string | undefined {
   return bits.join(" ");
 }
 
+/**
+ * When one primitive fills several roles (e.g. brand blue → primary + link),
+ * pick the role that matches the anatomy part — not taxonomy order alone
+ * (text/link sorts before action/primary in Appendix B).
+ */
+function sketchRoleRank(part: PartLabel, role: string): number {
+  if (part === "bg") {
+    if (role.startsWith("color/action/")) return 0;
+    if (role.startsWith("color/surface/")) return 1;
+    if (role.startsWith("gradient/")) return 0;
+    if (role.startsWith("color/text/")) return 8;
+  }
+  if (part === "border" || part === "focus →") {
+    if (role.startsWith("color/border/")) return 0;
+  }
+  if ((part === "title") && role.startsWith("color/text/")) return 0;
+  return 4;
+}
+
 export interface SketchLine {
   captureId: string;
   text: string;
@@ -105,8 +124,14 @@ export function componentSketches(input: ExportInput): SketchLine[] {
   for (const [role, tokenId] of input.assignments) {
     rolesOf.set(tokenId, [...(rolesOf.get(tokenId) ?? []), role]);
   }
+  // Default sort for non-part-aware callers; per-part re-sort happens below.
   for (const roles of rolesOf.values()) {
-    roles.sort((a, b) => roleOrderIndex(a) - roleOrderIndex(b) || byString(a, b));
+    roles.sort((a, b) => {
+      const aSem = isSpaceSemanticRole(a) ? 0 : 1;
+      const bSem = isSpaceSemanticRole(b) ? 0 : 1;
+      if (aSem !== bSem) return aSem - bSem;
+      return roleOrderIndex(a) - roleOrderIndex(b) || byString(a, b);
+    });
   }
 
   const rawInOrder = [...input.rawById.values()];
@@ -137,7 +162,14 @@ export function componentSketches(input: ExportInput): SketchLine[] {
       const roles = rolesOf.get(survivor.id);
       let ref: string;
       if (roles && roles.length > 0) {
-        ref = `\`${roles[0]}\``;
+        const ranked = [...roles].sort(
+          (a, b) =>
+            sketchRoleRank(label, a) - sketchRoleRank(label, b) ||
+            (isSpaceSemanticRole(a) ? 0 : 1) - (isSpaceSemanticRole(b) ? 0 : 1) ||
+            roleOrderIndex(a) - roleOrderIndex(b) ||
+            byString(a, b),
+        );
+        ref = `\`${ranked[0]}\``;
         assignedCount++;
       } else {
         const name = input.names.get(survivor.id) ?? survivor.name;

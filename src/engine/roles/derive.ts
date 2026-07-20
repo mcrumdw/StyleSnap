@@ -20,7 +20,12 @@
 // without human confirmation (FR-16).
 
 import type { ShadowToken, StyleSnapToken, TokenContext } from "../../contract/types";
-import { isBackdropBlurToken } from "../effect-kinds";
+import {
+  isBackdropBlurToken,
+  isDropShadowToken,
+  isInsetShadowToken,
+} from "../effect-kinds";
+import { isManualToken } from "../normalize";
 import {
   BORDER_WIDTH_SLOTS,
   isValidRole,
@@ -232,6 +237,28 @@ function contextRule(token: StyleSnapToken, ctx: TokenContext): ContextHint | un
     if (element === "p" || element === "body") return { role: "type/body" };
   }
 
+  if (token.type === "spacing" && ctx.cssProperty) {
+    const css = ctx.cssProperty;
+    const isBox =
+      css === "margin" ||
+      css === "padding" ||
+      css.startsWith("margin-") ||
+      css.startsWith("padding-") ||
+      css === "gap" ||
+      css === "row-gap" ||
+      css === "column-gap";
+    if (!isBox) return undefined;
+    if (element === "body" || element === "main" || ctx.ariaRole === "main") {
+      return { role: "space/page" };
+    }
+    if (element === "button" || ctx.ariaRole === "button" || element === "input") {
+      return { role: "space/inset" };
+    }
+    if (css === "gap" || css === "row-gap" || (css.startsWith("margin") && (token.value as number) >= 48)) {
+      return { role: "space/section", fallback: true };
+    }
+  }
+
   return undefined;
 }
 
@@ -297,14 +324,28 @@ function assignShadowSlots(
   addHint: AddHint,
 ): void {
   const slots = SHADOW_SLOTS.map((s) => s.role);
-  const group = tokens.filter(
-    (t): t is ShadowToken => t.type === "shadow" && !isBackdropBlurToken(t),
-  );
-  const unassigned = group.filter((t) => !hasHints(t.id));
+  const drops = tokens.filter((t): t is ShadowToken => isDropShadowToken(t));
+  const unassigned = drops.filter((t) => !hasHints(t.id));
   const sizes = [...new Set(unassigned.map(shadowSize))].sort((a, b) => a - b);
-  if (sizes.length === 0 || sizes.length > slots.length) return;
-  const slotBySize = new Map(sizes.map((s, i) => [s, slots[i]]));
-  for (const token of unassigned) {
-    addHint(token.id, slotBySize.get(shadowSize(token))!, "scale");
+  if (sizes.length > 0 && sizes.length <= slots.length) {
+    const slotBySize = new Map(sizes.map((s, i) => [s, slots[i]]));
+    for (const token of unassigned) {
+      addHint(token.id, slotBySize.get(shadowSize(token))!, "scale");
+    }
   }
+
+  // Semantic effect jobs (§2.50 / §2.64) — claim from snap only, never manuals.
+  const insets = tokens
+    .filter(
+      (t): t is ShadowToken => isInsetShadowToken(t) && !isManualToken(t) && !hasHints(t.id),
+    )
+    .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
+  if (insets[0]) addHint(insets[0].id, "shadow/inset", "context");
+
+  const blurs = tokens
+    .filter(
+      (t): t is ShadowToken => isBackdropBlurToken(t) && !isManualToken(t) && !hasHints(t.id),
+    )
+    .sort((a, b) => b.occurrences - a.occurrences || (a.id < b.id ? -1 : 1));
+  if (blurs[0]) addHint(blurs[0].id, "blur/backdrop", "context");
 }

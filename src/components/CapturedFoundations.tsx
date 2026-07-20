@@ -77,17 +77,17 @@ export function CapturedFoundations({
   );
 
   const rolesByToken = useMemo(() => {
-    const prefix =
+    const prefixes =
       tokenType === "spacing"
-        ? "space/"
+        ? ["space/"]
         : tokenType === "border-radius"
-          ? "radius/"
+          ? ["radius/"]
           : tokenType === "border-width"
-            ? "border-width/"
-            : "shadow/";
+            ? ["border-width/"]
+            : ["shadow/", "effect/", "blur/"];
     const map = new Map<string, string[]>();
     for (const [role, id] of Object.entries(assignments)) {
-      if (!role.startsWith(prefix)) continue;
+      if (!prefixes.some((p) => role.startsWith(p))) continue;
       map.set(id, [...(map.get(id) ?? []), role]);
     }
     return map;

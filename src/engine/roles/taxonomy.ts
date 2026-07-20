@@ -58,9 +58,71 @@ export const TYPE_ROLES: RoleDefinition[] = [
 export const SPACE_SLOTS: RoleDefinition[] = ["xs", "sm", "md", "lg", "xl", "2xl"].map((step) => ({
   role: `space/${step}`,
   tokenType: "spacing" as TokenType,
-  meaning: `Spacing step ${step}`,
+  meaning: `Spacing scale step ${step}`,
   required: false,
 }));
+
+/**
+ * B.3 semantic spacing jobs (§2.47) — System roles that point at scale steps.
+ * Completeness requires `space/page`; the rest are suggested.
+ */
+export const SPACE_SEMANTIC_ROLES: RoleDefinition[] = [
+  {
+    role: "space/page",
+    tokenType: "spacing",
+    meaning:
+      "Page / container horizontal inset — default 2× space/xl, clamped 32–160px; never flush to the viewport edge",
+    required: true,
+  },
+  {
+    role: "space/section",
+    tokenType: "spacing",
+    meaning: "Between major sections",
+    required: false,
+  },
+  {
+    role: "space/stack",
+    tokenType: "spacing",
+    meaning: "Vertical rhythm between related blocks (title→body, paragraphs)",
+    required: false,
+  },
+  {
+    role: "space/inset",
+    tokenType: "spacing",
+    meaning: "Padding inside cards, buttons, and inputs",
+    required: false,
+  },
+];
+
+/** Page inset bounds (§2.49) — `clamp(2 × space/xl, min, max)`. */
+export const PAGE_INSET_MIN_PX = 32;
+export const PAGE_INSET_MAX_PX = 160;
+
+/** Derive page margin/padding from the xl scale step. */
+export function derivePageInsetPx(xlPx: number): number {
+  const doubled = xlPx * 2;
+  return Math.min(PAGE_INSET_MAX_PX, Math.max(PAGE_INSET_MIN_PX, doubled));
+}
+
+/** Scale step each semantic role prefers (fallback chain). `space/page` is derived separately. */
+export const SPACE_SEMANTIC_FROM_SCALE: ReadonlyArray<{
+  role: string;
+  from: readonly string[];
+}> = [
+  { role: "space/section", from: ["space/2xl", "space/xl"] },
+  { role: "space/stack", from: ["space/lg", "space/md"] },
+  { role: "space/inset", from: ["space/sm", "space/md"] },
+];
+
+export const SPACE_SCALE_ROLES = new Set(SPACE_SLOTS.map((s) => s.role));
+
+export function isSpaceScaleRole(role: string): boolean {
+  return SPACE_SCALE_ROLES.has(role);
+}
+
+export function isSpaceSemanticRole(role: string): boolean {
+  return SPACE_SEMANTIC_ROLES.some((d) => d.role === role);
+}
 
 export const RADIUS_SLOTS: RoleDefinition[] = ["sm", "md", "lg", "full"].map((step) => ({
   role: `radius/${step}`,
@@ -76,6 +138,34 @@ export const SHADOW_SLOTS: RoleDefinition[] = ["sm", "md", "lg"].map((step) => (
   required: false,
 }));
 
+/**
+ * B.3 effect semantics (§2.50) — inset depth and backdrop blur.
+ * Seeded from capture when present; not required for completeness.
+ */
+export const SHADOW_INSET_ROLE: RoleDefinition = {
+  role: "shadow/inset",
+  tokenType: "shadow",
+  meaning: "Inner / inset shadow — pressed wells, recessed inputs, carved depth",
+  required: false,
+};
+
+export const BLUR_BACKDROP_ROLE: RoleDefinition = {
+  role: "blur/backdrop",
+  tokenType: "shadow",
+  meaning: "Frosted glass / modal scrim backdrop blur",
+  required: false,
+};
+
+export const EFFECT_SEMANTIC_ROLES: RoleDefinition[] = [SHADOW_INSET_ROLE, BLUR_BACKDROP_ROLE];
+
+export function isElevationRole(role: string): boolean {
+  return SHADOW_SLOTS.some((s) => s.role === role);
+}
+
+export function isEffectSemanticRole(role: string): boolean {
+  return EFFECT_SEMANTIC_ROLES.some((d) => d.role === role);
+}
+
 export const BORDER_WIDTH_SLOTS: RoleDefinition[] = ["default", "thick"].map((step) => ({
   role: `border-width/${step}`,
   tokenType: "border-width" as TokenType,
@@ -88,8 +178,10 @@ export const ALL_ROLES: RoleDefinition[] = [
   ...COLOR_ROLES,
   ...TYPE_ROLES,
   ...SPACE_SLOTS,
+  ...SPACE_SEMANTIC_ROLES,
   ...RADIUS_SLOTS,
   ...SHADOW_SLOTS,
+  ...EFFECT_SEMANTIC_ROLES,
   ...BORDER_WIDTH_SLOTS,
 ];
 

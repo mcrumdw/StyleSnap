@@ -29,19 +29,31 @@ const nextTokenId = () => `ext_${(++tokenCounter).toString().padStart(3, "0")}`;
 export function describeSource(el: Element): string {
   const tag = el.tagName.toLowerCase();
   const id = el.id ? `#${el.id}` : "";
-  const cls =
-    typeof el.className === "string" && el.className.trim()
-      ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".")
-      : "";
+  const classes = classNamesOf(el).slice(0, 2);
+  const cls = classes.length ? "." + classes.join(".") : "";
   return `${tag}${id}${cls}`;
 }
 
 /** A CSS selector fragment for context.selector (best effort). */
 function describeSelector(el: Element): string | undefined {
   if (el.id) return `#${el.id}`;
-  if (typeof el.className === "string" && el.className.trim())
-    return "." + el.className.trim().split(/\s+/)[0];
+  const first = classNamesOf(el)[0];
+  if (first) return `.${first}`;
   return undefined;
+}
+
+/** HTML `className` is a string; SVG uses `SVGAnimatedString`. */
+function classNamesOf(el: Element): string[] {
+  if (typeof el.className === "string") {
+    return el.className.trim() ? el.className.trim().split(/\s+/) : [];
+  }
+  const base = (el.className as SVGAnimatedString | undefined)?.baseVal;
+  if (typeof base === "string" && base.trim()) return base.trim().split(/\s+/);
+  try {
+    return Array.from(el.classList);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -56,30 +68,41 @@ function authoredNameFor(
   const fromVar = declared?.match(/var\(\s*(--[a-zA-Z0-9-_]+)/)?.[1];
   if (fromVar) return fromVar;
 
-  if (typeof el.className !== "string") return undefined;
-  const classes = el.className.trim().split(/\s+/);
+  const classes = classNamesOf(el);
+  if (classes.length === 0) return undefined;
   const prefix =
     cssProperty === "color"
       ? "text-"
-      : cssProperty.startsWith("background")
-        ? "bg-"
-        : cssProperty.startsWith("border")
-          ? "border-"
-          : cssProperty.startsWith("padding")
-            ? "p-"
-            : cssProperty.startsWith("margin")
-              ? "m-"
-              : cssProperty === "gap" || cssProperty === "row-gap" || cssProperty === "column-gap"
-                ? "gap-"
-                : null;
+      : cssProperty === "fill"
+        ? "fill-"
+        : cssProperty === "stroke"
+          ? "stroke-"
+          : cssProperty.startsWith("background")
+            ? "bg-"
+            : cssProperty.startsWith("border")
+              ? "border-"
+              : cssProperty.startsWith("padding")
+                ? "p-"
+                : cssProperty.startsWith("margin")
+                  ? "m-"
+                  : cssProperty === "gap" || cssProperty === "row-gap" || cssProperty === "column-gap"
+                    ? "gap-"
+                    : cssProperty === "box-shadow"
+                      ? "shadow-"
+                      : cssProperty === "backdrop-filter"
+                        ? "backdrop-blur-"
+                        : null;
   if (!prefix) return undefined;
   return classes.find((c) => c.startsWith(prefix) && /\d|[a-z]+-[a-z]+/.test(c));
 }
 
 function declaredValue(el: Element, cssProperty: string): string | null {
-  if (!(el instanceof HTMLElement)) return null;
-  const inline = el.style.getPropertyValue(cssProperty);
-  if (inline) return inline;
+  if (el instanceof HTMLElement || el instanceof SVGElement) {
+    const inline = el.style?.getPropertyValue(cssProperty);
+    if (inline) return inline;
+  }
+  const attr = el.getAttribute(cssProperty);
+  if (attr) return attr;
   try {
     for (const sheet of Array.from(document.styleSheets)) {
       let rules: CSSRuleList;
@@ -110,15 +133,22 @@ function declaredValue(el: Element, cssProperty: string): string | null {
 let colorProbe: HTMLSpanElement | null = null;
 
 /** Convert any CSS color to normalized 6-digit hex + opacity. */
-function parseColor(input: string): { hex: string; opacity: number } | null {
-  if (!input || input === "transparent" || input === "none") return null;
+function parseColor(
+  input: string,
+  opts: { allowZeroOpacity?: boolean } = {},
+): { hex: string; opacity: number } | null {
+  if (!input || input === "none") return null;
+  // Keyword transparent → black at 0% (kept for gradient stops).
+  if (input === "transparent") {
+    return opts.allowZeroOpacity ? { hex: "#000000", opacity: 0 } : null;
+  }
   const m = input.match(
     /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/i,
   );
   if (m) {
     const [r, g, b] = [m[1], m[2], m[3]].map((n) => Math.round(Number(n)));
     const opacity = m[4] === undefined ? 1 : Number(m[4]);
-    if (opacity === 0) return null;
+    if (opacity === 0 && !opts.allowZeroOpacity) return null;
     const hex =
       "#" +
       [r, g, b]
@@ -137,7 +167,7 @@ function parseColor(input: string): { hex: string; opacity: number } | null {
   colorProbe.style.color = input;
   const computed = getComputedStyle(colorProbe).color;
   if (computed === input || !computed) return null;
-  return parseColor(computed);
+  return parseColor(computed, opts);
 }
 
 const px = (v: string): number | null => {
@@ -181,26 +211,65 @@ function parseShadowLayer(layer: string): ShadowLayer | null {
   };
 }
 
-function parseGradient(input: string): GradientToken["value"] | null {
+/** Parse `blur(Npx)` from backdrop-filter (ignore other filter functions). */
+function parseBackdropBlurPx(input: string): number | null {
   if (!input || input === "none") return null;
-  const kind = /radial-gradient/.test(input)
+  const m = input.match(/blur\(\s*([\d.]+)px\s*\)/i);
+  if (!m) return null;
+  const px = Number(m[1]);
+  return Number.isFinite(px) && px > 0 ? px : null;
+}
+
+/** Slice every `*-gradient(...)` expression out of a background-image value. */
+function splitGradientExprs(input: string): string[] {
+  const out: string[] = [];
+  const re = /(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(input))) {
+    const start = match.index;
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < input.length; i++) {
+      const ch = input[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end < 0) break;
+    out.push(input.slice(start, end + 1));
+    re.lastIndex = end + 1;
+  }
+  return out;
+}
+
+function parseOneGradientExpr(expr: string): GradientToken["value"] | null {
+  const kind = /radial-gradient/i.test(expr)
     ? "radial"
-    : /conic-gradient/.test(input)
+    : /conic-gradient/i.test(expr)
       ? "conic"
-      : /linear-gradient/.test(input)
+      : /linear-gradient/i.test(expr)
         ? "linear"
         : null;
   if (!kind) return null;
-  const inner = input.slice(input.indexOf("(") + 1, input.lastIndexOf(")"));
+  const inner = expr.slice(expr.indexOf("(") + 1, expr.lastIndexOf(")"));
   const parts = splitTopLevel(inner);
   let angle: number | undefined;
-  if (kind === "linear" && /deg/.test(parts[0])) {
+  if (kind === "linear" && parts[0] && /deg/.test(parts[0])) {
     angle = parseFloat(parts[0]);
+    parts.shift();
+  } else if (kind === "linear" && parts[0] && /^to\s+/i.test(parts[0])) {
+    // Direction keyword — not a color stop; drop it.
     parts.shift();
   }
   const stops: GradientStop[] = [];
   parts.forEach((p, i) => {
-    const color = parseColor(p);
+    // Allow opacity 0 — fade-out stops are common in stacked CTA fills.
+    const color = parseColor(p, { allowZeroOpacity: true });
     if (!color) return;
     const posMatch = p.match(/([\d.]+)%/);
     const position = posMatch
@@ -210,6 +279,14 @@ function parseGradient(input: string): GradientToken["value"] | null {
   });
   if (stops.length < 2) return null;
   return kind === "linear" ? { kind, angle, stops } : { kind, stops };
+}
+
+/** Parse every gradient layer in a background-image (stacked CTA fills). */
+function parseGradients(input: string): GradientToken["value"][] {
+  if (!input || input === "none") return [];
+  return splitGradientExprs(input)
+    .map(parseOneGradientExpr)
+    .filter((g): g is GradientToken["value"] => g != null);
 }
 
 function readLayout(cs: CSSStyleDeclaration): CaptureLayout | undefined {
@@ -249,6 +326,30 @@ function baseFields(
   };
 }
 
+/** Solid swatches from opaque gradient stops — helps primary / brand detection. */
+function pushOpaqueGradientStops(
+  tokens: StyleSnapToken[],
+  captureId: string,
+  source: string,
+  ctx: (cssProperty: string) => TokenContext,
+  gradient: GradientToken["value"],
+) {
+  const seen = new Set<string>();
+  for (const stop of gradient.stops) {
+    if (stop.opacity < 0.5) continue;
+    const key = stop.color.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const t: ColorToken = {
+      ...baseFields(captureId, source, ctx("background-image")),
+      type: "color",
+      value: stop.color,
+      opacity: stop.opacity,
+    };
+    tokens.push(t);
+  }
+}
+
 function pushSpacing(
   tokens: StyleSnapToken[],
   captureId: string,
@@ -262,6 +363,9 @@ function pushSpacing(
   if (value === null || value === 0) return;
   // Margins may be negative in the wild — keep them; padding/gap only if > 0.
   if (!cssProperty.startsWith("margin") && value < 0) return;
+  // Whole pixels — sub-pixel padding (8.5 / 9.4) is capture noise.
+  const pxValue = Math.round(value);
+  if (pxValue === 0 && !cssProperty.startsWith("margin")) return;
   const authoredName = authoredNameFor(el, cssProperty, declaredValue(el, cssProperty));
   const t: SpacingToken = {
     ...baseFields(captureId, source, {
@@ -271,7 +375,7 @@ function pushSpacing(
       authoredName,
     }),
     type: "spacing",
-    value,
+    value: pxValue,
   };
   tokens.push(t);
 }
@@ -297,14 +401,15 @@ function extractFromComputed(
     authoredName: authoredNameFor(el, cssProperty, declaredValue(el, cssProperty)),
   });
 
-  const gradient = parseGradient(cs.backgroundImage);
-  if (gradient && state === "default") {
+  const gradients = parseGradients(cs.backgroundImage);
+  for (const gradient of gradients) {
     const t: GradientToken = {
       ...baseFields(captureId, source, ctx("background-image")),
       type: "gradient",
       value: gradient,
     };
     tokens.push(t);
+    pushOpaqueGradientStops(tokens, captureId, source, ctx, gradient);
   }
 
   const bg = parseColor(cs.backgroundColor);
@@ -610,6 +715,422 @@ function extractFromComputed(
         tokens.push(t);
       }
     }
+
+    // Backdrop blur — same shadow encoding the webapp expects (§2.28 / §2.50).
+    const backdropRaw =
+      cs.getPropertyValue("backdrop-filter") ||
+      cs.getPropertyValue("-webkit-backdrop-filter");
+    const backdropPx = parseBackdropBlurPx(backdropRaw);
+    if (backdropPx !== null) {
+      const t: ShadowToken = {
+        ...baseFields(captureId, source, ctx("backdrop-filter")),
+        type: "shadow",
+        value: [
+          {
+            inset: false,
+            offsetX: 0,
+            offsetY: 0,
+            blur: backdropPx,
+            spread: 0,
+            color: "#000000",
+            opacity: 0,
+          },
+        ],
+      };
+      tokens.push(t);
+    }
+  }
+}
+
+/**
+ * When the clicked node has no fill, check immediate decorative children
+ * (absolute layers behind labels) for background / gradient.
+ */
+function extractChildSurfaces(
+  el: Element,
+  captureId: string,
+  source: string,
+  tokens: StyleSnapToken[],
+) {
+  if (!(el instanceof HTMLElement) || el.children.length === 0) return;
+  const own = getComputedStyle(el);
+  if (parseGradients(own.backgroundImage).length > 0 || parseColor(own.backgroundColor))
+    return;
+
+  const parentRect = el.getBoundingClientRect();
+  if (parentRect.width < 8 || parentRect.height < 8) return;
+  const parentArea = parentRect.width * parentRect.height;
+
+  for (const child of Array.from(el.children).slice(0, 8)) {
+    if (!(child instanceof HTMLElement)) continue;
+    const cs = getComputedStyle(child);
+    if (cs.display === "none" || cs.visibility === "hidden") continue;
+    const pos = cs.position;
+    if (pos !== "absolute" && pos !== "fixed") continue;
+
+    const gradients = parseGradients(cs.backgroundImage);
+    const bg = parseColor(cs.backgroundColor);
+    if (gradients.length === 0 && !bg) continue;
+
+    const r = child.getBoundingClientRect();
+    if (r.width * r.height < parentArea * 0.4) continue;
+
+    const childSource = `${source} > ${describeSource(child)}`;
+    const selector = describeSelector(child);
+    const baseCtx = {
+      element: child.tagName.toLowerCase(),
+      ariaRole: child.getAttribute("role") ?? undefined,
+      selector,
+    };
+    const ctx = (cssProperty: string): TokenContext => ({
+      ...baseCtx,
+      cssProperty,
+      state: "default",
+      authoredName: authoredNameFor(child, cssProperty, declaredValue(child, cssProperty)),
+    });
+
+    for (const gradient of gradients) {
+      const t: GradientToken = {
+        ...baseFields(captureId, childSource, ctx("background-image")),
+        type: "gradient",
+        value: gradient,
+      };
+      tokens.push(t);
+      pushOpaqueGradientStops(tokens, captureId, childSource, ctx, gradient);
+    }
+    if (bg) {
+      const t: ColorToken = {
+        ...baseFields(captureId, childSource, ctx("background-color")),
+        type: "color",
+        value: bg.hex,
+        opacity: bg.opacity,
+      };
+      tokens.push(t);
+    }
+  }
+}
+
+/**
+ * Decorative fills often live on ::before / ::after (skewed CTAs, gradient
+ * pills). getComputedStyle(el) never sees those — sample them explicitly.
+ */
+function extractPseudoSurfaces(
+  el: Element,
+  captureId: string,
+  source: string,
+  tokens: StyleSnapToken[],
+) {
+  for (const pseudo of ["::before", "::after"] as const) {
+    let pcs: CSSStyleDeclaration;
+    try {
+      pcs = getComputedStyle(el, pseudo);
+    } catch {
+      continue;
+    }
+    const content = pcs.content;
+    // Generated box: empty "" still paints; only skip none/normal.
+    if (!content || content === "none" || content === "normal") continue;
+    if (pcs.display === "none" || pcs.visibility === "hidden") continue;
+
+    const selector = describeSelector(el);
+    const baseCtx = {
+      element: el.tagName.toLowerCase(),
+      ariaRole: el.getAttribute("role") ?? undefined,
+      selector: selector ? `${selector}${pseudo}` : pseudo,
+    };
+    const ctx = (cssProperty: string): TokenContext => ({
+      ...baseCtx,
+      cssProperty,
+      state: "default",
+      authoredName: authoredNameFor(el, cssProperty, declaredValue(el, cssProperty)),
+    });
+
+    const gradients = parseGradients(pcs.backgroundImage);
+    for (const gradient of gradients) {
+      const t: GradientToken = {
+        ...baseFields(captureId, source, ctx("background-image")),
+        type: "gradient",
+        value: gradient,
+      };
+      tokens.push(t);
+      pushOpaqueGradientStops(tokens, captureId, source, ctx, gradient);
+    }
+
+    const bg = parseColor(pcs.backgroundColor);
+    if (bg) {
+      const t: ColorToken = {
+        ...baseFields(captureId, source, ctx("background-color")),
+        type: "color",
+        value: bg.hex,
+        opacity: bg.opacity,
+      };
+      tokens.push(t);
+    }
+
+    const bc = parseColor(pcs.borderColor);
+    const bw = px(pcs.borderTopWidth);
+    if (bc && bw && bw > 0 && pcs.borderTopStyle !== "none") {
+      const t: ColorToken = {
+        ...baseFields(captureId, source, ctx("border-color")),
+        type: "color",
+        value: bc.hex,
+        opacity: bc.opacity,
+      };
+      tokens.push(t);
+    }
+  }
+}
+
+/**
+ * ::after fills often sit on a wrapper (e.g. .btn-fancy--green) while the
+ * click hits an inner label — walk a few ancestors for decorative surfaces.
+ */
+function extractAncestorPseudoSurfaces(
+  el: Element,
+  captureId: string,
+  tokens: StyleSnapToken[],
+) {
+  let node: Element | null = el.parentElement;
+  for (let i = 0; i < 3 && node; i++) {
+    if (node === document.body || node === document.documentElement) break;
+    const before = tokens.length;
+    extractPseudoSurfaces(node, captureId, describeSource(node), tokens);
+    if (tokens.length > before) break;
+    node = node.parentElement;
+  }
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function isSvgNode(el: Element): boolean {
+  return el instanceof SVGElement || el.namespaceURI === SVG_NS;
+}
+
+function svgRootOf(el: Element): SVGSVGElement | null {
+  if (el instanceof SVGSVGElement) return el;
+  if (isSvgNode(el)) return el.closest("svg");
+  return null;
+}
+
+function resolvePaintUrl(el: Element, paint: string): Element | null {
+  const m = paint.match(/url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/i);
+  if (!m) return null;
+  const id = m[1];
+  const svg = svgRootOf(el) ?? el.closest("svg");
+  try {
+    if (svg) {
+      const local = svg.querySelector(`#${CSS.escape(id)}`);
+      if (local) return local;
+    }
+    return document.getElementById(id);
+  } catch {
+    return null;
+  }
+}
+
+function pushSvgColor(
+  tokens: StyleSnapToken[],
+  seen: Set<string>,
+  captureId: string,
+  source: string,
+  el: Element,
+  cssProperty: "fill" | "stroke" | "stop-color",
+  hex: string,
+  opacity: number,
+) {
+  if (opacity <= 0) return;
+  const key = `${cssProperty}:${hex.toUpperCase()}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  const t: ColorToken = {
+    ...baseFields(captureId, source, {
+      element: el.tagName.toLowerCase(),
+      ariaRole: el.getAttribute("role") ?? undefined,
+      selector: describeSelector(el),
+      cssProperty,
+      state: "default",
+      authoredName: authoredNameFor(el, cssProperty, declaredValue(el, cssProperty)),
+    }),
+    type: "color",
+    value: hex,
+    opacity,
+  };
+  tokens.push(t);
+}
+
+function extractSvgGradientPaint(
+  tokens: StyleSnapToken[],
+  seen: Set<string>,
+  captureId: string,
+  source: string,
+  shape: Element,
+  paintServer: Element,
+  cssProperty: "fill" | "stroke",
+) {
+  const tag = paintServer.tagName.toLowerCase();
+  if (tag !== "lineargradient" && tag !== "radialgradient") return;
+
+  const stops = Array.from(paintServer.querySelectorAll("stop"));
+  const gradientStops: GradientStop[] = [];
+  stops.forEach((stop, i) => {
+    const scs = getComputedStyle(stop);
+    const raw =
+      scs.getPropertyValue("stop-color") ||
+      stop.getAttribute("stop-color") ||
+      "#000000";
+    const parsed = parseColor(raw === "currentColor" ? getComputedStyle(shape).color : raw);
+    if (!parsed) return;
+    const stopOp = parseFloat(
+      scs.getPropertyValue("stop-opacity") || stop.getAttribute("stop-opacity") || "1",
+    );
+    const opacity = parsed.opacity * (Number.isFinite(stopOp) ? stopOp : 1);
+    const offRaw = stop.getAttribute("offset") ?? "";
+    const position = offRaw.endsWith("%")
+      ? parseFloat(offRaw) / 100
+      : offRaw
+        ? Number(offRaw)
+        : i / Math.max(1, stops.length - 1);
+    gradientStops.push({
+      color: parsed.hex,
+      opacity,
+      position: Number.isFinite(position) ? position : i / Math.max(1, stops.length - 1),
+    });
+    pushSvgColor(
+      tokens,
+      seen,
+      captureId,
+      source,
+      stop,
+      "stop-color",
+      parsed.hex,
+      opacity,
+    );
+  });
+
+  if (gradientStops.length >= 2) {
+    const kind = tag === "radialgradient" ? "radial" : "linear";
+    const t: GradientToken = {
+      ...baseFields(captureId, source, {
+        element: shape.tagName.toLowerCase(),
+        ariaRole: shape.getAttribute("role") ?? undefined,
+        selector: describeSelector(shape),
+        cssProperty,
+        state: "default",
+        authoredName: authoredNameFor(shape, cssProperty, declaredValue(shape, cssProperty)),
+      }),
+      type: "gradient",
+      value: { kind, stops: gradientStops },
+    };
+    tokens.push(t);
+  }
+}
+
+function extractPaintsFromSvgNode(
+  node: Element,
+  captureId: string,
+  source: string,
+  tokens: StyleSnapToken[],
+  seen: Set<string>,
+  budget: { left: number },
+) {
+  if (budget.left <= 0) return;
+  const cs = getComputedStyle(node);
+
+  for (const prop of ["fill", "stroke"] as const) {
+    if (budget.left <= 0) break;
+    const raw =
+      cs.getPropertyValue(prop) ||
+      node.getAttribute(prop) ||
+      "";
+    if (!raw || raw === "none") continue;
+
+    const opacityProp = prop === "fill" ? "fill-opacity" : "stroke-opacity";
+    const paintOp = parseFloat(
+      cs.getPropertyValue(opacityProp) || node.getAttribute(opacityProp) || "1",
+    );
+    const mul = Number.isFinite(paintOp) ? paintOp : 1;
+
+    if (/^url\(/i.test(raw)) {
+      const server = resolvePaintUrl(node, raw);
+      if (server) {
+        extractSvgGradientPaint(tokens, seen, captureId, source, node, server, prop);
+        budget.left -= 1;
+      }
+      continue;
+    }
+
+    const paint = raw === "currentColor" ? cs.color || node.getAttribute("color") || "" : raw;
+    const parsed = parseColor(paint);
+    if (!parsed) continue;
+    pushSvgColor(
+      tokens,
+      seen,
+      captureId,
+      `${source} › ${describeSource(node)}`,
+      node,
+      prop,
+      parsed.hex,
+      parsed.opacity * mul,
+    );
+    budget.left -= 1;
+  }
+}
+
+/**
+ * Capture fill / stroke / SVG gradient stops from the picked node or nested
+ * icons (inline SVG only — external <img src=".svg"> is not readable).
+ */
+function extractSvgPaints(
+  el: Element,
+  captureId: string,
+  source: string,
+  tokens: StyleSnapToken[],
+) {
+  const seen = new Set<string>();
+  const budget = { left: 48 };
+  const roots: Element[] = [];
+
+  if (isSvgNode(el)) {
+    roots.push(svgRootOf(el) ?? el);
+  } else {
+    for (const svg of Array.from(el.querySelectorAll("svg")).slice(0, 4)) {
+      roots.push(svg);
+    }
+    // Icon often wraps <svg> as sibling of label — check one level of children.
+    if (roots.length === 0) {
+      for (const child of Array.from(el.children).slice(0, 8)) {
+        if (child instanceof SVGSVGElement) roots.push(child);
+        else {
+          const nested = child.querySelector("svg");
+          if (nested) roots.push(nested);
+        }
+        if (roots.length >= 4) break;
+      }
+    }
+  }
+
+  for (const root of roots) {
+    if (budget.left <= 0) break;
+    const nodes = [root, ...Array.from(root.querySelectorAll("*"))].slice(0, 80);
+    for (const node of nodes) {
+      if (budget.left <= 0) break;
+      if (!(node instanceof Element) || !isSvgNode(node)) continue;
+      const tag = node.tagName.toLowerCase();
+      // Skip non-painted structural nodes except the root (may still have fill).
+      if (
+        tag === "defs" ||
+        tag === "clippath" ||
+        tag === "mask" ||
+        tag === "title" ||
+        tag === "desc" ||
+        tag === "metadata" ||
+        tag === "style" ||
+        tag === "script"
+      ) {
+        continue;
+      }
+      extractPaintsFromSvgNode(node, captureId, source, tokens, seen, budget);
+    }
   }
 }
 
@@ -632,11 +1153,20 @@ function pseudoOverrides(
         if (!(rule instanceof CSSStyleRule)) continue;
         const sel = rule.selectorText;
         if (!sel || !sel.includes(suffix)) continue;
+        // Match `.el:hover` only — skip `.el:hover::before` and `.el:hover .child`
+        // (those paint other nodes; applying them here would mis-attribute fills).
         const base = sel
           .split(",")
           .map((s) => s.trim())
-          .filter((s) => s.endsWith(suffix))
-          .map((s) => s.slice(0, -suffix.length).trim() || "*");
+          .filter((s) => s.includes(suffix))
+          .map((s) => {
+            const i = s.indexOf(suffix);
+            if (i < 0) return "";
+            const before = s.slice(0, i).trim() || "*";
+            const after = s.slice(i + suffix.length);
+            return after === "" ? before : "";
+          })
+          .filter(Boolean);
         let matches = false;
         for (const b of base) {
           try {
@@ -651,11 +1181,14 @@ function pseudoOverrides(
         if (!matches) continue;
         for (const prop of [
           "background-color",
+          "background-image",
           "color",
           "border-color",
           "outline-color",
           "outline-width",
           "box-shadow",
+          "backdrop-filter",
+          "-webkit-backdrop-filter",
         ]) {
           const v = rule.style.getPropertyValue(prop);
           if (v) out[prop] = v;
@@ -699,6 +1232,13 @@ export function extractTokens(el: Element, captureId: string): StyleSnapToken[] 
   const tokens: StyleSnapToken[] = [];
 
   extractFromComputed(el, captureId, source, cs, "default", layout, tokens);
+  const beforePseudo = tokens.length;
+  extractPseudoSurfaces(el, captureId, source, tokens);
+  extractChildSurfaces(el, captureId, source, tokens);
+  if (tokens.length === beforePseudo) {
+    extractAncestorPseudoSurfaces(el, captureId, tokens);
+  }
+  extractSvgPaints(el, captureId, source, tokens);
 
   const hover = pseudoOverrides(el, "hover");
   if (Object.keys(hover).length > 0) {

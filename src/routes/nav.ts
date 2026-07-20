@@ -8,7 +8,13 @@ export function routeForRole(role: string): string {
   if (role.startsWith("space/")) return `/tokens/spacing${focus}`;
   if (role.startsWith("radius/")) return `/tokens/radius${focus}`;
   if (role.startsWith("border-width/")) return `/tokens/borders${focus}`;
-  if (role.startsWith("shadow/")) return `/tokens/effects${focus}`;
+  if (
+    role.startsWith("shadow/") ||
+    role.startsWith("effect/") ||
+    role.startsWith("blur/")
+  ) {
+    return `/tokens/effects${focus}`;
+  }
   return `/tokens/colors`;
 }
 

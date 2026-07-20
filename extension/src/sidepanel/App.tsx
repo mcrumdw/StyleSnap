@@ -7,6 +7,10 @@ import type {
   CaptureFoundations,
 } from "../shared/types";
 import { CaptureList } from "./CaptureList";
+import { InfoHint } from "./InfoHint";
+
+/** Production webtool — paste copied JSON here. */
+const WEBAPP_URL = "https://stylesnap-lac.vercel.app";
 
 /** Sequential ids owned by the side panel — survives page navigations. */
 const nextExtId = (n: number) => `ext_${String(n).padStart(3, "0")}`;
@@ -53,49 +57,128 @@ export function App() {
     setTimeout(() => setToast(null), 2600);
   };
 
-  const sendToTab = useCallback(async (msg: PickerMessage) => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return null;
+  /** Prefer the browsing window the user was on — not an odd side-panel focus edge case. */
+  const getTargetTab = useCallback(async () => {
+    const [tab] =
+      (await chrome.tabs.query({ active: true, lastFocusedWindow: true })) ?? [];
+    if (tab?.id && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://")) {
+      return tab;
+    }
+    const [fallback] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return fallback?.id ? fallback : null;
+  }, []);
+
+  /** Inject picker if the page loaded before the extension (or script was killed). */
+  const ensurePicker = useCallback(async (tabId: number): Promise<boolean> => {
     try {
-      return await chrome.tabs.sendMessage(tab.id, msg);
+      const pong = (await chrome.tabs.sendMessage(tabId, {
+        kind: "picker/ping",
+      } satisfies PickerMessage)) as PickerMessage | undefined;
+      if (pong?.kind === "picker/pong") return true;
     } catch {
-      flash("Picking doesn't work on this page.");
-      return null;
+      /* not injected yet */
+    }
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["src/content/picker.ts"],
+      });
+      // Brief pause so the listener is registered before the next message.
+      await new Promise((r) => setTimeout(r, 50));
+      const pong = (await chrome.tabs.sendMessage(tabId, {
+        kind: "picker/ping",
+      } satisfies PickerMessage)) as PickerMessage | undefined;
+      return pong?.kind === "picker/pong";
+    } catch {
+      return false;
     }
   }, []);
 
+  const sendToTab = useCallback(
+    async (msg: PickerMessage) => {
+      const tab = await getTargetTab();
+      if (!tab?.id) {
+        flash("No active page tab — open a website and try again.");
+        return null;
+      }
+      const url = tab.url ?? "";
+      if (
+        url.startsWith("chrome://") ||
+        url.startsWith("chrome-extension://") ||
+        url.startsWith("https://chrome.google.com/webstore") ||
+        url.startsWith("https://chromewebstore.google.com")
+      ) {
+        flash("Picking doesn't work on this page.");
+        return null;
+      }
+
+      const ready = await ensurePicker(tab.id);
+      if (!ready) {
+        flash("Picking doesn't work on this page.");
+        return null;
+      }
+
+      try {
+        return await chrome.tabs.sendMessage(tab.id, msg);
+      } catch {
+        flash("Picking doesn't work on this page.");
+        return null;
+      }
+    },
+    [ensurePicker, getTargetTab],
+  );
+
   const togglePick = useCallback(async () => {
     const next = !active;
-    setActive(next);
-    await sendToTab({
+    const res = await sendToTab({
       kind: "picker/setActive",
       active: next,
       patternMode,
     });
+    if (res === null) {
+      setActive(false);
+      return;
+    }
+    setActive(next);
+    if (next) {
+      flash(
+        patternMode
+          ? "Picking with parent — click an element"
+          : "Click an element on the page",
+      );
+    }
   }, [active, patternMode, sendToTab]);
 
   const togglePattern = useCallback(async () => {
     const next = !patternMode;
+    const res = await sendToTab({ kind: "picker/setPatternMode", enabled: next });
+    if (res === null) return;
     setPatternMode(next);
-    await sendToTab({ kind: "picker/setPatternMode", enabled: next });
+    flash(
+      next
+        ? "Include parent on — next picks also capture the parent"
+        : "Include parent off",
+    );
   }, [patternMode, sendToTab]);
 
   const scanFoundations = useCallback(async () => {
     const res = (await sendToTab({
       kind: "picker/scanFoundations",
     })) as PickerMessage | null;
-    if (res && res.kind === "picker/foundations") {
+    if (!res) return;
+    if (res.kind === "picker/foundations") {
       setFoundations(res.foundations);
-      const n =
-        (res.foundations.breakpointsPx?.length ?? 0) +
-        (res.foundations.motion?.length ?? 0) +
-        (res.foundations.zIndex?.length ?? 0);
+      const bp = res.foundations.breakpointsPx?.length ?? 0;
+      const motion = res.foundations.motion?.length ?? 0;
+      const z = res.foundations.zIndex?.length ?? 0;
       flash(
-        n > 0
-          ? `Scanned foundations — ${res.foundations.breakpointsPx?.length ?? 0} breakpoints`
-          : "No page foundations found",
+        bp + motion + z > 0
+          ? `Scanned — ${bp} breakpoints · ${motion} motion · ${z} z-index`
+          : "No page foundations found on this page",
       );
+      return;
     }
+    flash("Scan failed — try Start picking once, then Scan page again.");
   }, [sendToTab]);
 
   const removeCapture = (captureId: string) =>
@@ -149,17 +232,33 @@ export function App() {
       </header>
 
       <div className="toolbar">
-        <button
-          className={`btn btn-ghost btn-sm ${patternMode ? "on" : ""}`}
-          onClick={togglePattern}
-          aria-pressed={patternMode}
-          title="Also capture the parent element for denser component sketches"
-        >
-          Pattern pick
-        </button>
-        <button className="btn btn-ghost btn-sm" onClick={scanFoundations}>
-          Scan page
-        </button>
+        <div className="toolbar-group">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={patternMode}
+              onChange={() => void togglePattern()}
+              aria-label="Include parent"
+            />
+            <span className="switch-track" aria-hidden="true">
+              <span className="switch-thumb" />
+            </span>
+            <span className="switch-label">Include parent</span>
+          </label>
+          <InfoHint
+            label="What Include parent does"
+            content="When you click an element, also capture its parent. That gives StyleSnap denser structure for component sketches."
+          />
+        </div>
+        <div className="toolbar-group">
+          <button className="btn btn-ghost btn-sm" onClick={scanFoundations}>
+            Scan page
+          </button>
+          <InfoHint
+            label="What Scan page does"
+            content="Reads this page’s breakpoints, motion timings, and z-index layers for design.md Agent rules. Doesn’t add tokens to your capture list."
+          />
+        </div>
         {foundations && (
           <span className="foundations-chip">
             {[
@@ -180,8 +279,8 @@ export function App() {
           <div className="empty">
             <h2 className="empty-title">Nothing snapped yet</h2>
             <p className="empty-sub">
-              Start picking and click any element on the page. Scan page for
-              breakpoints and motion.
+              Start picking and click any element on the page. Turn on Include
+              parent for denser sketches; Scan page for breakpoints and motion.
             </p>
           </div>
         ) : (
@@ -190,25 +289,38 @@ export function App() {
       </main>
 
       <footer className="footer">
-        <button
-          className="btn btn-primary"
-          onClick={copy}
-          disabled={captures.length === 0}
+        <div className="footer-actions">
+          <button
+            className="btn btn-primary"
+            onClick={copy}
+            disabled={captures.length === 0}
+          >
+            Copy to StyleSnap
+            {captures.length > 0 && (
+              <span className="badge-inline">
+                {captures.length} el · {tokenCount} tk
+              </span>
+            )}
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={clearAll}
+            disabled={captures.length === 0 && !foundations}
+          >
+            Clear all
+          </button>
+        </div>
+        <a
+          className="webapp-link"
+          href={WEBAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
         >
-          Copy to StyleSnap
-          {captures.length > 0 && (
-            <span className="badge-inline">
-              {captures.length} el · {tokenCount} tk
-            </span>
-          )}
-        </button>
-        <button
-          className="btn btn-ghost"
-          onClick={clearAll}
-          disabled={captures.length === 0 && !foundations}
-        >
-          Clear all
-        </button>
+          Open StyleSnap web app
+          <span className="webapp-link-arrow" aria-hidden="true">
+            →
+          </span>
+        </a>
       </footer>
 
       {toast && (

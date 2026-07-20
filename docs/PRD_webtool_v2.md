@@ -365,16 +365,20 @@ Expose the dup/similar cutoffs as **one "merge sensitivity" slider**.
 ### A.3 Numeric (spacing / radius / border-width) — 1-D gap clustering
 
 Hybrid absolute+relative tolerance, so it behaves at 4px and 64px alike.
+**Spacing values are rounded to whole pixels** before clustering / display
+(8.5 and 9.4 both become 9).
 
 ```
-tol(v) = max(1, round(0.05 * v))           # border-width: floor 0.5px
+tol(v) = max(floor, round(0.05 * v))
+# spacing floor = 2px; radius floor = 1px; border-width floor = 0.5px
 sort unique values ascending
 walk; start a new cluster when  v - clusterMax > tol(clusterMax)
 exact-equal members = duplicate; within tol = similar
 canonical = highest occurrence; tie-break → nearest 4px grid step
 ```
 
-So 14/15/16 cluster (canonical snaps toward a clean scale) while 4 and 8 never collapse.
+So 14/15/16 cluster (canonical snaps toward a clean scale), 8/9 spacing
+cluster as similar, while 4 and 8 never collapse.
 
 ### A.4 Typography — normalize, then composite key + size-scale
 
@@ -466,13 +470,25 @@ user: `color/brand-indigo`, `font/space-grotesk`.
 `type/caption` · `type/mono`. Required for complete: `type/body` +
 at least one of `type/display` / `type/heading` (✅).
 
-### B.3 Foundation scales
+### B.3 Foundation scales + semantic spacing
 
-Scales are **named slots**, assigned to deduped primitives:
+Scales are **named slots**, assigned to deduped primitives. Spacing is
+**two-tier** (like color): the scale lives as primitives; semantic jobs are
+System roles that point at scale steps (DECISIONS.md §2.47).
 
-- **Spacing:** `space/xs · sm · md · lg · xl · 2xl` — complete = **≥ 4 steps** assigned (✅).
+- **Spacing scale (primitives):** `space/xs · sm · md · lg · xl · 2xl` — complete =
+  **≥ 4 steps** assigned (✅).
+- **Spacing roles (semantic):** `space/page` (✅) · `space/section` · `space/stack` ·
+  `space/inset` — page/container inset, between sections, vertical rhythm, and
+  component padding. Default for `space/page`: **2 × `space/xl`**, clamped
+  **min 32px · max 160px** (DECISIONS.md §2.49).
 - **Radius:** `radius/sm · md · lg · full` — complete = **≥ 1** (✅).
-- **Shadow:** `shadow/sm · md · lg` — complete = **≥ 1** (✅).
+- **Shadow (elevation):** `shadow/sm · md · lg` — complete = **≥ 1** drop slot when
+  the snap had drop shadows (✅); recommended only when none were captured
+  (DECISIONS.md §2.63 — borders/outlines often carry elevation instead).
+- **Effect semantics:** `shadow/inset` · `blur/backdrop` — seeded from capture when
+  present; not required when absent (DECISIONS.md §2.50). Customs may still use
+  `effect/…` / `blur/…`.
 - **Border width:** `border-width/default · thick` — complete = `default` (✅).
 - **Interaction states:** hover + active shades exist for `color/action/primary` (✅ — counted via B.1).
 
@@ -492,16 +508,23 @@ when parseable. Then:
 | `border-color` | `color/border/default` |
 | any color with `state: hover/active` | matching `color/action/primary-*` |
 | `[role=alert]` / `aria-invalid` context | `color/feedback/*` |
-| `box-shadow` value | `shadow/*` slot by size rank |
-| spacing values | `space/*` slots by ascending size |
+| `box-shadow` (outset) | `shadow/sm|md|lg` by size rank |
+| `box-shadow` with `inset` | `shadow/inset` |
+| `backdrop-filter` / encoded blur | `blur/backdrop` |
+| `text-shadow` | primitive only (not elevation) |
+| spacing values | `space/*` **scale** slots by ascending size |
+| `margin` / `padding` on `body` / `main` / `[role=main]` | `space/page` |
+| large vertical `margin` / `gap` between sections | `space/section` (hint) |
+| `padding` on `button` / `card` / `input` | `space/inset` (hint) |
 
 Unmatched tokens stay primitives — a role is never forced (FR-16).
 
 ### B.5 Completeness checklist (FR-18) = the ✅ rows above
 
-12 color roles + body-plus-one type roles + the scale minima. The checklist UI
-shows each unmet ✅ item as a specific, actionable gap ("No `space/*` scale yet
-— assign at least 4 spacing steps").
+12 color roles + body-plus-one type roles + the scale minima + **`space/page`**.
+The checklist UI shows each unmet ✅ item as a specific, actionable gap ("No
+`space/*` scale yet — assign at least 4 spacing steps"; "Missing page inset —
+assign `space/page`").
 
 ---
 
@@ -593,8 +616,8 @@ claims its slot first; only empty slots derive.
   the 4px grid, deduped against captured values (captured claims its slot).
 - **Radius:** captured base → sm `×0.5`, md `×1`, lg `×2` (round to px).
 - **Shadow:** reuse the captured shadow color/opacity; geometry ramp sm
-  `0 1 2 0`, md `0 4 8 −2`, lg `0 12 24 −4`. No captured shadow → neutral
-  ink at 8% opacity.
+  `0 1 2 0`, md `0 4 8 −2`, lg `0 12 24 −4`. No captured drop shadow →
+  leave elevation empty (do not invent; §2.63).
 
 ### C.8 Cascade rules
 

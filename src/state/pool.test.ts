@@ -129,6 +129,36 @@ describe("role assignments (Phase 8 — roles point at primitives)", () => {
     expect(pool.assignments["color/action/primary"]).toBe("blue_2");
   });
 
+  it("rejects blur on elevation and accepts blur/backdrop (§2.50)", () => {
+    const blur = {
+      id: "manual_blur",
+      captureId: "manual-blur",
+      source: "manual entry:backdrop-blur",
+      name: null as string | null,
+      occurrences: 1,
+      merged: false,
+      context: { cssProperty: "backdrop-filter" as const },
+      type: "shadow" as const,
+      value: [
+        {
+          inset: false,
+          offsetX: 0,
+          offsetY: 0,
+          blur: 12,
+          spread: 0,
+          color: "#000000",
+          opacity: 0,
+        },
+      ],
+    };
+    let pool = emptyPool();
+    pool = { ...pool, manual: [blur] };
+    pool = assignRole(pool, "shadow/md", blur.id);
+    expect(pool.assignments["shadow/md"]).toBeUndefined();
+    pool = assignRole(pool, "blur/backdrop", blur.id);
+    expect(pool.assignments["blur/backdrop"]).toBe(blur.id);
+  });
+
   it("custom roles register on assign and survive unassign until removed", () => {
     let pool = emptyPool();
     pool = assignRole(pool, "border-width/card", "w1");

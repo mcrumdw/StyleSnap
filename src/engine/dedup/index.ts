@@ -12,6 +12,7 @@ import {
   OPACITY_EPSILON,
   shadowDistance,
   SIM_T,
+  SPACING_SIM_FLOOR,
   typographyDistance,
 } from "./distances";
 import { clusterNumeric } from "./numeric";
@@ -77,6 +78,8 @@ export function detectClusters(
         clusters.push(...leaderCluster(group, typographyDistance(factor), DUP_T, SIM_T));
         break;
       case "spacing":
+        clusters.push(...clusterNumeric(group, factor, SPACING_SIM_FLOOR));
+        break;
       case "border-radius":
         clusters.push(...clusterNumeric(group, factor, 1));
         break;

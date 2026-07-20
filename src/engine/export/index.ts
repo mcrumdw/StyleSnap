@@ -21,7 +21,14 @@ import type {
   TypographyToken,
 } from "../../contract/types";
 import { computeChecklist, type ChecklistItem } from "../completeness";
-import { fallbackName, roleDefinition, roleOrderIndex } from "../roles";
+import {
+  fallbackName,
+  isSpaceScaleRole,
+  isSpaceSemanticRole,
+  roleDefinition,
+  roleOrderIndex,
+  SPACE_SEMANTIC_ROLES,
+} from "../roles";
 import { accessibilitySection, contrastGapBullets } from "./accessibility";
 import { componentsSection } from "./sketches";
 import {
@@ -224,6 +231,30 @@ function agentRules(input: ExportInput): string {
       : undefined);
   if (spacingBase) {
     extra.push(`- **Spacing sits on a ${spacingBase}px grid.** Prefer scale steps over one-off values.`);
+  }
+  if (input.assignments.has("space/page")) {
+    extra.push(
+      "- **Always apply `space/page` as page/container horizontal inset.** Never flush content to the viewport edge. Formula: **2 × `space/xl`**, clamped **min 32px · max 160px**.",
+    );
+  } else {
+    extra.push(
+      "- **Page inset is undefined (`space/page` gap).** Do not invent a margin — flag it and check §Gaps. When deriving, use 2 × `space/xl` clamped to 32–160px.",
+    );
+  }
+  if (input.assignments.has("space/section")) {
+    extra.push("- **Between major sections**, use `space/section`.");
+  }
+  if (input.assignments.has("space/stack")) {
+    extra.push("- **Vertical rhythm** between related blocks uses `space/stack`.");
+  }
+  if (input.assignments.has("space/inset")) {
+    extra.push("- **Component padding** (cards, buttons, inputs) uses `space/inset`.");
+  }
+  if (input.assignments.has("shadow/inset")) {
+    extra.push("- **Inner / carved depth** uses `shadow/inset` — not the elevation scale.");
+  }
+  if (input.assignments.has("blur/backdrop")) {
+    extra.push("- **Frosted glass / modal scrims** use `blur/backdrop` — never a drop shadow.");
   }
   if (foundations?.breakpointsPx?.length) {
     extra.push(
@@ -432,7 +463,10 @@ function foundationsSection(input: ExportInput): string {
     title: string,
     withProvenance: boolean,
   ) => {
-    const assigned = roleRows(input, type);
+    const assigned =
+      type === "spacing"
+        ? roleRows(input, type).filter(({ role }) => isSpaceScaleRole(role))
+        : roleRows(input, type);
     if (assigned.length === 0 && withoutRole(input, type).length === 0) return;
     const parts = assigned.map(({ role, token }) => {
       const slot = `\`${role}\` ${token.value as number}`;
@@ -483,7 +517,11 @@ function foundationsSection(input: ExportInput): string {
       rationale = ` *Scale intelligence: ${label} profile.*`;
     }
     const noteText = notes.length > 0 ? ` (${notes.join(" ")})` : "";
-    lines.push(`**${title}** — ${parts.join(" · ")}.${rationale}${noteText}`, "");
+    if (assigned.length > 0) {
+      lines.push(`**${title}** — ${parts.join(" · ")}.${rationale}${noteText}`, "");
+    } else if (noteText || rationale) {
+      lines.push(`**${title}** — *(none assigned)*.${rationale}${noteText}`, "");
+    }
     if (unassignedRows.length > 0 && type === "spacing") {
       lines.push("| Unassigned spacing | Occurrences |", "|---|---|");
       for (const row of unassignedRows.sort((a, b) => a.value - b.value)) {
@@ -494,6 +532,17 @@ function foundationsSection(input: ExportInput): string {
   };
 
   numericScaleLine("spacing", "Spacing scale", false);
+
+  const spacingRoles = roleRows(input, "spacing").filter(({ role }) => isSpaceSemanticRole(role));
+  if (spacingRoles.length > 0) {
+    const parts = spacingRoles.map(({ role, token }) => {
+      const def = SPACE_SEMANTIC_ROLES.find((d) => d.role === role);
+      const meaning = def?.meaning.split("—")[0]?.trim() ?? role;
+      return `\`${role}\` ${token.value as number}px (${meaning})`;
+    });
+    lines.push(`**Spacing roles** — ${parts.join(" · ")}.`, "");
+  }
+
   numericScaleLine("border-radius", "Radius", true);
   numericScaleLine("border-width", "Border width", true);
 

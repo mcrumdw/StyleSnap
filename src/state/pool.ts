@@ -11,8 +11,9 @@
 import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema";
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types";
 import { applyMerges, detectClusters, type MergeRecord } from "../engine/dedup";
+import { normalizeToken, normalizeTokens } from "../engine/normalize";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
-import { isBackdropBlurToken } from "../engine/effect-kinds";
+import { isBackdropBlurToken, roleCompatibleWithToken } from "../engine/effect-kinds";
 import { styleProfileFromFamily } from "../engine/style-profile";
 import type { Family } from "../engine/templates/families";
 import { NOTE_FIELDS, sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
@@ -134,7 +135,7 @@ export function appendImport(
     ...pool,
     imports: [
       ...pool.imports,
-      { importId: stamp.importId, importedAt: stamp.importedAt, meta: data.meta, tokens: data.tokens },
+      { importId: stamp.importId, importedAt: stamp.importedAt, meta: data.meta, tokens: normalizeTokens(data.tokens) },
     ],
   };
   if (notes) next.systemNotes = { ...pool.systemNotes, ...notes };
@@ -327,8 +328,14 @@ export function setDecision(
  * Point a role at a token. Overwrites any previous target — the UI asks for
  * explicit confirmation before stealing a role from another primitive.
  * Non-canonical roles are auto-registered in `customRoles` (§2.30).
+ * Effect kind mismatches are rejected (§2.50) — no-op.
  */
 export function assignRole(pool: TokenPool, role: string, tokenId: string): TokenPool {
+  const token =
+    pool.manual.find((t) => t.id === tokenId) ??
+    pool.imports.flatMap((i) => i.tokens).find((t) => t.id === tokenId);
+  if (token && !roleCompatibleWithToken(role, token)) return pool;
+
   let next: TokenPool = { ...pool, assignments: { ...pool.assignments, [role]: tokenId } };
   if (!isCanonicalRole(role)) {
     const type = tokenTypeFromRole(role);
@@ -342,6 +349,26 @@ export function assignRole(pool: TokenPool, role: string, tokenId: string): Toke
   return next;
 }
 
+/** Drop effect role↔token mismatches (e.g. blur on shadow/md) — §2.50. */
+export function scrubIncompatibleEffectAssignments(pool: TokenPool): TokenPool {
+  const byId = new Map<string, StyleSnapToken>();
+  for (const imp of pool.imports) {
+    for (const t of imp.tokens) byId.set(t.id, t);
+  }
+  for (const t of pool.manual) byId.set(t.id, t);
+
+  let changed = false;
+  const assignments = { ...pool.assignments };
+  for (const [role, id] of Object.entries(assignments)) {
+    const token = byId.get(id);
+    if (!token || !roleCompatibleWithToken(role, token)) {
+      delete assignments[role];
+      changed = true;
+    }
+  }
+  return changed ? { ...pool, assignments } : pool;
+}
+
 export function unassignRole(pool: TokenPool, role: string): TokenPool {
   const assignments = { ...pool.assignments };
   delete assignments[role];
@@ -350,10 +377,17 @@ export function unassignRole(pool: TokenPool, role: string): TokenPool {
 
 /**
  * Declare a custom semantic role under the type prefix (e.g. path `card` on
- * border-width → `border-width/card`). No-op if invalid or already canonical.
+ * border-width → `border-width/card`). For shadow/effects, optional
+ * `prefixOverride` of `effect/` or `blur/` (§2.46). No-op if invalid or
+ * already canonical.
  */
-export function addCustomRole(pool: TokenPool, type: TokenType, pathAfterPrefix: string): TokenPool {
-  const role = buildCustomRole(type, pathAfterPrefix);
+export function addCustomRole(
+  pool: TokenPool,
+  type: TokenType,
+  pathAfterPrefix: string,
+  prefixOverride?: string,
+): TokenPool {
+  const role = buildCustomRole(type, pathAfterPrefix, prefixOverride);
   if (!role) return pool;
   const existing = new Set(pool.customRoles ?? []);
   if (existing.has(role)) return pool;
@@ -515,22 +549,20 @@ export function rejectCluster(pool: TokenPool, clusterId: string): TokenPool {
 
 /**
  * A user-created primitive (added via "Add token"), not something the snap
- * captured. Manual tokens get a `manual_…` id and a "manual entry…" source;
- * either marks them. The "captured in snap" inventories exclude these.
+ * captured. See `isManualToken` in `engine/normalize.ts`.
  */
-export function isManualToken(token: StyleSnapToken): boolean {
-  return token.id.startsWith("manual_") || token.source.startsWith("manual entry");
-}
+export { isManualToken } from "../engine/normalize";
 
 export function addManualToken(pool: TokenPool, token: StyleSnapToken): TokenPool {
-  return { ...pool, manual: [...pool.manual, token] };
+  return { ...pool, manual: [...pool.manual, normalizeToken(token)] };
 }
 
 /** Replace a manual token in place (same id). */
 export function updateManualToken(pool: TokenPool, token: StyleSnapToken): TokenPool {
+  const next = normalizeToken(token);
   return {
     ...pool,
-    manual: pool.manual.map((t) => (t.id === token.id ? token : t)),
+    manual: pool.manual.map((t) => (t.id === next.id ? next : t)),
   };
 }
 
@@ -632,7 +664,7 @@ export function defaultProjectName(pool: TokenPool): string {
 
 /** All tokens including soft-excluded (for restore UI / raw counts). */
 export function allPoolTokens(pool: TokenPool): StyleSnapToken[] {
-  return [...pool.imports.flatMap((imp) => imp.tokens), ...pool.manual];
+  return [...pool.imports.flatMap((imp) => imp.tokens), ...pool.manual].map(normalizeToken);
 }
 
 /** Working-set tokens — soft-excluded ids omitted (§2.27). */
@@ -679,7 +711,19 @@ function hostnameOf(url: string): string {
 export const DRAFT_STORAGE_KEY = "stylesnap.draft.v1";
 
 export function serializeDraft(pool: TokenPool): string {
-  return JSON.stringify(pool);
+  return JSON.stringify(scrubPoolSpacing(pool));
+}
+
+/** Round spacing decimals so drafts don't reintroduce 8.5 / 9.4 noise. */
+function scrubPoolSpacing(pool: TokenPool): TokenPool {
+  return {
+    ...pool,
+    imports: pool.imports.map((imp) => ({
+      ...imp,
+      tokens: normalizeTokens(imp.tokens),
+    })),
+    manual: normalizeTokens(pool.manual),
+  };
 }
 
 /** Returns the pool, or null when the draft is missing/corrupt (start fresh). */
@@ -868,7 +912,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   const customRoles = [...new Set([...declared, ...inferred])].sort();
   if (customRoles.length > 0) pool.customRoles = customRoles;
 
-  return pool;
+  return scrubIncompatibleEffectAssignments(pool);
 }
 
 export function loadDraft(storage: Pick<Storage, "getItem">): TokenPool | null {

@@ -22,4 +22,6 @@ export type PickerMessage =
   | { kind: "picker/captured"; capture: Capture; pageUrl: string }
   | { kind: "picker/state"; active: boolean }
   | { kind: "picker/scanFoundations" }
-  | { kind: "picker/foundations"; foundations: CaptureFoundations };
+  | { kind: "picker/foundations"; foundations: CaptureFoundations }
+  | { kind: "picker/ping" }
+  | { kind: "picker/pong" };

@@ -127,6 +127,7 @@ export function formatValue(token: StyleSnapToken): string {
       return `${v.fontFamily} ${v.fontSize}px/${v.fontWeight} · ${extras.join(" · ")}`;
     }
     case "spacing":
+      return `${Math.round(token.value)}px`;
     case "border-radius":
     case "border-width":
       return `${token.value}px`;

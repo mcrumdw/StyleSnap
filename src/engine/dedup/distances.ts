@@ -49,6 +49,9 @@ export function numericTol(value: number, factor: number, floor = 1): number {
   return Math.max(floor, Math.round(0.05 * factor * value));
 }
 
+/** Spacing similar floor — 2px so 8/9–style near-misses cluster (§2.62). */
+export const SPACING_SIM_FLOOR = 2;
+
 // ─────────────────────────────────────────
 // A.4 Typography — normalize → composite key (incl. lineHeight)
 // ─────────────────────────────────────────

@@ -4,8 +4,8 @@ import { parseStyleSnapExport } from "../../contract/schema";
 import type { StyleSnapToken } from "../../contract/types";
 import { applyMerges } from "../dedup";
 import { deriveRoleCandidates, topSuggestionsByToken } from "./derive";
-import { fallbackName, namePlaceholder, validateSlashName } from "./naming";
-import { ALL_ROLES, isValidRole, roleOrderIndex, rolesForType } from "./taxonomy";
+import { fallbackName, namePlaceholder, validateSlashName, composeSlashName, namePrefixForType, stripNamePrefix } from "./naming";
+import { ALL_ROLES, derivePageInsetPx, isSpaceScaleRole, isValidRole, roleOrderIndex, rolesForType } from "./taxonomy";
 
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../docs/fixtures/${name}`, import.meta.url), "utf-8");
@@ -28,6 +28,20 @@ describe("taxonomy (Appendix B)", () => {
     expect(ALL_ROLES.filter((r) => r.required && r.tokenType === "color")).toHaveLength(12);
     expect(roleOrderIndex("color/text/primary")).toBeLessThan(roleOrderIndex("color/action/primary"));
     expect(roleOrderIndex(undefined)).toBe(Number.MAX_SAFE_INTEGER); // role-less last
+  });
+
+  it("includes spacing scale + lean semantic roles (§2.47)", () => {
+    expect(rolesForType("spacing")).toHaveLength(10); // 6 scale + 4 semantic
+    expect(isValidRole("space/page", "spacing")).toBe(true);
+    expect(isValidRole("space/inset", "spacing")).toBe(true);
+    expect(roleOrderIndex("space/2xl")).toBeLessThan(roleOrderIndex("space/page"));
+  });
+
+  it("derives page inset as 2× xl clamped 32–160 (§2.49)", () => {
+    expect(derivePageInsetPx(32)).toBe(64);
+    expect(derivePageInsetPx(16)).toBe(32); // 2×16=32
+    expect(derivePageInsetPx(8)).toBe(32); // floor
+    expect(derivePageInsetPx(100)).toBe(160); // 2×100=200 → cap
   });
 
   it("validates roles against their token type", () => {
@@ -131,10 +145,11 @@ describe("scale slots (B.4)", () => {
     expect(topOf(candidates, "border-width/default")?.tokenId).toBe("ext_029");
   });
 
-  it("leaves spacing unassigned when there are more values than slots", () => {
+  it("leaves spacing scale unassigned when there are more values than slots", () => {
     // 4/8/12/15/16/24/32/64 = 8 distinct values > 6 slots ⇒ user's call.
+    // Semantic roles may still get context hints (space/page, space/inset).
     for (const [role, list] of candidates) {
-      if (!role.startsWith("space/")) continue;
+      if (!isSpaceScaleRole(role)) continue;
       expect(list.filter((c) => c.tokenId.startsWith("ext_"))).toHaveLength(0);
     }
   });
@@ -180,9 +195,41 @@ describe("naming (§7.7)", () => {
     expect(fallbackName(byId.get("ext_023")!)).toBe("space/16");
     expect(fallbackName(byId.get("ext_031")!)).toBe("shadow/0-4-8-n2"); // -2 spread
     expect(fallbackName(byId.get("ext_013")!)).toBe("gradient/linear-135");
+    expect(fallbackName(byId.get("ext_027")!)).toBe("radius/8");
+    expect(fallbackName(byId.get("ext_029")!)).toBe("border-width/1");
     for (const token of allTokens) {
       expect(validateSlashName(fallbackName(token)), token.id).toBeNull();
     }
+  });
+
+  it("derives radius/border-width names from authored context (§2.52)", () => {
+    const radius: StyleSnapToken = {
+      id: "r1",
+      captureId: "c",
+      source: "div",
+      name: null,
+      occurrences: 1,
+      merged: false,
+      type: "border-radius",
+      value: 12,
+      context: { authoredName: "--radius-md" },
+    };
+    expect(fallbackName(radius)).toBe("radius/md");
+    expect(fallbackName({ ...radius, context: { authoredName: "rounded-lg" } })).toBe("radius/lg");
+    expect(fallbackName({ ...radius, context: undefined, value: 9999 })).toBe("radius/full");
+
+    const border: StyleSnapToken = {
+      id: "b1",
+      captureId: "c",
+      source: "input",
+      name: null,
+      occurrences: 1,
+      merged: false,
+      type: "border-width",
+      value: 2,
+      context: { authoredName: "--border-width-thick" },
+    };
+    expect(fallbackName(border)).toBe("border-width/thick");
   });
 
   it("namePlaceholder matches token type (never color/ for fonts)", () => {
@@ -192,8 +239,8 @@ describe("naming (§7.7)", () => {
     expect(namePlaceholder("border-radius")).toBe("radius/md");
     expect(namePlaceholder("border-width")).toBe("border-width/default");
     expect(namePlaceholder("shadow")).toBe("shadow/card-elevation");
-    expect(namePlaceholder("shadow", { effectKind: "backdrop-blur" })).toBe("effect/backdrop-blur");
-    expect(namePlaceholder("shadow", { effectKind: "inset" })).toBe("shadow/inset-depth");
+    expect(namePlaceholder("shadow", { effectKind: "backdrop-blur" })).toBe("blur/medium");
+    expect(namePlaceholder("shadow", { effectKind: "inset" })).toBe("shadow/pressed");
     expect(namePlaceholder("gradient")).toBe("gradient/hero");
     for (const type of [
       "color",
@@ -206,5 +253,16 @@ describe("naming (§7.7)", () => {
     ] as const) {
       expect(validateSlashName(namePlaceholder(type)), type).toBeNull();
     }
+  });
+
+  it("composeSlashName locks the type prefix (§2.65)", () => {
+    expect(composeSlashName("blur/", "medium")).toEqual({ name: "blur/medium" });
+    expect(composeSlashName("blur/", "soft/medium")).toEqual({ name: "blur/soft/medium" });
+    expect(composeSlashName("color/", "action/primary")).toEqual({ name: "color/action/primary" });
+    expect(composeSlashName("shadow/", "shadow/card")).toEqual({ name: "shadow/card" });
+    expect(composeSlashName("color/", "")).toEqual({ name: "" });
+    expect(composeSlashName("color/", "!!!")).toMatchObject({ error: expect.any(String) });
+    expect(namePrefixForType("shadow", { effectKind: "backdrop-blur" })).toBe("blur/");
+    expect(stripNamePrefix("color/brand-blue", "color/")).toBe("brand-blue");
   });
 });

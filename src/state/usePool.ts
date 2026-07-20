@@ -333,8 +333,8 @@ export function usePool() {
   );
 
   const addCustomRole = useCallback(
-    (type: TokenType, pathAfterPrefix: string) => {
-      silent((current) => addCustomRolePure(current, type, pathAfterPrefix));
+    (type: TokenType, pathAfterPrefix: string, prefixOverride?: string) => {
+      silent((current) => addCustomRolePure(current, type, pathAfterPrefix, prefixOverride));
     },
     [silent],
   );
@@ -382,7 +382,7 @@ export function usePool() {
 
   const exclude = useCallback(
     (tokenId: string) => {
-      commit((current) => excludeTokenPure(current, tokenId), "Exclude token from system");
+      commit((current) => excludeTokenPure(current, tokenId), "Remove token from system");
     },
     [commit],
   );

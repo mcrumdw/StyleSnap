@@ -3,12 +3,19 @@ import type { StyleSnapToken, TokenType } from "../contract/types";
 import {
   ALL_ROLES,
   COLOR_ROLES,
+  EFFECT_SEMANTIC_ROLES,
+  SHADOW_CUSTOM_PREFIXES,
+  SHADOW_SLOTS,
+  SPACE_SEMANTIC_ROLES,
   buildCustomRole,
   customRoleDefinition,
   fallbackName,
+  isElevationRole,
+  isSpaceScaleRole,
   tokenTypeForRolePrefix,
   TYPE_ROLES,
   type RoleDefinition,
+  type ShadowCustomPrefix,
 } from "../engine/roles";
 import { buildPreviewContext } from "../state/token-display";
 import type { FillInfo } from "../state/useSessionViewModel";
@@ -54,21 +61,25 @@ interface EditRolesPanelProps {
   rolePrefix?: "color/" | "type/" | "space/" | "radius/" | "border-width/" | "shadow/";
   /** Declared custom roles beyond Appendix B (§2.30). */
   customRoles?: string[];
-  onAddCustomRole?: (type: TokenType, pathAfterPrefix: string) => void;
+  onAddCustomRole?: (type: TokenType, pathAfterPrefix: string, prefixOverride?: string) => void;
   onRemoveCustomRole?: (role: string) => void;
 }
 
 function AddCustomRoleForm({
-  prefix,
+  prefix: fixedPrefix,
   tokenType,
   onAdd,
+  prefixChoices,
 }: {
   prefix: string;
   tokenType: TokenType;
-  onAdd: (type: TokenType, pathAfterPrefix: string) => void;
+  onAdd: (type: TokenType, pathAfterPrefix: string, prefixOverride?: string) => void;
+  /** When set (Effects page), user picks elevation vs blur prefix. */
+  prefixChoices?: readonly ShadowCustomPrefix[];
 }) {
   const [path, setPath] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [prefix, setPrefix] = useState(fixedPrefix);
 
   const example =
     tokenType === "color"
@@ -77,10 +88,18 @@ function AddCustomRoleForm({
         ? "table-cell"
         : tokenType === "typography"
           ? "label"
-          : "card";
+          : prefixChoices
+            ? "blur1"
+            : "card";
+
+  const activePrefix = prefixChoices ? prefix : fixedPrefix;
 
   const submit = () => {
-    const role = buildCustomRole(tokenType, path);
+    const role = buildCustomRole(
+      tokenType,
+      path,
+      prefixChoices ? activePrefix : undefined,
+    );
     if (!role) {
       setError(
         tokenType === "color"
@@ -89,7 +108,7 @@ function AddCustomRoleForm({
       );
       return;
     }
-    onAdd(tokenType, path);
+    onAdd(tokenType, path, prefixChoices ? activePrefix : undefined);
     setPath("");
     setError(null);
   };
@@ -97,17 +116,44 @@ function AddCustomRoleForm({
   return (
     <div className="flex flex-col gap-2 rounded-md border-2 border-dashed border-border-default bg-surface-page p-3">
       <p className="text-caption text-text-muted">
-        Add a semantic role under <span className="font-mono text-text-primary">{prefix}</span>
-        {tokenType === "border-width" && (
+        {prefixChoices ? (
           <>
-            {" "}
-            — stroke color is on Colors (<span className="font-mono">color/border/…</span>); width
-            lives here.
+            Add a role for background blur or other non-shadow effects — use{" "}
+            <span className="font-mono text-text-primary">effect/</span> or{" "}
+            <span className="font-mono text-text-primary">blur/</span>, not{" "}
+            <span className="font-mono text-text-primary">shadow/sm</span>.
+          </>
+        ) : (
+          <>
+            Add a semantic role under{" "}
+            <span className="font-mono text-text-primary">{fixedPrefix}</span>
+            {tokenType === "border-width" && (
+              <>
+                {" "}
+                — stroke color is on Colors (<span className="font-mono">color/border/…</span>);
+                width lives here.
+              </>
+            )}
           </>
         )}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="shrink-0 font-mono text-caption text-text-muted">{prefix}</span>
+        {prefixChoices ? (
+          <select
+            className={`${INPUT} w-auto shrink-0`}
+            value={activePrefix}
+            onChange={(e) => setPrefix(e.target.value)}
+            aria-label="Role prefix"
+          >
+            {prefixChoices.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="shrink-0 font-mono text-caption text-text-muted">{fixedPrefix}</span>
+        )}
         <input
           className={`${INPUT} min-w-0 flex-1`}
           value={path}
@@ -122,7 +168,7 @@ function AddCustomRoleForm({
             }
           }}
           placeholder={example}
-          aria-label={`Custom role path after ${prefix}`}
+          aria-label={`Custom role path after ${activePrefix}`}
         />
         <Button size="sm" variant="secondary" onClick={submit}>
           Add role
@@ -178,6 +224,11 @@ export function EditRolesPanel({
 
   const customsForPrefix = useMemo(() => {
     if (!rolePrefix) return customRoles;
+    if (rolePrefix === "shadow/") {
+      return customRoles.filter((r) =>
+        (SHADOW_CUSTOM_PREFIXES as readonly string[]).some((p) => r.startsWith(p)),
+      ).sort();
+    }
     return customRoles.filter((r) => r.startsWith(rolePrefix)).sort();
   }, [customRoles, rolePrefix]);
 
@@ -277,11 +328,24 @@ export function EditRolesPanel({
     </div>
   );
 
-  const customSection = (prefix: string) => {
+  const customSection = (
+    prefix: string,
+    options?: {
+      prefixChoices?: readonly ShadowCustomPrefix[];
+      /** Extra filter after prefix match (e.g. exclude scale steps). */
+      excludeRole?: (role: string) => boolean;
+    },
+  ) => {
     const type = tokenTypeForRolePrefix(prefix);
     if (!type || !onAddCustomRole) return null;
     const defs = customsForPrefix
-      .filter((r) => r.startsWith(prefix))
+      .filter((r) => {
+        if (options?.prefixChoices) {
+          return options.prefixChoices.some((p) => r.startsWith(p));
+        }
+        return r.startsWith(prefix);
+      })
+      .filter((r) => !(options?.excludeRole?.(r)))
       .map((role) => customRoleDefinition(role, type));
     const rows = defs.flatMap((def) => {
       const token = roleEntries.get(def.role);
@@ -298,7 +362,12 @@ export function EditRolesPanel({
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">{rows}</div>
           </>
         )}
-        <AddCustomRoleForm prefix={prefix} tokenType={type} onAdd={onAddCustomRole} />
+        <AddCustomRoleForm
+          prefix={prefix}
+          tokenType={type}
+          onAdd={onAddCustomRole}
+          prefixChoices={options?.prefixChoices}
+        />
       </section>
     );
   };
@@ -313,14 +382,19 @@ export function EditRolesPanel({
     return rows.length > 0 ? <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">{rows}</div> : null;
   };
 
-  const foundationSection = (label: string, prefix: string) => {
+  const foundationSection = (
+    label: string,
+    prefix: string,
+    options?: { includeCustoms?: boolean },
+  ) => {
     const defs = ALL_ROLES.filter((d) => d.role.startsWith(prefix));
     const rows = defs.flatMap((def) => {
       const token = roleEntries.get(def.role);
       if (token) return [filledRow(def.role, token, def)];
       return [gapRow(def)];
     });
-    if (rows.length === 0 && !onAddCustomRole) return null;
+    const showCustoms = options?.includeCustoms !== false;
+    if (rows.length === 0 && !(showCustoms && onAddCustomRole)) return null;
     return (
       <section key={prefix} className="flex flex-col gap-3">
         <h4 className="font-heading text-caption font-bold uppercase tracking-wide text-text-muted">
@@ -329,7 +403,7 @@ export function EditRolesPanel({
         {rows.length > 0 && (
           <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">{rows}</div>
         )}
-        {customSection(prefix)}
+        {showCustoms && customSection(prefix)}
       </section>
     );
   };
@@ -387,10 +461,84 @@ export function EditRolesPanel({
             </section>
           );
         })()}
-      {show("space/") && foundationSection("Spacing", "space/")}
+      {show("space/") && (
+        <section className="flex flex-col gap-3">
+          <h4 className="font-heading text-caption font-bold uppercase tracking-wide text-text-muted">
+            Spacing roles
+          </h4>
+          <p className="text-caption text-text-muted">
+            Layout jobs that point at scale steps. The scale itself (`space/xs`…`2xl`) lives under
+            Primitives.
+          </p>
+          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+            {SPACE_SEMANTIC_ROLES.flatMap((def) => {
+              const token = roleEntries.get(def.role);
+              if (token) return [filledRow(def.role, token, def)];
+              return [gapRow(def)];
+            })}
+          </div>
+          {customSection("space/", {
+            excludeRole: (r) =>
+              isSpaceScaleRole(r) || SPACE_SEMANTIC_ROLES.some((d) => d.role === r),
+          })}
+        </section>
+      )}
       {show("radius/") && foundationSection("Radius", "radius/")}
       {show("border-width/") && foundationSection("Border width", "border-width/")}
-      {show("shadow/") && foundationSection("Effects", "shadow/")}
+      {show("shadow/") && (
+        <>
+          <section className="flex flex-col gap-3">
+            <h4 className="font-heading text-caption font-bold uppercase tracking-wide text-text-muted">
+              Elevation
+            </h4>
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+              {SHADOW_SLOTS.flatMap((def) => {
+                const token = roleEntries.get(def.role);
+                if (token) return [filledRow(def.role, token, def)];
+                return [gapRow(def)];
+              })}
+            </div>
+            {customSection("shadow/", {
+              excludeRole: (r) =>
+                isElevationRole(r) || r === "shadow/inset" || !r.startsWith("shadow/"),
+            })}
+          </section>
+          <section className="flex flex-col gap-3">
+            <h4 className="font-heading text-caption font-bold uppercase tracking-wide text-text-muted">
+              Inner shadow
+            </h4>
+            <p className="text-caption text-text-muted">
+              Pressed wells and recessed depth — seeded from capture when an inset shadow exists.
+            </p>
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+              {EFFECT_SEMANTIC_ROLES.filter((d) => d.role === "shadow/inset").flatMap((def) => {
+                const token = roleEntries.get(def.role);
+                if (token) return [filledRow(def.role, token, def)];
+                return [gapRow(def)];
+              })}
+            </div>
+          </section>
+          <section className="flex flex-col gap-3">
+            <h4 className="font-heading text-caption font-bold uppercase tracking-wide text-text-muted">
+              Background blur
+            </h4>
+            <p className="text-caption text-text-muted">
+              Frosted glass — seeded from capture when backdrop-filter is present.
+            </p>
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+              {EFFECT_SEMANTIC_ROLES.filter((d) => d.role === "blur/backdrop").flatMap((def) => {
+                const token = roleEntries.get(def.role);
+                if (token) return [filledRow(def.role, token, def)];
+                return [gapRow(def)];
+              })}
+            </div>
+            {customSection("effect/", {
+              prefixChoices: ["effect/", "blur/"] as const,
+              excludeRole: (r) => r === "blur/backdrop",
+            })}
+          </section>
+        </>
+      )}
     </section>
   );
 }
