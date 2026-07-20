@@ -216,6 +216,29 @@ async function captureNode(node: SceneNode, out: RawCapture[]): Promise<void> {
     }
   }
 
+  // color + gradient from strokes — a ring/border hue lives here, not in fills
+  // (e.g. a coral progress ring is an ellipse with a coloured stroke, so its
+  // colour would be dropped if we only read fills).
+  if ("strokes" in node && Array.isArray(node.strokes)) {
+    const authoredName = await styleName("strokeStyleId" in node ? node.strokeStyleId : "");
+    for (const paint of node.strokes as readonly Paint[]) {
+      if (paint.visible === false) continue;
+      if (paint.type === "SOLID") {
+        out.push({
+          type: "color",
+          value: toHex(paint.color),
+          opacity: round2(paint.opacity ?? 1),
+          source,
+          captureId,
+          authoredName,
+        });
+      } else if (paint.type.startsWith("GRADIENT")) {
+        const g = mapGradient(paint as GradientPaint);
+        if (g) out.push({ type: "gradient", value: g, source, captureId, authoredName });
+      }
+    }
+  }
+
   // typography — split mixed-style text into its distinct styled runs
   if (node.type === "TEXT") {
     for (const { value, styleId } of extractTypographySegments(node)) {
