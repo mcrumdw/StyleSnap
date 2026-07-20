@@ -6,7 +6,9 @@ import type { TypographyToken, TypographyValue } from "../../contract/types";
 export type TypeRatio = 1.2 | 1.25 | 1.333;
 export const DEFAULT_TYPE_RATIO: TypeRatio = 1.25;
 
-const roundHalf = (px: number) => Math.round(px * 2) / 2;
+// Whole-px sizes only — no 11.5px steps. Design tools and CSS read cleaner
+// with integers, and it avoids sub-pixel rendering fuzz.
+const roundPx = (px: number) => Math.max(1, Math.round(px));
 
 /** role → { size multiplier exponent, line-height } (C.6). */
 const TYPE_SLOTS: ReadonlyArray<{ role: string; exponent: number; lineHeight: number }> = [
@@ -26,7 +28,7 @@ export interface DerivedTypeSlot {
 
 /** Monospace companion — body size, system mono stack (code, token values). */
 export function deriveMono(body: TypographyToken): TypographyValue {
-  const size = roundHalf(body.value.fontSize * 0.875);
+  const size = roundPx(body.value.fontSize * 0.875);
   return {
     fontFamily: "ui-monospace",
     fontStack: [
@@ -54,7 +56,7 @@ export function deriveTypeScale(
   const headingWeight = maxWeight > base.fontWeight ? maxWeight : 700;
 
   return TYPE_SLOTS.map(({ role, exponent, lineHeight }) => {
-    const size = roundHalf(base.fontSize * Math.pow(ratio, exponent));
+    const size = roundPx(base.fontSize * Math.pow(ratio, exponent));
     const heading = exponent >= 1;
     const value: TypographyValue = {
       fontFamily: base.fontFamily,

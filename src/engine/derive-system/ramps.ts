@@ -4,18 +4,21 @@
 
 import type { ShadowValue } from "../../contract/types";
 
-const snap4 = (v: number) => Math.max(4, Math.round(v / 4) * 4);
+// The 8-point rule: every spacing step is a multiple of 8, with 4 as the one
+// allowed sub-step (a divisor of 8). Cleaner scale for layout and it matches
+// how design systems are conventionally spaced.
+const snap8 = (v: number) => (v < 8 ? 4 : Math.round(v / 8) * 8);
 
-/** space/xs … space/2xl values from the base: b/2, b, b×1.5, b×2, b×3, b×4. */
+/** space/xs … space/2xl from the base (b/2, b, b×1.5, b×2, b×3, b×4), snapped to the 8-grid. */
 export function deriveSpacingRamp(base: number): Array<{ role: string; value: number }> {
   const multipliers = [0.5, 1, 1.5, 2, 3, 4];
   const slots = ["space/xs", "space/sm", "space/md", "space/lg", "space/xl", "space/2xl"];
   const values: number[] = [];
   for (const m of multipliers) {
-    const v = snap4(base * m);
-    // The grid snap can collide (e.g. base 4 → 4,4,8…); keep the ramp strictly
-    // increasing so every slot stays distinct.
-    values.push(values.length > 0 && v <= values[values.length - 1] ? values[values.length - 1] + 4 : v);
+    const v = snap8(base * m);
+    // Snapping can collide (e.g. base 4 → 4,4,8…); keep the ramp strictly
+    // increasing on the 8-grid so every slot stays distinct.
+    values.push(values.length > 0 && v <= values[values.length - 1] ? values[values.length - 1] + 8 : v);
   }
   return slots.map((role, i) => ({ role, value: values[i] }));
 }

@@ -129,7 +129,7 @@ describe("type scale (C.6) and ramps (C.7)", () => {
     expect(size("type/caption")).toBe(13);
     expect(size("type/subheading")).toBe(20);
     expect(size("type/heading")).toBe(25);
-    expect(size("type/display")).toBe(31.5);
+    expect(size("type/display")).toBe(31); // whole-px sizes only (16×1.25³ = 31.25 → 31)
     // One font → every non-body slot is DERIVED from it, nothing captured.
     for (const role of ["type/caption", "type/subheading", "type/heading", "type/display"]) {
       expect(fillValue(r, role).token.id.startsWith("derived_")).toBe(true);
