@@ -12,6 +12,7 @@ import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema"
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types";
 import { applyMerges, detectClusters, type MergeRecord } from "../engine/dedup";
 import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
+import { isBackdropBlurToken } from "../engine/effect-kinds";
 import { styleProfileFromFamily } from "../engine/style-profile";
 import type { Family } from "../engine/templates/families";
 import { NOTE_FIELDS, sanitizeNotes, type SystemNotes, type SystemNotesField } from "../engine/export";
@@ -158,24 +159,17 @@ export function setSystemNote(
 }
 
 /**
- * FR-19b — apply style profile from mood family: type ratio, harmony (when
- * allowed), radius/shadow bias via re-derivation. Does not touch derivedEdits.
+ * FR-19b — apply style profile from mood family: type ratio + radius/shadow
+ * bias via re-derivation. Does **not** auto-set accent harmony — secondary is
+ * opt-in only (§2.41). Does not touch derivedEdits.
  */
 export function applyStyleProfile(
   pool: TokenPool,
   family: Family,
-  options?: { refresh?: boolean },
+  _options?: { refresh?: boolean },
 ): TokenPool {
   const profile = styleProfileFromFamily(family);
-  let next: TokenPool = { ...pool, styleFamily: family, typeRatio: profile.typeRatio };
-
-  if (!pool.accentChoice?.dismissed) {
-    const shouldSetHarmony = options?.refresh || pool.accentChoice?.harmony === undefined;
-    if (shouldSetHarmony && pool.accentChoice?.harmony !== profile.harmony) {
-      next = setAccentChoice(next, { harmony: profile.harmony });
-    }
-  }
-  return next;
+  return { ...pool, styleFamily: family, typeRatio: profile.typeRatio };
 }
 
 /**
@@ -462,7 +456,10 @@ export function saveRoleEditAsPrimitive(
     ...token,
     id,
     captureId: "manual",
-    source: "manual entry",
+    source: isBackdropBlurToken(token) ? "manual entry:backdrop-blur" : "manual entry",
+    context: isBackdropBlurToken(token)
+      ? { ...token.context, cssProperty: "backdrop-filter" as const }
+      : token.context,
     name: token.name ?? suggested,
     occurrences: 1,
     merged: false,
@@ -515,6 +512,15 @@ export function rejectCluster(pool: TokenPool, clusterId: string): TokenPool {
 // ─────────────────────────────────────────
 // Manual tokens (Phase 5, FR-19)
 // ─────────────────────────────────────────
+
+/**
+ * A user-created primitive (added via "Add token"), not something the snap
+ * captured. Manual tokens get a `manual_…` id and a "manual entry…" source;
+ * either marks them. The "captured in snap" inventories exclude these.
+ */
+export function isManualToken(token: StyleSnapToken): boolean {
+  return token.id.startsWith("manual_") || token.source.startsWith("manual entry");
+}
 
 export function addManualToken(pool: TokenPool, token: StyleSnapToken): TokenPool {
   return { ...pool, manual: [...pool.manual, token] };

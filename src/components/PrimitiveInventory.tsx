@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { StyleSnapToken, TokenType } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
 import { fallbackName } from "../engine/roles";
+import { isManualToken } from "../state/pool";
 import { formatValue } from "../state/workspace";
 import { Button } from "./Button";
 import { InlineName } from "./InlineName";
@@ -25,9 +26,6 @@ interface PrimitiveInventoryProps {
   onRemoveManual: (tokenId: string) => void;
 }
 
-function isManual(token: StyleSnapToken): boolean {
-  return token.id.startsWith("manual_") || token.source === "manual entry";
-}
 
 function isSystemCreated(token: StyleSnapToken): boolean {
   return token.id.startsWith("derived_");
@@ -232,7 +230,7 @@ export function PrimitiveInventory({
               }) ??
               [];
             const usedAs = rolesByToken.get(token.id) ?? [];
-            const manual = isManual(token);
+            const manual = isManualToken(token);
             const isMerged = mergeCount > 1;
 
             if (isMerged) {

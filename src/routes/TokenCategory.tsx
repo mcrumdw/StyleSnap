@@ -20,7 +20,7 @@ import { PrimitiveInventory } from "../components/PrimitiveInventory";
 import { isTokenCategory } from "../components/shell/SideNav";
 import { DEFAULT_ROUTE } from "./AppShell";
 import { useSession } from "../state/SessionProvider";
-import { poolTokens, resolveAssignments } from "../state/pool";
+import { isManualToken, poolTokens, resolveAssignments } from "../state/pool";
 import { effectiveAccentIds } from "../engine/accents";
 import { routeForAddToken, routeForRole } from "./nav";
 
@@ -198,7 +198,8 @@ export function TokenCategory() {
     if (!category || !isTokenCategory(category)) return [];
     const type = CATEGORY_TOKEN_TYPE[category];
     return poolTokens(pool).filter(
-      (t) => t.type === type && !t.id.startsWith("derived_"),
+      // From snap = captured only — never derived, never user-added primitives.
+      (t) => t.type === type && !t.id.startsWith("derived_") && !isManualToken(t),
     );
   }, [pool, category]);
 
@@ -220,6 +221,8 @@ export function TokenCategory() {
   const workingOfType = vm.workingTokens.filter(
     (t) => t.type === tokenType && !t.id.startsWith("derived_"),
   );
+  // From snap excludes user-added primitives; Primitives (below) still counts them.
+  const fromSnapOfType = workingOfType.filter((t) => !isManualToken(t));
   const primitivesCount =
     category === "colors"
       ? vm.systemTokens.filter((t) => t.type === "color").length
@@ -440,7 +443,7 @@ export function TokenCategory() {
         id="from-snap"
         title="From snap"
         tip={LAYER_TIPS.snap}
-        count={workingOfType.length}
+        count={fromSnapOfType.length}
         open={layerOpen["from-snap"]}
         onToggle={() => toggleLayer("from-snap")}
         insight={insight}

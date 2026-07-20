@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import type { MergeRecord } from "../engine/dedup";
 import { isNeutral } from "../engine/derive-system/oklch";
-import { findMergeForMember } from "../state/pool";
+import { findMergeForMember, isManualToken } from "../state/pool";
 
 interface CapturedColorsProps {
   /** Raw pool colors — every snap capture, not the merge-collapsed view. */
@@ -17,7 +17,8 @@ interface CapturedColorsProps {
 type ColorTok = StyleSnapToken & { type: "color" };
 
 function isColorToken(t: StyleSnapToken): t is ColorTok {
-  return t.type === "color" && !t.id.startsWith("derived_");
+  // Snap captures only — never derived, never user-added primitives (§manual).
+  return t.type === "color" && !t.id.startsWith("derived_") && !isManualToken(t);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { StyleSnapToken, TokenType } from "../contract/types";
+import { isManualToken } from "../state/pool";
 import { formatValue } from "../state/workspace";
 import { InfoHint } from "./Tooltip";
 
@@ -67,7 +68,10 @@ export function CapturedFoundations({
   const captured = useMemo(
     () =>
       tokens.filter(
-        (t) => t.type === (tokenType as TokenType) && !t.id.startsWith("derived_"),
+        (t) =>
+          t.type === (tokenType as TokenType) &&
+          !t.id.startsWith("derived_") &&
+          !isManualToken(t),
       ),
     [tokens, tokenType],
   );
