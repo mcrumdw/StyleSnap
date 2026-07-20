@@ -6,6 +6,7 @@ import type { FigmaHandoff } from "../../docs/figma-handoff";
 import { parseStyleSnapExport } from "../../docs/schema";
 import { extractTokens } from "./extract";
 import { createAssets, readFigmaHandoff } from "./create";
+import { exportSystemToCapture } from "./export-system";
 
 // One row in the import preview: what would be created in Figma.
 export interface ImportPreviewEntry {
@@ -22,6 +23,7 @@ export interface ImportPreviewEntry {
 
 type UiMessage =
   | { type: "extract-tokens" }
+  | { type: "export-system" }
   | { type: "validate-import"; json: string }
   | { type: "create-import"; json: string }
   | { type: "notify"; message: string };
@@ -30,6 +32,12 @@ type PluginMessage =
   | { type: "selection-changed"; hasSelection: boolean }
   | { type: "extraction-result"; payload: StyleSnapExport }
   | { type: "extraction-empty" }
+  | {
+      type: "system-export-result";
+      payload: StyleSnapExport;
+      warning?: string;
+    }
+  | { type: "system-export-empty"; warning?: string }
   | {
       type: "import-preview";
       entries: ImportPreviewEntry[];
@@ -46,7 +54,7 @@ type PluginMessage =
       warning?: string;
     };
 
-figma.showUI(__html__, { width: 340, height: 560 });
+figma.showUI(__html__, { width: 440, height: 580 });
 
 function postToUi(msg: PluginMessage) {
   figma.ui.postMessage(msg);
@@ -212,6 +220,19 @@ figma.ui.onmessage = async (msg: UiMessage) => {
         return;
       }
       postToUi({ type: "extraction-result", payload });
+      break;
+    }
+    case "export-system": {
+      const result = await exportSystemToCapture();
+      if (!result.payload) {
+        postToUi({ type: "system-export-empty", warning: result.warning });
+        return;
+      }
+      postToUi({
+        type: "system-export-result",
+        payload: result.payload,
+        warning: result.warning,
+      });
       break;
     }
     case "notify":

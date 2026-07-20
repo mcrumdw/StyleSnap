@@ -46,3 +46,24 @@ after a partial run is safe.
 
 Dark-mode / multi-mode collections, overwriting existing assets, full W3C DTCG
 export (can map later from `figmaHandoff`).
+
+---
+
+## Reverse: Figma → web (new capture)
+
+After editing Variables/Styles in Figma (or creating new styles), use the plugin
+**Export** tab → **Export Variables & Styles** → **Copy to StyleSnap**, then
+paste into the web app as a normal capture.
+
+| Source | Included |
+|---|---|
+| `StyleSnap / Primitives` + `StyleSnap / Semantic` | COLOR/FLOAT variables (aliases resolved; default mode) |
+| All local Paint / Text / Effect Styles | Including styles you create in Figma |
+
+**Dedup:** keep **every distinct system-role path** from Color / Text / Effect
+styles and Semantic Variables (`color/feedback/warning`, `type/body`,
+`shadow/md`) even when values match. Drop only non-role hex/primitive
+duplicates of those values. Bound Paint Styles resolve through their COLOR
+Variable.
+
+**Key file:** `plugin/src/export-system.ts` (DECISIONS §2.67).

@@ -78,6 +78,11 @@ export function deriveRoleCandidates(
   for (const token of tokens) {
     // ALL contexts contribute — that is what makes multi-role suggestions work.
     const fallbacks: string[] = [];
+    // Figma system export puts the role path on token.name (and usually authoredName).
+    const namePath = token.name?.toLowerCase().trim();
+    if (namePath !== undefined && isValidRole(namePath, token.type)) {
+      addHint(token.id, namePath, "authored-name");
+    }
     for (const ctx of candidateContexts(token, rawById)) {
       const authored = ctx.authoredName?.toLowerCase().trim();
       if (authored !== undefined && isValidRole(authored, token.type)) {

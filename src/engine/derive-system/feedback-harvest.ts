@@ -124,16 +124,26 @@ function collidesWithPrimary(
   return hueDistance(primaryHue, hue) < 15;
 }
 
+function feedbackRoleFromPath(path: string | undefined): FeedbackRole | undefined {
+  if (!path) return undefined;
+  const normalized = path.toLowerCase().trim();
+  for (const role of ["success", "warning", "error", "info"] as const) {
+    if (normalized === FEEDBACK_ROLE_PATHS[role]) return role;
+  }
+  return undefined;
+}
+
 function candidatesForToken(
   token: StyleSnapToken,
   rawById: ReadonlyMap<string, StyleSnapToken>,
   primaryHue: number | undefined,
 ): FeedbackCandidate[] {
-  if (token.type !== "color" || token.opacity !== 1 || isNeutral(token.value)) return [];
+  if (token.type !== "color") return [];
 
-  const { h, c } = oklchOf(token.value);
   const out: FeedbackCandidate[] = [];
   const seen = new Set<FeedbackRole>();
+  // Only needed for hue-collision on weak signals — authored matches skip this.
+  const { h } = oklchOf(token.value);
 
   const add = (role: FeedbackRole, confidence: number, signal: string) => {
     if (seen.has(role)) return;
@@ -142,18 +152,28 @@ function candidatesForToken(
     out.push({ role, token, confidence, signal });
   };
 
+  // Exact system-role paths win even when opacity ≠ 1 or chroma is low —
+  // Figma Paint Styles / Semantic Variables always carry these names.
+  const nameRole = feedbackRoleFromPath(token.name ?? undefined);
+  if (nameRole) {
+    add(nameRole, CONFIDENCE.authored, `token name "${token.name}"`);
+  }
+  for (const ctx of candidateContexts(token, rawById)) {
+    const authoredRole = feedbackRoleFromPath(ctx.authoredName);
+    if (authoredRole) {
+      add(authoredRole, CONFIDENCE.authored, `authored name "${ctx.authoredName}"`);
+    }
+  }
+  if (out.length > 0) return out;
+
+  // Weaker signals require a solid, chromatic paint.
+  if (token.opacity < 0.99 || isNeutral(token.value)) return [];
+
+  const { c } = oklchOf(token.value);
   const sourceBlob = [token.source, token.name].filter(Boolean).join(" ").toLowerCase();
 
   for (const ctx of candidateContexts(token, rawById)) {
     const blob = textBlob(token, ctx);
-    const authored = ctx.authoredName?.toLowerCase().trim();
-    if (authored !== undefined) {
-      for (const role of ["success", "warning", "error", "info"] as const) {
-        if (authored === FEEDBACK_ROLE_PATHS[role]) {
-          add(role, CONFIDENCE.authored, `authored name "${authored}"`);
-        }
-      }
-    }
     const kw = keywordRole(blob);
     if (kw) add(kw, CONFIDENCE.keyword, "keyword in capture context");
     const ctxRole = contextRole(ctx, blob);

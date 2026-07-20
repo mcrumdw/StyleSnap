@@ -123,6 +123,153 @@ describe("color derivation (C.2–C.4) — exact values from #17A673", () => {
     expect(fillValue(r, "color/feedback/success").method).toContain("conventional hue");
   });
 
+  it("system color recapture: no synthetic derived colors — only capture fills", () => {
+    const tokens: StyleSnapToken[] = [
+      {
+        id: "p",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/action/primary",
+        occurrences: 8,
+        merged: false,
+        type: "color",
+        value: "#2E6BFF",
+        opacity: 1,
+        context: { authoredName: "color/action/primary" },
+      },
+      {
+        id: "ph",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/action/primary-hover",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#1E4FCC",
+        opacity: 1,
+        context: { authoredName: "color/action/primary-hover" },
+      },
+      {
+        id: "tp",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/text/primary",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#101828",
+        opacity: 1,
+        context: { authoredName: "color/text/primary" },
+      },
+      {
+        id: "tm",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/text/muted",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#667085",
+        opacity: 1,
+        context: { authoredName: "color/text/muted" },
+      },
+      {
+        id: "sp",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/surface/page",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#F9FAFB",
+        opacity: 1,
+        context: { authoredName: "color/surface/page" },
+      },
+      {
+        id: "sc",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/surface/card",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#FFFFFF",
+        opacity: 1,
+        context: { authoredName: "color/surface/card" },
+      },
+      {
+        id: "bd",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/border/default",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#E4E7EC",
+        opacity: 1,
+        context: { authoredName: "color/border/default" },
+      },
+      {
+        id: "fw",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/feedback/warning",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#B45309",
+        opacity: 1,
+        context: { authoredName: "color/feedback/warning" },
+      },
+      {
+        id: "fe",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/feedback/error",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#DC2626",
+        opacity: 1,
+        context: { authoredName: "color/feedback/error" },
+      },
+      {
+        id: "fs",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/feedback/success",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#16A34A",
+        opacity: 1,
+        context: { authoredName: "color/feedback/success" },
+      },
+      {
+        id: "fi",
+        captureId: "c",
+        source: "Paint Style",
+        name: "color/feedback/info",
+        occurrences: 1,
+        merged: false,
+        type: "color",
+        value: "#2563EB",
+        opacity: 1,
+        context: { authoredName: "color/feedback/info" },
+      },
+    ];
+    const result = derive(tokens);
+    const colorFills = result.fills.filter((f) => f.role.startsWith("color/"));
+    expect(colorFills.length).toBeGreaterThan(0);
+    for (const fill of colorFills) {
+      expect(fill.token.id.startsWith("derived_"), `${fill.role} should not be derived`).toBe(
+        false,
+      );
+    }
+    expect(fillValue(result, "color/feedback/warning").token.id).toBe("fw");
+    expect(fillValue(result, "color/feedback/warning").token.value).toBe("#B45309");
+  });
+
   it("every derived text/feedback color passes AA on the derived card surface", () => {
     const card = fillValue(r, "color/surface/card").token.value as string;
     for (const role of [
