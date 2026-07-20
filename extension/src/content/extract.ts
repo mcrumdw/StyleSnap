@@ -743,6 +743,128 @@ function extractFromComputed(
 }
 
 /**
+ * Push an element's solid background / gradient into the token list.
+ * Dedupes by hex + element within this extraction so one click doesn't
+ * flood identical page fills from scaffold + ancestor walks.
+ */
+function pushElementBackground(
+  tokens: StyleSnapToken[],
+  captureId: string,
+  el: Element,
+): boolean {
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return false;
+
+  const gradients = parseGradients(cs.backgroundImage);
+  const bg = parseColor(cs.backgroundColor);
+  if (gradients.length === 0 && !bg) return false;
+
+  const element = el.tagName.toLowerCase();
+  if (bg) {
+    const hex = bg.hex.toUpperCase();
+    const already = tokens.some(
+      (t) =>
+        t.type === "color" &&
+        t.context?.cssProperty === "background-color" &&
+        t.context?.element === element &&
+        t.value.toUpperCase() === hex,
+    );
+    if (already && gradients.length === 0) return false;
+  }
+
+  const source = describeSource(el);
+  const selector = describeSelector(el);
+  const baseCtx = {
+    element,
+    ariaRole: el.getAttribute("role") ?? undefined,
+    selector,
+  };
+  const ctx = (cssProperty: string): TokenContext => ({
+    ...baseCtx,
+    cssProperty,
+    state: "default",
+    authoredName: authoredNameFor(el, cssProperty, declaredValue(el, cssProperty)),
+  });
+
+  let added = false;
+  for (const gradient of gradients) {
+    const t: GradientToken = {
+      ...baseFields(captureId, source, ctx("background-image")),
+      type: "gradient",
+      value: gradient,
+    };
+    tokens.push(t);
+    pushOpaqueGradientStops(tokens, captureId, source, ctx, gradient);
+    added = true;
+  }
+  if (bg) {
+    const hex = bg.hex.toUpperCase();
+    const already = tokens.some(
+      (t) =>
+        t.type === "color" &&
+        t.context?.cssProperty === "background-color" &&
+        t.context?.element === element &&
+        t.value.toUpperCase() === hex,
+    );
+    if (!already) {
+      const t: ColorToken = {
+        ...baseFields(captureId, source, ctx("background-color")),
+        type: "color",
+        value: bg.hex,
+        opacity: bg.opacity,
+      };
+      tokens.push(t);
+      added = true;
+    }
+  }
+  return added;
+}
+
+/**
+ * Page / section fills almost never sit on the clicked control (button, text).
+ * Sample scaffold + SPA roots + top-level sections so surface/page and
+ * surface/card can seed from capture instead of always being formula-derived.
+ */
+function extractScaffoldBackgrounds(captureId: string, tokens: StyleSnapToken[]) {
+  const els: Element[] = [];
+  const add = (el: Element | null | undefined) => {
+    if (el && !els.includes(el)) els.push(el);
+  };
+  add(document.documentElement);
+  add(document.body);
+  add(document.querySelector("main"));
+  add(document.querySelector("[role='main']"));
+  for (const sel of ["#root", "#app", "#__next", "#__nuxt", "[data-reactroot]"]) {
+    add(document.querySelector(sel));
+  }
+  try {
+    document.querySelectorAll("body > section, main > section").forEach((el, i) => {
+      if (i < 8) add(el);
+    });
+  } catch {
+    /* ignore */
+  }
+  for (const el of els) pushElementBackground(tokens, captureId, el);
+}
+
+/**
+ * Walk ancestors for opaque fills (card wrappers, section bands). Includes
+ * body/html so a click on inner content still records the page background.
+ */
+function extractAncestorBackgrounds(
+  el: Element,
+  captureId: string,
+  tokens: StyleSnapToken[],
+) {
+  let node: Element | null = el.parentElement;
+  for (let depth = 0; depth < 12 && node; depth++) {
+    pushElementBackground(tokens, captureId, node);
+    if (node === document.documentElement) break;
+    node = node.parentElement;
+  }
+}
+
+/**
  * When the clicked node has no fill, check immediate decorative children
  * (absolute layers behind labels) for background / gradient.
  */
@@ -1238,6 +1360,9 @@ export function extractTokens(el: Element, captureId: string): StyleSnapToken[] 
   if (tokens.length === beforePseudo) {
     extractAncestorPseudoSurfaces(el, captureId, tokens);
   }
+  // Page/section surfaces — not on the click target; seed surface roles.
+  extractScaffoldBackgrounds(captureId, tokens);
+  extractAncestorBackgrounds(el, captureId, tokens);
   extractSvgPaints(el, captureId, source, tokens);
 
   const hover = pseudoOverrides(el, "hover");

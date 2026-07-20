@@ -147,7 +147,7 @@ export function SystemView({
           className="absolute -right-1.5 -top-2.5 font-mono text-badge text-text-muted"
           title="Computed from your snap colors"
         >
-          derived
+          created
         </span>
       );
     }
@@ -267,7 +267,7 @@ export function SystemView({
               setOpenRole(null);
             }}
           >
-            Reset to derived
+            Reset to created
           </Button>
         )}
       </div>
@@ -368,7 +368,7 @@ export function SystemView({
       <p className="text-caption text-text-muted">
         From your snap ·{" "}
         <span className="font-mono text-badge text-text-muted">from capture</span> ·{" "}
-        <span className="font-mono text-badge text-text-muted">derived</span> from snap colors ·{" "}
+        <span className="font-mono text-badge text-text-muted">created</span> from snap colors ·{" "}
         <span className="font-mono text-badge text-text-muted">default</span> stock ·{" "}
         <span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand-primary align-middle" />{" "}
         you changed — click any value for the story.

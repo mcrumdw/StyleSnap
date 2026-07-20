@@ -1354,9 +1354,38 @@ survive even when they share a hex (harvest reads `authoredName`).
 no synthetic neutrals / feedback / hover. Missing roles stay empty (gaps),
 never “derived”.
 
-**Key files:** `plugin/src/export-system.ts`, `plugin/src/code.ts`,
-`plugin/src/ui.html`, `docs/FIGMA_HANDOFF.md`,
-`src/engine/derive-system/index.ts`.
+---
+
+### 2.68 Agent rules ban inventing absent shadows/borders `[Change]`
+Decided 2026-07-20. Snaps without drop shadows or card borders still produced
+`design.md` that only said “use listed tokens.” Coding agents invented
+`box-shadow` and card outlines on landing pages.
+
+**Decision:** when the reviewed system has **no** drop-elevation tokens/roles,
+agent rules + Foundations explicitly forbid inventing shadows. When it has
+**no** `border-width/*` / `color/border/default`, forbid inventing card/panel
+borders (focus rings still allowed via `color/border/focus` if listed).
+
+**Key files:** `src/engine/export/index.ts` (`agentRules`, `foundationsSection`).
+
+---
+
+### 2.69 Extension page/section backgrounds + "created" chip `[Bug fix]` `[Change]`
+Decided 2026-07-20. Clicking buttons/text never recorded `html`/`body`/`main`/
+section fills — only the click target’s computed style — so
+`color/surface/page` (and often card) always showed as formula-**derived**.
+
+**Decision:**
+1. **Extension** (`extract.ts`): every click also samples scaffold backgrounds
+   (`html`, `body`, `main`, `[role=main]`, SPA roots `#root`/`#app`/`#__next`/
+   `#__nuxt`, top-level `section`s) and walks ancestors for opaque fills.
+2. **Web roles:** `#root` / `#app` / `#__next` / `#__nuxt` background-color
+   hints `color/surface/page` (body is often transparent in SPAs).
+3. **UI:** origin chip label **derived → created** (internal `origin` /
+   `derived_*` ids unchanged).
+
+**Key files:** `extension/src/content/extract.ts`, `src/engine/roles/derive.ts`,
+`SystemView.tsx`, `RoleValueEditor.tsx`.
 
 ---
 
@@ -1470,6 +1499,8 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-20 | `[Bug fix]` `[Change]` **Page/section backgrounds + created chip** (§2.69): extension samples scaffold/ancestor fills; SPA roots hint `surface/page`; UI chip "derived" → "created". | — |
+| 2026-07-20 | `[Change]` **design.md bans inventing absent shadows/borders** (§2.68): agent rules + Foundations when snap has no elevation / card border tokens. | — |
 | 2026-07-20 | `[Change]` **Figma system recapture = capture-only colors**: ≥5 `color/…/…` named tokens → never invent synthetic color fills (feedback/neutrals/hover). | — |
 | 2026-07-20 | `[Bug fix]` **Feedback harvest honors Figma role names**: exact `name` / `authoredName` claims feedback slots even when opacity ≠ 1; also claim via role candidates before conventional derived. | — |
 | 2026-07-20 | `[Bug fix]` **Figma export keeps all style role paths** (§2.67): Color/Text/Effect accordion names each become a token; only drop non-role value dupes. | — |

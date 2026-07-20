@@ -306,7 +306,7 @@ export function RoleValueEditor({
 
         {origin === "edited" && onResetDerived && (
           <Button size="sm" variant="ghost" className="mt-2" onClick={() => { onResetDerived(role); onClose(); }}>
-            Reset to derived
+            Reset to created
           </Button>
         )}
       </div>
@@ -375,7 +375,7 @@ export function RoleFilledRow({
       </span>
     ) : origin === "derived" ? (
       <span className="font-mono text-badge text-text-muted" title="Computed from your snap colors">
-        derived
+        created
       </span>
     ) : origin === "default" ? (
       <span className="font-mono text-badge text-text-muted" title="Stock convention — nothing captured">

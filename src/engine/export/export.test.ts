@@ -143,6 +143,36 @@ describe("design.md export (FR-24) — the oracle", () => {
     // Shadow colors resolve to the ink primitive at their opacity.
     expect(md).toContain("`color/ink` @ 5%");
     expect(md).toContain("`color/ink` @ 10%");
+    // Oracle has elevation + borders — must NOT ban inventing them.
+    expect(md).not.toContain("No drop shadows / elevation");
+    expect(md).not.toContain("No card/panel borders");
+  });
+
+  it("bans inventing shadows and card borders when the system has none", () => {
+    const base = oracleExportInput();
+    const tokens = base.tokens.filter(
+      (t) => t.type !== "shadow" && t.type !== "border-width",
+    );
+    const assignments = new Map(
+      [...base.assignments].filter(
+        ([role]) =>
+          !role.startsWith("shadow/") &&
+          !role.startsWith("blur/") &&
+          !role.startsWith("border-width/") &&
+          role !== "color/border/default",
+      ),
+    );
+    const flat = generateDesignMd({
+      ...base,
+      tokens,
+      assignments,
+      rawById: new Map(tokens.map((t) => [t.id, t])),
+    });
+    expect(flat).toContain("**No drop shadows / elevation.**");
+    expect(flat).toContain("Do **not** add `box-shadow`");
+    expect(flat).toContain("**Shadows** — *none.*");
+    expect(flat).toContain("**No card/panel borders.**");
+    expect(flat).toContain("**Borders** — *none for cards/panels.*");
   });
 
   it("flags exactly the oracle's §Gaps — derivation cleared the derivable ones", () => {

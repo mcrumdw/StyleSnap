@@ -216,6 +216,13 @@ function contextRule(token: StyleSnapToken, ctx: TokenContext): ContextHint | un
         if (element === "body" || element === "main" || element === "html") {
           return { role: "color/surface/page" };
         }
+        // SPA document roots often hold the real page fill while body is transparent.
+        if (
+          ctx.selector &&
+          /#(root|app|__next|__nuxt)\b/i.test(ctx.selector)
+        ) {
+          return { role: "color/surface/page" };
+        }
         if (element === "button" || ctx.ariaRole === "button") {
           return { role: "color/action/primary" };
         }

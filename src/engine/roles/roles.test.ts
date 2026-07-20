@@ -109,6 +109,29 @@ describe("derivation from the browser fixture (B.4 context rules)", () => {
   });
 });
 
+describe("SPA document roots hint surface/page (§2.69)", () => {
+  it("treats #__next / #root background-color as the page surface", () => {
+    const spa: StyleSnapToken = {
+      id: "spa_001",
+      captureId: "cap-spa",
+      source: "div#__next",
+      name: null,
+      occurrences: 1,
+      merged: false,
+      type: "color",
+      value: "#F5F0E8",
+      opacity: 1,
+      context: {
+        cssProperty: "background-color",
+        element: "div",
+        selector: "#__next",
+      },
+    };
+    const candidates = deriveRoleCandidates([spa]);
+    expect(topOf(candidates, "color/surface/page")?.tokenId).toBe("spa_001");
+  });
+});
+
 describe("multi-role candidates (Phase 8 — roles point at primitives)", () => {
   it("the merged blue is the top candidate for action/primary AND text/link", () => {
     const view = applyMerges(allTokens.map((token) => ({ token })), [
