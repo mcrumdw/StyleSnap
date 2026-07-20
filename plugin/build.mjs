@@ -12,6 +12,8 @@ const codeCtx = {
   target: "es2017",
   // Figma's plugin sandbox has no module system — everything must be one plain script.
   format: "iife",
+  // Strip comments — SES false-positives on "import (" / "import //" in comments.
+  legalComments: "none",
   logLevel: "info",
 };
 

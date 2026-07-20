@@ -175,7 +175,7 @@ everything before it is reversible; it produces the finalized, stable set.
 - **FR-23** **Create System** finalizes: dedupe applied, roles + names resolved, gaps reconciled, deterministic ordering.
 - **FR-24** Export **`design.md`** (headline deliverable, §11): semantic-first, provenance-annotated, deterministically ordered.
 - **FR-25** Export **cleaned JSON** (`StyleSnapExport`, `merged`/`name` populated).
-- **FR-26** Export **Figma Variables/Styles** (slash-nested names; Variable aliasing for primitive→semantic).
+- **FR-26** Export **Figma Variables/Styles** (slash-nested names; Variable aliasing for primitive→semantic). Delivered as cleaned JSON fields `roles` + `figmaHandoff` (see `docs/FIGMA_HANDOFF.md`); the Figma plugin creates the collections/styles.
 - **FR-27** Flag any remaining gaps in every export so the consumer knows what's undefined.
 
 ### 7.9 Session & persistence

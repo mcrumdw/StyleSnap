@@ -39,14 +39,18 @@ import {
   type SystemNotesField,
 } from "./notes";
 import { mergeCaptureFoundations, notesFromFoundations } from "./foundations";
+import { buildFigmaHandoff } from "./figma-handoff";
 import { snippetProvenanceLabel } from "../templates";
 import type { RadiusInsight, SpacingInsight, TypeInsight } from "../insights";
+import type { FigmaHandoff } from "../../../docs/figma-handoff";
 
 export type { SystemNotes, SystemNotesField } from "./notes";
 export { NOTE_FIELDS, sanitizeNotes } from "./notes";
 export { accessibilityPairs, contrastRatio, relativeLuminance } from "./accessibility";
 export { componentSketches } from "./sketches";
 export { mergeCaptureFoundations, notesFromFoundations } from "./foundations";
+export { buildFigmaHandoff } from "./figma-handoff";
+export type { FigmaHandoff };
 
 export interface ExportInput {
   projectName: string;
@@ -721,6 +725,10 @@ export type CleanedExport = StyleSnapExport & {
   derivation?: Record<string, DerivedProvenance>;
   /** Design accent token ids (use sparingly). Envelope validation ignores it. */
   accents?: string[];
+  /** Role → token id (FR-26 / §2.66). Envelope validation ignores it. */
+  roles?: Record<string, string>;
+  /** Explicit Variables + Styles plan for the Figma plugin (§2.66). */
+  figmaHandoff?: FigmaHandoff;
 };
 
 export function generateCleanedJson(input: ExportInput): CleanedExport {
@@ -757,7 +765,19 @@ export function generateCleanedJson(input: ExportInput): CleanedExport {
       return byString(a.id, b.id);
     });
 
-  const cleaned: CleanedExport = { meta, tokens, gaps: gapBullets(input) };
+  const { roles, figmaHandoff } = buildFigmaHandoff({
+    tokens: input.tokens,
+    assignments: input.assignments,
+    names: input.names,
+  });
+
+  const cleaned: CleanedExport = {
+    meta,
+    tokens,
+    gaps: gapBullets(input),
+    roles,
+    figmaHandoff,
+  };
   const notes = filledNotes(input.notes);
   if (notes) cleaned.notes = notes;
   if (input.accentIds && input.accentIds.length > 0) cleaned.accents = [...input.accentIds];

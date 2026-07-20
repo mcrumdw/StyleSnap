@@ -29,7 +29,7 @@ export function ShareExportModal({ kind, onClose }: ShareExportModalProps) {
   const title = isDesign ? "Share with agent" : "Share with Figma";
   const description = isDesign
     ? "Copy or download design.md — paste it into your AI coding agent or docs."
-    : "Cleaned token JSON for the Figma plugin or Tokens Studio — slash-nested roles, provenance included.";
+    : "Cleaned token JSON for the StyleSnap Figma plugin: Primitives + Semantic Variables (aliases), plus Paint / Text / Effect Styles. Paste into Import in the plugin.";
   const content = isDesign ? vm.designMd : cleanedJson;
   const copyLabel = isDesign ? "design.md" : "token JSON";
 

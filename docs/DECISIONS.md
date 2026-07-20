@@ -1289,6 +1289,44 @@ Custom role forms were already prefix-locked (§2.30 / §2.46) — unchanged.
 
 ---
 
+### 2.66 Figma two-tier handoff (Variables + Styles) `[New feature]`
+Decided 2026-07-20. FR-26 asks for Figma Variables/Styles with Variable
+aliasing (primitive → semantic). Cleaned JSON previously exported token
+**names** but not the role map; the plugin flattened everything into Paint
+Styles + one `StyleSnap` FLOAT collection and skipped shadows. That fought
+§2.3 and made weird fallback names look like a plugin problem.
+
+**Decision — additive export contract (do not change capture `types.ts`):**
+- `generateCleanedJson` emits `roles: Record<role, tokenId>` and
+  `figmaHandoff` (version `"1.0"`), types in `docs/figma-handoff.ts`.
+- Envelope parse still ignores extras (same pattern as `gaps` / `notes`).
+- Web builds the plan; plugin creates assets. Naming stays slash-nested from
+  the web app; plugin only sanitizes illegal chars (`.` → `-`).
+
+**Figma mapping:**
+
+| StyleSnap | Figma |
+|---|---|
+| Color / spacing / radius / border-width primitives | Variables in **`StyleSnap / Primitives`** |
+| Matching roles | Variables in **`StyleSnap / Semantic`** that **alias** the primitive |
+| Color roles (extra) | Paint Styles bound to the semantic COLOR variable |
+| Type roles (+ unused type primitives) | Text Styles |
+| Gradients | Paint Styles only |
+| Elevation / inset / blur | Effect Styles |
+
+Legacy JSON without `figmaHandoff` still imports via the old path with a soft
+warning (“re-export from latest StyleSnap”). Old single `StyleSnap` collection
+is left untouched; new imports use the two named collections.
+
+**Out of scope this pass:** dark-mode modes, W3C DTCG replace, overwriting
+existing Figma assets.
+
+**Key files:** `docs/figma-handoff.ts`, `docs/FIGMA_HANDOFF.md`,
+`src/engine/export/figma-handoff.ts`, `plugin/src/create.ts`,
+`plugin/src/code.ts`, `ShareExportModal.tsx`.
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -1399,6 +1437,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-20 | `[New feature]` **Figma two-tier handoff** (§2.66): cleaned JSON `roles` + `figmaHandoff`; plugin creates Primitives/Semantic Variables (aliases) + Paint/Text/Effect Styles; legacy JSON still imports with a warning. | — |
 | 2026-07-20 | `[Change]` **Prefix-locked naming** (§2.65): Add/rename type folder fixed; user types path after it (optional `/` nesting). | — |
 | 2026-07-20 | `[Bug fix]` **Manual blur ≠ from capture** (§2.64): don’t seed inset/backdrop roles from Add-token manuals. | — |
 | 2026-07-20 | `[Change]` **No invented elevation** (§2.63): empty snap → empty `shadow/sm|md|lg`; completeness recommended unless drop shadows were captured. | — |

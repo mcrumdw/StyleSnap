@@ -174,7 +174,10 @@
         status.className = "status";
         let text = msg.entries.length + " to create";
         if (msg.skippedUnnamed > 0) text += " · " + msg.skippedUnnamed + " unnamed skipped";
-        if (msg.versionWarning) {
+        if (msg.handoffWarning) {
+          status.className = "status warn";
+          text += " · " + msg.handoffWarning;
+        } else if (msg.versionWarning) {
           status.className = "status warn";
           text += " · " + msg.versionWarning;
         }
@@ -185,11 +188,17 @@
         const status = $("import-status");
         let text = "✓ " + msg.created + " created";
         if (msg.skipped > 0) text += " · " + msg.skipped + " skipped (already existed or unnamed)";
-        if (msg.errors.length > 0) {
+        if (msg.warning) {
+          status.className = "status warn";
+          text += " · " + msg.warning;
+        } else if (msg.errors.length > 0) {
           status.className = "status warn";
           text += " · " + msg.errors.length + " failed: " + msg.errors[0];
         } else {
           status.className = "status";
+        }
+        if (msg.errors.length > 0 && !msg.warning) {
+          status.className = "status warn";
         }
         status.textContent = text;
         break;
@@ -272,12 +281,20 @@
   function renderImportPreview(entries) {
     const list = $("import-preview");
     list.textContent = "";
+    const kindLabel = {
+      "paint-style": "paint",
+      "text-style": "text",
+      "effect-style": "effect",
+      variable: "var",
+      "variable-primitive": "prim",
+      "variable-semantic": "sem",
+    };
     for (const e of entries) {
       const li = document.createElement("li");
 
       const kind = document.createElement("span");
       kind.className = "tk-type";
-      kind.textContent = e.kind;
+      kind.textContent = kindLabel[e.kind] || e.kind;
       li.appendChild(kind);
 
       const name = document.createElement("span");
