@@ -393,6 +393,22 @@ function foundationsSection(input: ExportInput): string {
   };
 
   numericScaleLine("spacing", "Spacing scale", false);
+
+  // Explicit container padding — the largest spacing value becomes the page's
+  // left/right gutter, so generated layouts don't cramp against the viewport
+  // edge (a common failure when the agent guesses a small default for the
+  // upper hero/nav region).
+  const spacingRows = roleRows(input, "spacing");
+  if (spacingRows.length > 0) {
+    const maxRow = spacingRows.reduce((a, b) =>
+      (b.token.value as number) > (a.token.value as number) ? b : a,
+    );
+    lines.push(
+      `**Container padding** — use \`${maxRow.role}\` (${maxRow.token.value as number}px) as the minimum left/right page padding (horizontal gutters) on desktop; content must never touch the viewport edge, including the top nav and hero. Scale down proportionally on smaller breakpoints.`,
+      "",
+    );
+  }
+
   numericScaleLine("border-radius", "Radius", true);
   numericScaleLine("border-width", "Border width", true);
 
