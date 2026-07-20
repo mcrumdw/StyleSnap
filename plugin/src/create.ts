@@ -1,32 +1,31 @@
-// StyleSnap — asset creation (Task 5).
-// Turns a cleaned StyleSnapExport into real Figma assets:
-//   color/gradient → Paint Styles, typography → Text Styles,
-//   spacing/border-radius/border-width → Variables in a "StyleSnap" collection.
-// Existing names are skipped, never overwritten (PRD §3 Flow 2).
+// StyleSnap — asset creation (Task 5 / §2.66).
+// Prefer figmaHandoff (two-tier Variables + Styles). Fall back to legacy
+// flat mapping when the JSON has no handoff block.
 
 import type {
   StyleSnapExport,
-  StyleSnapToken,
   GradientValue,
   TypographyValue,
+  ShadowValue,
 } from "../../docs/types";
+import type { FigmaHandoff } from "../../docs/figma-handoff";
 
 export interface CreateResult {
   created: number;
-  skipped: number; // name already existed (or token unnamed)
+  skipped: number;
   errors: string[];
+  /** Soft warning when importing pre-handoff JSON. */
+  warning?: string;
 }
 
-const VARIABLE_COLLECTION = "StyleSnap";
+const COLLECTION_PRIMITIVES = "StyleSnap / Primitives";
+const COLLECTION_SEMANTIC = "StyleSnap / Semantic";
+/** Legacy single collection — still used by fallback path. */
+const VARIABLE_COLLECTION_LEGACY = "StyleSnap";
 
-// Figma rejects "." in variable names (reserved for path syntax). The Webtool
-// auto-names unreviewed primitives from their value ("space/5.59"), so
-// sanitize defensively instead of failing the import.
 function sanitizeVariableName(name: string): string {
   return name.replace(/\./g, "-");
 }
-
-// ── helpers ──────────────────────────────────────────────
 
 function hexToRgb(hex: string): RGB {
   return {
@@ -34,6 +33,10 @@ function hexToRgb(hex: string): RGB {
     g: parseInt(hex.slice(3, 5), 16) / 255,
     b: parseInt(hex.slice(5, 7), 16) / 255,
   };
+}
+
+function hexToRgba(hex: string, opacity: number): RGBA {
+  return { ...hexToRgb(hex), a: opacity };
 }
 
 function gradientPaint(g: GradientValue): GradientPaint {
@@ -44,7 +47,6 @@ function gradientPaint(g: GradientValue): GradientPaint {
         ? "GRADIENT_RADIAL"
         : "GRADIENT_ANGULAR";
 
-  // Rotate the gradient axis around the tile center (0.5, 0.5).
   const rad = ((g.angle ?? 0) * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -63,8 +65,6 @@ function gradientPaint(g: GradientValue): GradientPaint {
   };
 }
 
-// Figma identifies fonts by style NAME, not numeric weight. Try the usual
-// names for a weight until one loads; fonts ship different subsets.
 const WEIGHT_STYLES: Record<number, string[]> = {
   100: ["Thin", "Hairline"],
   200: ["ExtraLight", "Extra Light", "UltraLight"],
@@ -80,7 +80,6 @@ const WEIGHT_STYLES: Record<number, string[]> = {
 async function loadFont(t: TypographyValue): Promise<FontName | null> {
   const candidates = (WEIGHT_STYLES[t.fontWeight] ?? ["Regular"]).slice();
   if (t.fontStyle === "italic") {
-    // "Italic", "Bold Italic", "SemiBold Italic", …
     const italics = candidates.map((c) => (c === "Regular" ? "Italic" : `${c} Italic`));
     candidates.splice(0, candidates.length, ...italics);
   }
@@ -90,15 +89,264 @@ async function loadFont(t: TypographyValue): Promise<FontName | null> {
       await figma.loadFontAsync(fontName);
       return fontName;
     } catch {
-      // try next candidate
+      // try next
     }
   }
   return null;
 }
 
-// ── creation ─────────────────────────────────────────────
+async function applyTextStyle(style: TextStyle, value: TypographyValue): Promise<string | null> {
+  const fontName = await loadFont(value);
+  if (!fontName) {
+    return `font "${value.fontFamily}" (weight ${value.fontWeight}) is not available in Figma`;
+  }
+  style.fontName = fontName;
+  style.fontSize = value.fontSize;
+  style.lineHeight = { unit: "PERCENT", value: value.lineHeight * 100 };
+  if (value.letterSpacing !== undefined) {
+    style.letterSpacing = { unit: "PIXELS", value: value.letterSpacing };
+  }
+  if (value.textTransform && value.textTransform !== "none") {
+    style.textCase =
+      value.textTransform === "uppercase"
+        ? "UPPER"
+        : value.textTransform === "lowercase"
+          ? "LOWER"
+          : "TITLE";
+  }
+  return null;
+}
 
-export async function createAssets(data: StyleSnapExport): Promise<CreateResult> {
+function shadowLayersToEffects(layers: ShadowValue, inset: boolean): Effect[] {
+  return layers.map((l) => ({
+    type: inset || l.inset ? "INNER_SHADOW" : "DROP_SHADOW",
+    color: hexToRgba(l.color, l.opacity),
+    offset: { x: l.offsetX, y: l.offsetY },
+    radius: l.blur,
+    spread: l.spread,
+    visible: true,
+    blendMode: "NORMAL",
+  }));
+}
+
+async function ensureNamedCollection(
+  name: string,
+  existingNames: Set<string>,
+): Promise<VariableCollection> {
+  const all = await figma.variables.getLocalVariableCollectionsAsync();
+  let collection = all.find((c) => c.name === name) ?? null;
+  if (collection) {
+    for (const id of collection.variableIds) {
+      const v = await figma.variables.getVariableByIdAsync(id);
+      if (v) existingNames.add(v.name);
+    }
+  } else {
+    collection = figma.variables.createVariableCollection(name);
+  }
+  return collection;
+}
+
+/** Prefer figmaHandoff when present; otherwise legacy flat create. */
+export async function createAssets(
+  data: StyleSnapExport,
+  handoff?: FigmaHandoff | null,
+): Promise<CreateResult> {
+  if (handoff && handoff.version === "1.0") {
+    return createFromHandoff(handoff);
+  }
+  const legacy = await createLegacy(data);
+  legacy.warning =
+    "JSON has no figmaHandoff — using legacy import. Re-export from the latest StyleSnap web app for Variables + Styles two-tier.";
+  return legacy;
+}
+
+async function createFromHandoff(handoff: FigmaHandoff): Promise<CreateResult> {
+  const result: CreateResult = { created: 0, skipped: 0, errors: [] };
+
+  const existingPaintNames = new Set(
+    (await figma.getLocalPaintStylesAsync()).map((s) => s.name),
+  );
+  const existingTextNames = new Set(
+    (await figma.getLocalTextStylesAsync()).map((s) => s.name),
+  );
+  const existingEffectNames = new Set(
+    (await figma.getLocalEffectStylesAsync()).map((s) => s.name),
+  );
+
+  const primNames = new Set<string>();
+  const semNames = new Set<string>();
+  const primColl = await ensureNamedCollection(COLLECTION_PRIMITIVES, primNames);
+  const semColl = await ensureNamedCollection(COLLECTION_SEMANTIC, semNames);
+
+  const primByName = new Map<string, Variable>();
+
+  // Pass 1 — primitives
+  for (const entry of handoff.collections.primitives) {
+    const name = sanitizeVariableName(entry.name);
+    if (primNames.has(name)) {
+      result.skipped++;
+      continue;
+    }
+    try {
+      const variable = figma.variables.createVariable(name, primColl, entry.type);
+      if (entry.type === "COLOR" && typeof entry.value === "string") {
+        variable.setValueForMode(
+          primColl.defaultModeId,
+          hexToRgba(entry.value, entry.opacity ?? 1),
+        );
+      } else if (entry.type === "FLOAT" && typeof entry.value === "number") {
+        variable.setValueForMode(primColl.defaultModeId, entry.value);
+      }
+      primNames.add(name);
+      primByName.set(entry.name, variable);
+      primByName.set(name, variable);
+      result.created++;
+    } catch (e) {
+      result.errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Resolve existing primitives (skipped) into the name map for aliasing.
+  for (const entry of handoff.collections.primitives) {
+    if (primByName.has(entry.name)) continue;
+    const name = sanitizeVariableName(entry.name);
+    for (const id of primColl.variableIds) {
+      const v = await figma.variables.getVariableByIdAsync(id);
+      if (v && v.name === name) {
+        primByName.set(entry.name, v);
+        primByName.set(name, v);
+        break;
+      }
+    }
+  }
+
+  const semByName = new Map<string, Variable>();
+
+  // Pass 2 — semantic aliases
+  for (const entry of handoff.collections.semantic) {
+    const name = sanitizeVariableName(entry.name);
+    if (semNames.has(name)) {
+      for (const id of semColl.variableIds) {
+        const v = await figma.variables.getVariableByIdAsync(id);
+        if (v && v.name === name) {
+          semByName.set(entry.name, v);
+          semByName.set(name, v);
+          break;
+        }
+      }
+      result.skipped++;
+      continue;
+    }
+    const target =
+      primByName.get(entry.aliasOf) ?? primByName.get(sanitizeVariableName(entry.aliasOf));
+    if (!target) {
+      result.errors.push(`${name}: missing primitive alias target "${entry.aliasOf}"`);
+      continue;
+    }
+    try {
+      const variable = figma.variables.createVariable(name, semColl, entry.type);
+      variable.setValueForMode(
+        semColl.defaultModeId,
+        figma.variables.createVariableAlias(target),
+      );
+      semNames.add(name);
+      semByName.set(entry.name, variable);
+      semByName.set(name, variable);
+      result.created++;
+    } catch (e) {
+      result.errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Paint styles
+  for (const entry of handoff.styles.paint) {
+    if (existingPaintNames.has(entry.name)) {
+      result.skipped++;
+      continue;
+    }
+    try {
+      const style = figma.createPaintStyle();
+      style.name = entry.name;
+      if (entry.kind === "gradient") {
+        style.paints = [gradientPaint(entry.value)];
+      } else {
+        const bindName = entry.bindVariableName
+          ? sanitizeVariableName(entry.bindVariableName)
+          : undefined;
+        const bindVar =
+          (bindName ? semByName.get(entry.bindVariableName!) ?? semByName.get(bindName) : undefined) ??
+          undefined;
+        let paint: SolidPaint = {
+          type: "SOLID",
+          color: hexToRgb(entry.hex ?? "#000000"),
+          opacity: entry.opacity ?? 1,
+        };
+        if (bindVar) {
+          paint = figma.variables.setBoundVariableForPaint(paint, "color", bindVar);
+        }
+        style.paints = [paint];
+      }
+      existingPaintNames.add(entry.name);
+      result.created++;
+    } catch (e) {
+      result.errors.push(`${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Text styles
+  for (const entry of handoff.styles.text) {
+    if (existingTextNames.has(entry.name)) {
+      result.skipped++;
+      continue;
+    }
+    try {
+      const style = figma.createTextStyle();
+      style.name = entry.name;
+      const err = await applyTextStyle(style, entry.value);
+      if (err) {
+        result.errors.push(`${entry.name}: ${err}`);
+        continue;
+      }
+      existingTextNames.add(entry.name);
+      result.created++;
+    } catch (e) {
+      result.errors.push(`${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Effect styles
+  for (const entry of handoff.styles.effect) {
+    if (existingEffectNames.has(entry.name)) {
+      result.skipped++;
+      continue;
+    }
+    try {
+      const style = figma.createEffectStyle();
+      style.name = entry.name;
+      if (entry.kind === "backdrop-blur") {
+        style.effects = [
+          {
+            type: "BACKGROUND_BLUR",
+            blurType: "NORMAL",
+            radius: entry.blurPx ?? 12,
+            visible: true,
+          },
+        ];
+      } else {
+        style.effects = shadowLayersToEffects(entry.layers, entry.kind === "inset");
+      }
+      existingEffectNames.add(entry.name);
+      result.created++;
+    } catch (e) {
+      result.errors.push(`${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  return result;
+}
+
+/** Pre-§2.66 path: colors → paint styles, numbers → one collection. */
+async function createLegacy(data: StyleSnapExport): Promise<CreateResult> {
   const result: CreateResult = { created: 0, skipped: 0, errors: [] };
 
   const existingPaintNames = new Set(
@@ -108,21 +356,20 @@ export async function createAssets(data: StyleSnapExport): Promise<CreateResult>
     (await figma.getLocalTextStylesAsync()).map((s) => s.name),
   );
 
-  // Find or create the StyleSnap variable collection.
   let collection: VariableCollection | null = null;
   const existingVariableNames = new Set<string>();
 
   async function ensureCollection(): Promise<VariableCollection> {
     if (collection) return collection;
     const all = await figma.variables.getLocalVariableCollectionsAsync();
-    collection = all.find((c) => c.name === VARIABLE_COLLECTION) ?? null;
+    collection = all.find((c) => c.name === VARIABLE_COLLECTION_LEGACY) ?? null;
     if (collection) {
       for (const id of collection.variableIds) {
         const v = await figma.variables.getVariableByIdAsync(id);
         if (v) existingVariableNames.add(v.name);
       }
     } else {
-      collection = figma.variables.createVariableCollection(VARIABLE_COLLECTION);
+      collection = figma.variables.createVariableCollection(VARIABLE_COLLECTION_LEGACY);
     }
     return collection;
   }
@@ -169,28 +416,12 @@ export async function createAssets(data: StyleSnapExport): Promise<CreateResult>
             result.skipped++;
             break;
           }
-          const fontName = await loadFont(token.value);
-          if (!fontName) {
-            result.errors.push(
-              `${name}: font "${token.value.fontFamily}" (weight ${token.value.fontWeight}) is not available in Figma`,
-            );
-            break;
-          }
           const style = figma.createTextStyle();
           style.name = name;
-          style.fontName = fontName;
-          style.fontSize = token.value.fontSize;
-          style.lineHeight = { unit: "PERCENT", value: token.value.lineHeight * 100 };
-          if (token.value.letterSpacing !== undefined) {
-            style.letterSpacing = { unit: "PIXELS", value: token.value.letterSpacing };
-          }
-          if (token.value.textTransform && token.value.textTransform !== "none") {
-            style.textCase =
-              token.value.textTransform === "uppercase"
-                ? "UPPER"
-                : token.value.textTransform === "lowercase"
-                  ? "LOWER"
-                  : "TITLE";
+          const err = await applyTextStyle(style, token.value);
+          if (err) {
+            result.errors.push(`${name}: ${err}`);
+            break;
           }
           existingTextNames.add(name);
           result.created++;
@@ -214,8 +445,6 @@ export async function createAssets(data: StyleSnapExport): Promise<CreateResult>
         }
 
         case "shadow":
-          // Composite value — not representable as a Variable; deferred to
-          // Effect Styles in a later iteration (matches the import preview).
           result.skipped++;
           break;
       }
@@ -225,4 +454,14 @@ export async function createAssets(data: StyleSnapExport): Promise<CreateResult>
   }
 
   return result;
+}
+
+/** Pull optional figmaHandoff from raw import JSON (envelope ignores it). */
+export function readFigmaHandoff(raw: unknown): FigmaHandoff | null {
+  if (!raw || typeof raw !== "object") return null;
+  const handoff = (raw as { figmaHandoff?: unknown }).figmaHandoff;
+  if (!handoff || typeof handoff !== "object") return null;
+  const v = (handoff as { version?: unknown }).version;
+  if (v !== "1.0") return null;
+  return handoff as FigmaHandoff;
 }

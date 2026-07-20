@@ -86,4 +86,21 @@ describe("harvestFeedbackColors (C.4 tier 2)", () => {
     expect(harvested[0]?.role).toBe("info");
     expect(harvested[0]?.method).toContain("authored name");
   });
+
+  it("claims Figma style name even when opacity is not exactly 1", () => {
+    const tokens = [
+      colorToken("warn_style", "#9F6B26", {
+        name: "color/feedback/warning",
+        opacity: 0.97,
+        context: { authoredName: "color/feedback/warning" },
+      }),
+    ];
+    const harvested = harvestFeedbackColors(tokens, new Map(), "#14121F");
+    expect(harvested).toEqual([
+      expect.objectContaining({
+        role: "warning",
+        token: expect.objectContaining({ id: "warn_style" }),
+      }),
+    ]);
+  });
 });

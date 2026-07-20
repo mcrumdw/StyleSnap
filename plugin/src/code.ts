@@ -2,39 +2,59 @@
 // Talks to the panel UI (src/ui.html) via postMessage.
 
 import type { StyleSnapExport, StyleSnapToken } from "../../docs/types";
+import type { FigmaHandoff } from "../../docs/figma-handoff";
 import { parseStyleSnapExport } from "../../docs/schema";
 import { extractTokens } from "./extract";
-import { createAssets } from "./create";
+import { createAssets, readFigmaHandoff } from "./create";
+import { exportSystemToCapture } from "./export-system";
 
 // One row in the import preview: what would be created in Figma.
 export interface ImportPreviewEntry {
-  kind: "paint-style" | "text-style" | "variable";
+  kind:
+    | "paint-style"
+    | "text-style"
+    | "effect-style"
+    | "variable"
+    | "variable-primitive"
+    | "variable-semantic";
   name: string;
   valueLabel: string;
 }
 
-// Messages UI → sandbox
 type UiMessage =
   | { type: "extract-tokens" }
+  | { type: "export-system" }
   | { type: "validate-import"; json: string }
   | { type: "create-import"; json: string }
   | { type: "notify"; message: string };
 
-// Messages sandbox → UI
 type PluginMessage =
   | { type: "selection-changed"; hasSelection: boolean }
   | { type: "extraction-result"; payload: StyleSnapExport }
   | { type: "extraction-empty" }
   | {
+      type: "system-export-result";
+      payload: StyleSnapExport;
+      warning?: string;
+    }
+  | { type: "system-export-empty"; warning?: string }
+  | {
       type: "import-preview";
       entries: ImportPreviewEntry[];
       skippedUnnamed: number;
       versionWarning?: string;
+      handoffWarning?: string;
     }
   | { type: "import-invalid"; error: string; details: string[] }
-  | { type: "create-done"; created: number; skipped: number; errors: string[] };
+  | {
+      type: "create-done";
+      created: number;
+      skipped: number;
+      errors: string[];
+      warning?: string;
+    };
 
-figma.showUI(__html__, { width: 340, height: 560 });
+figma.showUI(__html__, { width: 440, height: 580 });
 
 function postToUi(msg: PluginMessage) {
   figma.ui.postMessage(msg);
@@ -50,8 +70,6 @@ function notifySelection() {
 figma.on("selectionchange", notifySelection);
 notifySelection();
 
-// Maps a named token to the Figma asset the import would create (PRD §3 Flow 2):
-// color/gradient → Paint Style, typography → Text Style, the rest → Variable.
 function toPreviewEntry(t: StyleSnapToken): ImportPreviewEntry | null {
   if (t.name === null) return null;
   switch (t.type) {
@@ -78,9 +96,64 @@ function toPreviewEntry(t: StyleSnapToken): ImportPreviewEntry | null {
     case "border-width":
       return { kind: "variable", name: t.name, valueLabel: `${t.value}px` };
     case "shadow":
-      // Figma Variables cannot hold composite shadow values — deferred to
-      // Effect Styles in a later iteration. Skipped for now (counted in UI).
       return null;
+  }
+}
+
+function previewFromHandoff(handoff: FigmaHandoff): ImportPreviewEntry[] {
+  const entries: ImportPreviewEntry[] = [];
+  for (const p of handoff.collections.primitives) {
+    entries.push({
+      kind: "variable-primitive",
+      name: p.name,
+      valueLabel:
+        p.type === "COLOR"
+          ? `${p.value}${p.opacity !== undefined && p.opacity < 1 ? ` @ ${Math.round(p.opacity * 100)}%` : ""}`
+          : `${p.value}px`,
+    });
+  }
+  for (const s of handoff.collections.semantic) {
+    entries.push({
+      kind: "variable-semantic",
+      name: s.name,
+      valueLabel: `→ ${s.aliasOf}`,
+    });
+  }
+  for (const p of handoff.styles.paint) {
+    entries.push({
+      kind: "paint-style",
+      name: p.name,
+      valueLabel:
+        p.kind === "gradient"
+          ? `${p.value.kind} gradient`
+          : p.bindVariableName
+            ? `bound → ${p.bindVariableName}`
+            : (p.hex ?? "solid"),
+    });
+  }
+  for (const t of handoff.styles.text) {
+    entries.push({
+      kind: "text-style",
+      name: t.name,
+      valueLabel: `${t.value.fontFamily} ${t.value.fontSize}px`,
+    });
+  }
+  for (const e of handoff.styles.effect) {
+    entries.push({
+      kind: "effect-style",
+      name: e.name,
+      valueLabel:
+        e.kind === "backdrop-blur" ? `blur ${e.blurPx ?? 0}px` : `${e.kind} · ${e.layers.length} layer(s)`,
+    });
+  }
+  return entries;
+}
+
+function parseRawJson(json: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
   }
 }
 
@@ -92,18 +165,29 @@ figma.ui.onmessage = async (msg: UiMessage) => {
         postToUi({ type: "import-invalid", error: result.error, details: result.details });
         return;
       }
-      const entries: ImportPreviewEntry[] = [];
+      const raw = parseRawJson(msg.json);
+      const handoff = readFigmaHandoff(raw);
+      let entries: ImportPreviewEntry[] = [];
       let skippedUnnamed = 0;
-      for (const token of result.data.tokens) {
-        const entry = toPreviewEntry(token);
-        if (entry) entries.push(entry);
-        else if (token.name === null) skippedUnnamed++;
+      let handoffWarning: string | undefined;
+      if (handoff) {
+        entries = previewFromHandoff(handoff);
+      } else {
+        // Avoid the substring "import (" — Figma's SES sandbox regex-rejects it.
+        handoffWarning =
+          "No figmaHandoff in JSON — legacy path: paint styles + spacing vars. Re-export from StyleSnap for full two-tier.";
+        for (const token of result.data.tokens) {
+          const entry = toPreviewEntry(token);
+          if (entry) entries.push(entry);
+          else if (token.name === null) skippedUnnamed++;
+        }
       }
       postToUi({
         type: "import-preview",
         entries,
         skippedUnnamed,
         versionWarning: result.versionWarning,
+        handoffWarning,
       });
       return;
     }
@@ -113,10 +197,14 @@ figma.ui.onmessage = async (msg: UiMessage) => {
         postToUi({ type: "import-invalid", error: result.error, details: result.details });
         return;
       }
-      const summary = await createAssets(result.data);
+      const handoff = readFigmaHandoff(parseRawJson(msg.json));
+      const summary = await createAssets(result.data, handoff);
       postToUi({ type: "create-done", ...summary });
       if (summary.created > 0) {
         figma.notify(`StyleSnap: ${summary.created} styles/variables created`);
+      }
+      if (summary.warning) {
+        figma.notify(summary.warning, { timeout: 5000 });
       }
       return;
     }
@@ -132,6 +220,19 @@ figma.ui.onmessage = async (msg: UiMessage) => {
         return;
       }
       postToUi({ type: "extraction-result", payload });
+      break;
+    }
+    case "export-system": {
+      const result = await exportSystemToCapture();
+      if (!result.payload) {
+        postToUi({ type: "system-export-empty", warning: result.warning });
+        return;
+      }
+      postToUi({
+        type: "system-export-result",
+        payload: result.payload,
+        warning: result.warning,
+      });
       break;
     }
     case "notify":

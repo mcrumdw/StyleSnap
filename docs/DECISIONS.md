@@ -1289,6 +1289,77 @@ Custom role forms were already prefix-locked (§2.30 / §2.46) — unchanged.
 
 ---
 
+### 2.66 Figma two-tier handoff (Variables + Styles) `[New feature]`
+Decided 2026-07-20. FR-26 asks for Figma Variables/Styles with Variable
+aliasing (primitive → semantic). Cleaned JSON previously exported token
+**names** but not the role map; the plugin flattened everything into Paint
+Styles + one `StyleSnap` FLOAT collection and skipped shadows. That fought
+§2.3 and made weird fallback names look like a plugin problem.
+
+**Decision — additive export contract (do not change capture `types.ts`):**
+- `generateCleanedJson` emits `roles: Record<role, tokenId>` and
+  `figmaHandoff` (version `"1.0"`), types in `docs/figma-handoff.ts`.
+- Envelope parse still ignores extras (same pattern as `gaps` / `notes`).
+- Web builds the plan; plugin creates assets. Naming stays slash-nested from
+  the web app; plugin only sanitizes illegal chars (`.` → `-`).
+
+**Figma mapping:**
+
+| StyleSnap | Figma |
+|---|---|
+| Color / spacing / radius / border-width primitives | Variables in **`StyleSnap / Primitives`** |
+| Matching roles | Variables in **`StyleSnap / Semantic`** that **alias** the primitive |
+| Color roles (extra) | Paint Styles bound to the semantic COLOR variable |
+| Type roles (+ unused type primitives) | Text Styles |
+| Gradients | Paint Styles only |
+| Elevation / inset / blur | Effect Styles |
+
+Legacy JSON without `figmaHandoff` still imports via the old path with a soft
+warning (“re-export from latest StyleSnap”). Old single `StyleSnap` collection
+is left untouched; new imports use the two named collections.
+
+**Out of scope this pass:** dark-mode modes, W3C DTCG replace, overwriting
+existing Figma assets.
+
+**Key files:** `docs/figma-handoff.ts`, `docs/FIGMA_HANDOFF.md`,
+`src/engine/export/figma-handoff.ts`, `plugin/src/create.ts`,
+`plugin/src/code.ts`, `ShareExportModal.tsx`.
+
+---
+
+### 2.67 Figma → web system export (new capture) `[New feature]`
+Decided 2026-07-20. Designers edit Variables/Styles in Figma (rename, recolor,
+add styles) and need those names + values back in the web app to regenerate
+`design.md`. Plugin cannot push over the network (fonts-only).
+
+**Decision — plugin-only reverse dump as a normal capture:**
+- **Export Variables & Styles** reads `StyleSnap / Primitives` +
+  `StyleSnap / Semantic` (default mode, alias-resolved) and **all local**
+  Paint / Text / Effect Styles.
+- Emits `StyleSnapExport` with `name` + `authoredName` = Figma asset name and
+  current values. Paste into the web ImportZone like any Figma/extension JSON.
+- **No web-app restore of `roles` / assignments** — accepted; this pass is
+  names + values into the token list.
+
+Soft warn if StyleSnap collections are missing (styles-only export still OK).
+Variables in other collections are out of scope for v1.
+
+**Round-trip fix (same day):** export keeps one token per Color / Text /
+Effect style (and Semantic Variable) **role path**; value-dedupe only drops
+hex/non-role duplicates so `color/action/primary` and `color/text/link` both
+survive even when they share a hex (harvest reads `authoredName`).
+
+**Web recapture (same day):** when ≥5 tokens carry `color/…/…` role paths
+(Figma system dump), `deriveSystem` fills color roles **from capture only** —
+no synthetic neutrals / feedback / hover. Missing roles stay empty (gaps),
+never “derived”.
+
+**Key files:** `plugin/src/export-system.ts`, `plugin/src/code.ts`,
+`plugin/src/ui.html`, `docs/FIGMA_HANDOFF.md`,
+`src/engine/derive-system/index.ts`.
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -1399,6 +1470,12 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-20 | `[Change]` **Figma system recapture = capture-only colors**: ≥5 `color/…/…` named tokens → never invent synthetic color fills (feedback/neutrals/hover). | — |
+| 2026-07-20 | `[Bug fix]` **Feedback harvest honors Figma role names**: exact `name` / `authoredName` claims feedback slots even when opacity ≠ 1; also claim via role candidates before conventional derived. | — |
+| 2026-07-20 | `[Bug fix]` **Figma export keeps all style role paths** (§2.67): Color/Text/Effect accordion names each become a token; only drop non-role value dupes. | — |
+| 2026-07-20 | `[Bug fix]` **Figma system export prefers semantic role names** (§2.67): dedupe identical values so `color/feedback/warning` beats hex primitives; bound paints resolve via Variables. | — |
+| 2026-07-20 | `[New feature]` **Figma → web system export** (§2.67): plugin Export Variables & Styles → capture JSON (StyleSnap vars + all local styles) for paste into web. | — |
+| 2026-07-20 | `[New feature]` **Figma two-tier handoff** (§2.66): cleaned JSON `roles` + `figmaHandoff`; plugin creates Primitives/Semantic Variables (aliases) + Paint/Text/Effect Styles; legacy JSON still imports with a warning. | — |
 | 2026-07-20 | `[Change]` **Prefix-locked naming** (§2.65): Add/rename type folder fixed; user types path after it (optional `/` nesting). | — |
 | 2026-07-20 | `[Bug fix]` **Manual blur ≠ from capture** (§2.64): don’t seed inset/backdrop roles from Add-token manuals. | — |
 | 2026-07-20 | `[Change]` **No invented elevation** (§2.63): empty snap → empty `shadow/sm|md|lg`; completeness recommended unless drop shadows were captured. | — |

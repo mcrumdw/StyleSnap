@@ -34,6 +34,7 @@ import { isBackdropBlurToken, isDropShadowToken, isInsetShadowToken } from "../e
 import { isManualToken } from "../normalize";
 import { deriveRoleCandidates } from "../roles";
 import {
+  COLOR_ROLES,
   SPACE_SEMANTIC_FROM_SCALE,
   SPACE_SCALE_ROLES,
   derivePageInsetPx,
@@ -99,6 +100,27 @@ function syntheticColor(role: string, hex: string): StyleSnapToken {
   };
 }
 
+/** Figma system recapture — tokens already named as Appendix B color roles. */
+export function isSystemColorRecapture(tokens: readonly StyleSnapToken[]): boolean {
+  let named = 0;
+  for (const token of tokens) {
+    if (token.type !== "color") continue;
+    const path = (token.context?.authoredName ?? token.name ?? "").toLowerCase().trim();
+    if (path.startsWith("color/") && path.split("/").filter(Boolean).length >= 3) named++;
+  }
+  // A full StyleSnap → Figma → web round-trip carries many role paths; sparse
+  // selection extracts usually have zero. Threshold keeps browser snaps deriving.
+  return named >= 5;
+}
+
+function rolePathOf(token: StyleSnapToken): string | undefined {
+  const fromAuth = token.context?.authoredName?.toLowerCase().trim();
+  if (fromAuth?.startsWith("color/")) return fromAuth;
+  const fromName = token.name?.toLowerCase().trim();
+  if (fromName?.startsWith("color/")) return fromName;
+  return undefined;
+}
+
 /**
  * Prefer a captured interaction shade (context.state) over the ΔL formula —
  * same precedence as spacing "captured value claims the slot" (C.8).
@@ -145,29 +167,30 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   // ── Colors (need a primary anchor) ──
   const primary = anchors.primaryColorId ? byId.get(anchors.primaryColorId) : undefined;
   let accent: AccentSuggestion | null = null;
+  const captureOnlyColors = isSystemColorRecapture(tokens);
   if (primary && primary.type === "color") {
     const from = primary.id;
     fill("color/action/primary", primary, from, "anchor (your primary color)");
 
-    const states = deriveStates(primary.value);
-    const hoverCaptured = capturedInteractionColor(tokens, rawById, "hover");
-    fill(
-      "color/action/primary-hover",
-      hoverCaptured ?? syntheticColor("color/action/primary-hover", states.hover),
-      hoverCaptured ? hoverCaptured.id : from,
-      hoverCaptured ? "captured :hover state" : "hover (ΔL −0.06)",
-    );
-    const activeCaptured = capturedInteractionColor(tokens, rawById, "active");
-    fill(
-      "color/action/primary-active",
-      activeCaptured ?? syntheticColor("color/action/primary-active", states.active),
-      activeCaptured ? activeCaptured.id : from,
-      activeCaptured ? "captured :active state" : "active (ΔL −0.12)",
-    );
-    fill("color/border/focus", primary, from, "focus ring = primary");
-
-    const neutrals = deriveNeutrals(primary.value);
     const colorCandidates = deriveRoleCandidates(tokens, rawById);
+    const claimCaptured = (role: string, method: string) => {
+      const cand = colorCandidates.get(role)?.[0];
+      const captured = cand ? byId.get(cand.tokenId) : undefined;
+      if (captured && captured.type === "color" && !captured.id.startsWith("derived_")) {
+        fill(role, captured, captured.id, method);
+        return true;
+      }
+      // Direct match on token name / authoredName (recapture may skip candidate ranking).
+      for (const token of tokens) {
+        if (token.type !== "color" || token.id.startsWith("derived_")) continue;
+        if (rolePathOf(token) === role) {
+          fill(role, token, token.id, method);
+          return true;
+        }
+      }
+      return false;
+    };
+
     const claimColor = (
       role: string,
       fallback: StyleSnapToken,
@@ -175,14 +198,49 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
       formulaMethod: string,
       capturedMethod: string,
     ) => {
-      const cand = colorCandidates.get(role)?.[0];
-      const captured = cand ? byId.get(cand.tokenId) : undefined;
-      if (captured && captured.type === "color" && !captured.id.startsWith("derived_")) {
-        fill(role, captured, captured.id, capturedMethod);
-      } else {
-        fill(role, fallback, derivedFrom, formulaMethod);
-      }
+      if (claimCaptured(role, capturedMethod)) return;
+      if (!captureOnlyColors) fill(role, fallback, derivedFrom, formulaMethod);
     };
+
+    const states = deriveStates(primary.value);
+    const hoverCaptured = capturedInteractionColor(tokens, rawById, "hover");
+    if (hoverCaptured) {
+      fill("color/action/primary-hover", hoverCaptured, hoverCaptured.id, "captured :hover state");
+    } else if (!claimCaptured("color/action/primary-hover", "captured hover color")) {
+      if (!captureOnlyColors) {
+        fill(
+          "color/action/primary-hover",
+          syntheticColor("color/action/primary-hover", states.hover),
+          from,
+          "hover (ΔL −0.06)",
+        );
+      }
+    }
+    const activeCaptured = capturedInteractionColor(tokens, rawById, "active");
+    if (activeCaptured) {
+      fill(
+        "color/action/primary-active",
+        activeCaptured,
+        activeCaptured.id,
+        "captured :active state",
+      );
+    } else if (!claimCaptured("color/action/primary-active", "captured active color")) {
+      if (!captureOnlyColors) {
+        fill(
+          "color/action/primary-active",
+          syntheticColor("color/action/primary-active", states.active),
+          from,
+          "active (ΔL −0.12)",
+        );
+      }
+    }
+
+    // Focus ring: prefer explicit capture, else primary (still from capture).
+    if (!claimCaptured("color/border/focus", "captured focus color")) {
+      fill("color/border/focus", primary, from, "focus ring = primary");
+    }
+
+    const neutrals = deriveNeutrals(primary.value);
 
     const linkHex = deriveLinkColor(primary.value, neutrals.surfacePage);
     if (linkHex.toLowerCase() === primary.value.toLowerCase()) {
@@ -239,14 +297,25 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
       fill(FEEDBACK_ROLE_PATHS[role], token, token.id, method);
     }
 
-    const feedback = deriveFeedback(primary.value);
     for (const key of ["success", "warning", "error", "info"] as const) {
-      fill(
-        `color/feedback/${key}`,
-        syntheticColor(`color/feedback/${key}`, feedback[key]),
-        from,
-        `feedback ${key} (conventional hue, brand chroma, AA-tuned)`,
-      );
+      claimCaptured(FEEDBACK_ROLE_PATHS[key], "captured feedback (authored name)");
+    }
+
+    if (!captureOnlyColors) {
+      const feedback = deriveFeedback(primary.value);
+      for (const key of ["success", "warning", "error", "info"] as const) {
+        fill(
+          `color/feedback/${key}`,
+          syntheticColor(`color/feedback/${key}`, feedback[key]),
+          from,
+          `feedback ${key} (conventional hue, brand chroma, AA-tuned)`,
+        );
+      }
+    }
+
+    // Sweep remaining Appendix B color roles from capture names (overlay, inverse, …).
+    for (const def of COLOR_ROLES) {
+      claimCaptured(def.role, "captured color (authored name)");
     }
 
     // Accent: suggestion only — NEVER pushed into fills (C.5). Gradient stops
@@ -275,7 +344,7 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
         secondaryAnchor.id,
         "anchor (your secondary color)",
       );
-    } else if (explicitHarmony !== undefined) {
+    } else if (explicitHarmony !== undefined && !captureOnlyColors) {
       const secondaryBase = harmonySuggestion.candidates[explicitHarmony];
       fill(
         "color/action/secondary",
@@ -283,6 +352,8 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
         from,
         `accent (${explicitHarmony} harmony, AA-tuned)`,
       );
+    } else {
+      claimCaptured("color/action/secondary", "captured secondary color");
     }
   }
 
