@@ -9,7 +9,7 @@ interface EmptyStateProps {
 // DESIGN.md §5/§6 — oversized heading, one line of text-muted, single CTA.
 export function EmptyState({ heading, message, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center gap-4 py-16 text-center">
+    <div className="flex flex-col items-center gap-4 py-6 text-center sm:py-16">
       <h2 className="font-heading text-section-header font-bold text-text-primary sm:text-page-title">
         {heading}
       </h2>

@@ -4,9 +4,9 @@ import { ImportZone } from "../components/ImportZone";
 import { DEFAULT_ROUTE } from "./AppShell";
 import { useSession } from "../state/SessionProvider";
 
-/** Landing — create a system from a capture JSON. Restored drafts skip to the shell. */
+/** Landing — start a draft from a capture JSON. Restored drafts skip to the shell. */
 export function Home() {
-  const { hasTokens, pool, addImport, createSystem } = useSession();
+  const { hasTokens, pool, addImport } = useSession();
   const navigate = useNavigate();
 
   const describeFirst = !pool.adjectives?.length;
@@ -17,8 +17,7 @@ export function Home() {
 
   const handleImport: typeof addImport = (data, notes) => {
     addImport(data, notes);
-    createSystem();
-    navigate("/describe");
+    navigate("/describe", { state: { fromImport: true } });
   };
 
   return (

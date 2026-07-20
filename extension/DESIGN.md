@@ -2,118 +2,102 @@
 
 **Surface:** Browser/Web Extension (Chrome MV3 · side panel + in-page picker)
 **Owner:** Murtaza Hassani · **Branch:** `murtaza`
-**Status:** Working draft — aligned with [UX.md](./UX.md). Brand values here are *provisional*
-and defer to the team [`../DESIGN.md`](../DESIGN.md) once it's filled in.
+**Status:** Aligned with team [`../DESIGN.md`](../DESIGN.md) (bold & expressive, light-first).
 
-> **Relationship to the team design doc.** The team `DESIGN.md` is still all `<TODO>`.
-> Until brand tokens land, this extension uses a neutral dark UI + a single accent that
-> reskins cleanly. When the team palette is decided, replace the values in §2 and the CSS
-> variables in [`src/sidepanel/styles.css`](./src/sidepanel/styles.css) — nothing else
-> should need to change.
+> **Relationship to the team design doc.** The side panel uses the same brand
+> tokens, typography, hard-offset shadows, and component rules as the web app.
+> Values live as CSS variables in [`src/sidepanel/styles.css`](./src/sidepanel/styles.css)
+> — do not invent hex/size values that aren't in the team `DESIGN.md`.
 
 ---
 
 ## 1. Mood / vibe
 
-**One sentence:** A quiet, precise instrument that disappears into the page — StyleSnap
-feels like a designer's loupe, not a dashboard.
+Same as the web app: **confident, playful, unmistakably StyleSnap** — warm
+off-white canvas, electric indigo, chunky 2px borders, hard offset shadows.
 
-The extension lives *on top of other people's websites*, so its own personality must be
-restrained: dark, calm, monospace-for-values, one confident accent. The user's attention
-belongs on the page they're picking from, not on our chrome.
+The extension still lives *on top of other people's websites*, so the **in-page
+overlay** stays minimal (outline + chip only). The **side panel** carries the
+full brand personality so capture → paste into the webtool feels like one product.
 
-References (vibe):
-- Browser DevTools "inspect element" — but warmer and with zero clutter
-- Raycast / Linear command surfaces — dark, fast, keyboard-friendly
-- macOS color-picker loupe — a single precise tool, nothing extra
-
-Anti-references (explicitly **not**):
-- A heavy floating toolbar that covers page content
-- A colorful marketing-y popup with onboarding carousels
-- A "scan the whole site" auto-audit dashboard
+---
 
 ## 2. Color palette
 
-Provisional, mirrors the CSS variables in `styles.css`. Swap to team brand when ready.
+Mirrors team `DESIGN.md` §2. CSS vars in `styles.css`:
 
-### Surfaces & text (side panel — dark)
-
-| Token (CSS var) | Hex | Where it shows up |
+| Token | Hex | Where |
 |---|---|---|
-| `--bg` | `#0F1115` | Side-panel background |
-| `--surface` | `#181B22` | Token rows, toggle button |
-| `--surface-2` | `#20242D` | Count badges, hover fills |
-| `--text` | `#F3F4F6` | Primary text, token values |
-| `--muted` | `#9AA1AD` | Source labels, captions, secondary buttons |
-| `--border` | `#2A2F3A` | Row borders, dividers |
+| `brand-primary` | `#5B2EFF` | Primary CTA, active pick toggle, pick outline |
+| `brand-pop` | `#FFD23D` | Token-count chip |
+| `surface-page` | `#FAF8F5` | Panel background, card headers |
+| `surface-card` | `#FFFFFF` | Cards, header/footer chrome |
+| `text-primary` | `#14121F` | Headings, body, toast text |
+| `text-muted` | `#6B6878` | Captions, selectors |
+| `border-default` | `#14121F` | 2px borders, hard shadows |
+| `success` | `#1FB877` | Toast fill, capture-confirm pulse |
 
-### Accent & status
+**In-page overlay exception.** The inspector chip uses solid `text-primary` fill +
+white text + `brand-primary` border so it stays legible over *arbitrary* page
+backgrounds. Do not make the chip semi-transparent.
 
-| Token | Hex | When used |
-|---|---|---|
-| `--accent` | `#6E56F7` | Primary button, active pick toggle, **in-page pick outline** |
-| `--ok` | `#22C55E` | Capture-confirm pulse, copy-success toast |
-
-**Critical constraint — the in-page overlay.** The pick outline (`--accent`) and inspector
-chip (`#111317` bg / white text) render over *arbitrary* websites. They must stay legible
-on any background, so the chip is always dark-solid with a high-contrast border, never
-semi-transparent over unknown content. This consistent accent outline is the recognizable
-"StyleSnap is active" signal.
+---
 
 ## 3. Typography
 
-| Role | Font | Why |
-|---|---|---|
-| UI / labels | system-ui stack | Native, fast, no web-font load inside the panel |
-| **Token values** | `ui-monospace` (SF Mono / Menlo) | Hex, px, font specs read as *data* — monospace makes them scannable and copy-trustworthy |
+Same families as the web app (bundled via `@fontsource` in the side panel):
 
-Sizes:
-- Wordmark: 15px / 700
-- Group title (Color, Typography…): 11px / uppercase / letter-spacing 0.06em
-- Token value: 13px monospace
-- Source label & caption: 11px muted
-- Buttons: 13px / 600
+| Role | Font |
+|---|---|
+| Wordmark / empty heading | Space Grotesk 700 |
+| UI / buttons | Inter 400–600 |
+| Token values, selectors | JetBrains Mono 500 |
+
+Sizes from team `DESIGN.md` §3 (section header for empty state; caption/badge
+for dense list chrome). Dense side-panel swatches are **32×32** (spacing scale)
+vs the workspace's 48×48 token cards.
+
+---
 
 ## 4. Component principles
 
-- **Token rows:** one swatch/preview + monospace value + dim source + remove (×). Calm,
-  uniform, scannable — the list is the product, so rows never compete for attention.
-- **Buttons:** filled accent = the one primary action ("Copy to StyleSnap"); everything
-  else is ghost/outline. Min height 44px (touch + a11y).
-- **Pick toggle:** state is unmistakable — `Start picking` (neutral) vs. `Picking… (Esc to
-  stop)` (accent fill). The label always tells you how to exit.
-- **Empty state:** a single calm line that points at the next action, never a graphic-heavy
-  illustration. "Nothing picked yet. Start picking and click anything on the page."
-- **In-page overlay:** outline + chip only. No buttons, no panels floating over the page.
-  Capture confirms with a 250ms green pulse, then returns to accent — feedback without a modal.
-- **Toast:** pill, bottom-center, auto-dismiss ~2.2s. Used only for success confirmation.
+- **Cards:** `surface-card`, 2px `border-default`, `radius-md`, `shadow-card`.
+- **Buttons:** primary / secondary / ghost with signature press
+  (`translate(2px,2px)` + shadow collapse). Min height 44px.
+- **Pick toggle:** idle = secondary; active = primary fill + "Picking… (Esc to stop)".
+- **Empty state:** oversized heading + muted one-liner (DESIGN.md §5/§6 voice).
+- **Toast:** `success` fill, `text-primary` label, 2px border, `shadow-card`.
+- **In-page overlay:** outline + chip only — no floating panels on the page.
+
+---
 
 ## 5. Voice / microcopy
 
-Calm, second-person, action-first. No exclamation marks, no jargon. (Full table in
-[UX.md §7](./UX.md).)
+Panel chrome keeps the extension UX.md action labels; empty state shares the
+webtool's "Nothing snapped yet" voice (DESIGN.md §9).
 
 | Where | Text |
 |---|---|
 | Toggle (idle) | `Start picking` |
 | Toggle (active) | `Picking… (Esc to stop)` |
-| Empty state | `Nothing picked yet. Start picking and click anything on the page.` |
+| Empty state | `Nothing snapped yet` + `Start picking and click any element on the page.` |
 | Copy success | `Copied {n} tokens — paste into StyleSnap` |
 | Restricted page | `Picking doesn't work on this page.` |
 
+---
+
 ## 6. Logo / wordmark
 
-- **Product name:** StyleSnap
-- **In-panel wordmark:** `Style` in `--text` + `Snap` in `--accent`, 700 weight — a tiny,
-  text-only mark suited to the narrow panel header. No icon lockup needed at this size.
-
-## 7. Out of scope (this surface)
-
-- Light-mode theming of the side panel (dark-only for MVP)
-- Custom web fonts inside the panel
-- An animated/illustrated empty state
-- Any branding on the in-page overlay beyond the accent outline + chip
+Matches web `Wordmark`: Space Grotesk 700, "**Snap**" in `brand-primary`.
 
 ---
 
-*Extension DESIGN.md — draft v1. Reskins to team `../DESIGN.md` once brand tokens land.*
+## 7. Out of scope (this surface)
+
+- Dark-mode theming of the side panel (team DESIGN.md §12 — light-first)
+- Whole-page auto-scan
+- Editing token values in the extension (capture only)
+
+---
+
+*Extension DESIGN.md — v2. Aligned with team DESIGN.md v1.1.*

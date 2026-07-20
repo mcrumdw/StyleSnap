@@ -59,7 +59,7 @@ export function computeChecklist(
       label: role,
       description: assigned.has(role)
         ? def.meaning
-        : `No ${role} yet — ${def.meaning.toLowerCase()}. Add a token or assign the role to an existing one.`,
+        : `Missing — ${def.meaning.toLowerCase()}. Assign a token.`,
       action: { tokenType: def.tokenType, role },
     };
   };
@@ -79,7 +79,7 @@ export function computeChecklist(
     label: "type/display or type/heading",
     description: hasHeadline
       ? "Headline style assigned"
-      : "No headline style yet — assign type/display or type/heading to a captured heading.",
+      : "Missing a headline. Assign type/display or type/heading.",
     action: { tokenType: "typography", role: "type/heading" },
   });
 
@@ -96,7 +96,7 @@ export function computeChecklist(
     description:
       spaceSteps >= 4
         ? `${spaceSteps} spacing steps assigned`
-        : `Only ${spaceSteps} spacing step${spaceSteps === 1 ? "" : "s"} assigned — assign at least 4 (space/xs … space/2xl).`,
+        : `Only ${spaceSteps} spacing step${spaceSteps === 1 ? "" : "s"}. Need at least 4.`,
     action: { tokenType: "spacing" },
   });
   items.push({
@@ -107,7 +107,7 @@ export function computeChecklist(
     description:
       slotCount("radius/") >= 1
         ? "Radius assigned"
-        : "No radius slot assigned yet — assign radius/sm to a captured value.",
+        : "Missing a radius. Assign radius/sm.",
     action: { tokenType: "border-radius", role: "radius/sm" },
   });
   items.push({
@@ -118,7 +118,7 @@ export function computeChecklist(
     description:
       slotCount("shadow/") >= 1
         ? "Shadow assigned"
-        : "No shadow slot assigned yet — assign shadow/sm to a captured value.",
+        : "Missing a shadow. Assign shadow/sm.",
     action: { tokenType: "shadow", role: "shadow/sm" },
   });
   items.push({
@@ -128,7 +128,7 @@ export function computeChecklist(
     label: "border-width/default",
     description: assigned.has("border-width/default")
       ? "Default border width assigned"
-      : "No border-width/default yet — assign it to a captured width.",
+      : "Missing default border width. Assign one.",
     action: { tokenType: "border-width", role: "border-width/default" },
   });
 
@@ -169,7 +169,7 @@ export function computeChecklist(
       severity: "info",
       status: "gap",
       label: `${valueLabel} unassigned`,
-      description: `Captured ${token.occurrences}× but not assigned to a scale slot — assign one or leave it out of the system.`,
+      description: `Seen ${token.occurrences}× — assign to a slot, or leave out.`,
     });
   }
 
@@ -179,7 +179,7 @@ export function computeChecklist(
     severity: "info",
     status: "gap",
     label: "Breakpoints · motion/easing · z-index",
-    description: "Never capturable — define these manually; they're flagged in every export.",
+    description: "Not capturable — add these by hand. Flagged in every export.",
   });
 
   const required = items.filter((i) => i.severity === "required");

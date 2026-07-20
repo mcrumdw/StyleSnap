@@ -191,14 +191,15 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
         secondaryAnchor.id,
         "anchor (your secondary color)",
       );
-    } else {
-      const harmony = explicitHarmony ?? accent?.suggested ?? harmonySuggestion.suggested;
-      const secondaryBase = harmonySuggestion.candidates[harmony];
+    } else if (explicitHarmony !== undefined) {
+      // Opt-in only: no auto-synthetic secondary when nothing was captured
+      // (DECISIONS §2.38). User presses "Use secondary color" → harmony set.
+      const secondaryBase = harmonySuggestion.candidates[explicitHarmony];
       fill(
         "color/action/secondary",
         syntheticColor("color/action/secondary", tuneFillForWhiteText(secondaryBase)),
         from,
-        `accent (${harmony} harmony, AA-tuned)`,
+        `accent (${explicitHarmony} harmony, AA-tuned)`,
       );
     }
   }

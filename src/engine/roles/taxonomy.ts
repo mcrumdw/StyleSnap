@@ -100,9 +100,14 @@ export function roleDefinition(role: string): RoleDefinition | undefined {
   return BY_ROLE.get(role);
 }
 
-/** Appendix B position for the canonical sort; role-less sorts last. */
+/**
+ * Appendix B position for the canonical sort; role-less sorts last.
+ * User-defined roles (§2.30) share one bucket after B — callers secondary-sort
+ * by role string so customs stay deterministic.
+ */
 export function roleOrderIndex(role: string | undefined): number {
-  return role !== undefined ? (ORDER.get(role) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+  if (role === undefined) return Number.MAX_SAFE_INTEGER;
+  return ORDER.get(role) ?? ALL_ROLES.length;
 }
 
 export function rolesForType(type: TokenType): RoleDefinition[] {

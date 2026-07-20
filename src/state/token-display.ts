@@ -1,6 +1,7 @@
 // Human-facing labels + CSS helpers for token previews (captured values = data).
 
 import type { GradientValue, ShadowLayer, ShadowValue, StyleSnapToken } from "../contract/types";
+import { backdropBlurPx, isBackdropBlurToken } from "../engine/effect-kinds";
 
 export function cssColor(hex: string, opacity: number): string {
   if (opacity >= 1) return hex;
@@ -223,6 +224,9 @@ export function humanValueLabel(token: StyleSnapToken, role?: string): string {
     case "border-width":
       return `${token.value}px border stroke`;
     case "shadow": {
+      if (isBackdropBlurToken(token)) {
+        return `Backdrop blur ${backdropBlurPx(token)}px`;
+      }
       const base = describeShadowValue(token.value);
       const hint = role ? shadowRoleHint(role) : undefined;
       return hint ? `${base} — ${hint}` : base;

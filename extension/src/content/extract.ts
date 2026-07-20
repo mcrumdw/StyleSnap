@@ -326,8 +326,13 @@ export function extractTokens(el: Element, captureId: string): StyleSnapToken[] 
 
 /** One-line preview for the inspector chip while hovering. */
 export function previewLabel(el: Element): string {
+  // Hover preview must not consume real ids — save/restore the counter.
+  // Zeroing it (previous bug) made every subsequent capture restart at
+  // ext_001, colliding across captures and silently dropping colors in the
+  // webtool (Map keyed by id).
+  const saved = tokenCounter;
   const tokens = extractTokens(el, "preview");
-  tokenCounter = 0; // preview must not consume real ids
+  tokenCounter = saved;
   if (tokens.length === 0) return "Nothing to grab here";
   return tokens
     .map((t) => {

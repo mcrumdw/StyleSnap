@@ -1,4 +1,5 @@
 import type { StyleSnapToken } from "../contract/types";
+import { isBackdropBlurToken, backdropBlurPx } from "../engine/effect-kinds";
 import {
   cssColor,
   cssGradient,
@@ -18,7 +19,7 @@ const CHECKERBOARD: React.CSSProperties = {
 
 /** Flush left strip — StyleSnap backdrop; inner specimen uses captured roles. */
 const STRIP =
-  "flex h-full w-[5.5rem] shrink-0 self-stretch border-r-2 border-border-default overflow-hidden bg-state-disabled-bg";
+  "flex h-full w-16 shrink-0 self-stretch overflow-hidden border-r-2 border-border-default bg-state-disabled-bg sm:w-[5.5rem]";
 
 /** Same square tile for every shadow preview (inset + drop). */
 const SHADOW_TILE = "size-14 shrink-0";
@@ -75,10 +76,7 @@ interface RoleTokenPreviewProps {
 
 /** Left preview strip for filled role rows — one surface, no nested framed squares. */
 export function RoleTokenPreview({ token, role, preview = EMPTY_PREVIEW_CONTEXT }: RoleTokenPreviewProps) {
-  const title =
-    token.type === "shadow"
-      ? `${describeShadowValue(token.value)}${role ? ` (${role})` : ""}`
-      : humanValueLabel(token, role);
+  const title = humanValueLabel(token, role);
 
   switch (token.type) {
     case "color":
@@ -162,9 +160,28 @@ export function RoleTokenPreview({ token, role, preview = EMPTY_PREVIEW_CONTEXT 
       );
     }
     case "shadow": {
+      if (isBackdropBlurToken(token)) {
+        const blur = backdropBlurPx(token);
+        return (
+          <PreviewStrip title={title} className="items-center justify-center">
+            <div
+              className={SHADOW_TILE}
+              style={{
+                backgroundColor: preview.surfaceCard,
+                borderRadius: preview.cardRadiusPx,
+                backdropFilter: `blur(${blur}px)`,
+                WebkitBackdropFilter: `blur(${blur}px)`,
+                backgroundImage:
+                  "linear-gradient(135deg, rgba(255,255,255,0.55), rgba(255,255,255,0.2))",
+                border: `1px solid ${previewBorderStrokeColor(preview)}`,
+              }}
+            />
+          </PreviewStrip>
+        );
+      }
       return (
         <PreviewStrip
-          title={title}
+          title={`${describeShadowValue(token.value)}${role ? ` (${role})` : ""}`}
           className="items-center justify-center"
         >
           <div

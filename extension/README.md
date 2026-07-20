@@ -11,6 +11,7 @@ See [UX.md](./UX.md) for the interaction spec.
 ## Stack
 - Manifest V3 · React + Vite · TypeScript
 - `@crxjs/vite-plugin` for MV3 bundling
+- Side-panel UI tokens from team [`../DESIGN.md`](../DESIGN.md) (see [`DESIGN.md`](./DESIGN.md))
 - Shared token schema imported from [`../docs/types.ts`](../docs/types.ts) — never redefined locally
 
 ## Structure

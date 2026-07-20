@@ -267,13 +267,29 @@ describe("thin capture → complete system (the point of it all)", () => {
     const checklist = computeChecklist(all, assignments);
     const gaps = checklist.items.filter((i) => i.status === "gap" && i.id !== "manual-foundations");
 
-    expect(fillValue(r, "color/action/secondary").token.id).toMatch(/^derived_/);
-    expect(fillValue(r, "color/action/secondary").method).toContain("accent");
+    expect(r.fills.some((f) => f.role === "color/action/secondary")).toBe(false);
     expect(fillValue(r, "type/mono").token.type).toBe("typography");
     expect(fillValue(r, "shadow/md").token.id).toBe("ext_td_20");
     expect(assignments.get("radius/lg")).toBe("ext_td_18");
-    expect(gaps.filter((g) => g.severity === "recommended")).toHaveLength(0);
+    // Secondary stays empty until the user opts in (§2.38) — the only recommended gap.
+    expect(
+      gaps.filter((g) => g.severity === "recommended").map((g) => g.id),
+    ).toEqual(["color/action/secondary"]);
     expect(gaps.filter((g) => g.id.startsWith("unassigned-"))).toHaveLength(0);
+  });
+
+  it("leaves secondary empty until accentHarmony opt-in when no secondary anchor", () => {
+    const tokens = fixtureTokens("capture-test-drive.json");
+    const without = derive(tokens);
+    expect(without.fills.some((f) => f.role === "color/action/secondary")).toBe(false);
+
+    const withHarmony = deriveSystem({
+      tokens,
+      assignments: new Map(),
+      accentHarmony: "analogous",
+    });
+    expect(fillValue(withHarmony, "color/action/secondary").token.id).toMatch(/^derived_/);
+    expect(fillValue(withHarmony, "color/action/secondary").method).toContain("analogous");
   });
 
   it("uses secondary anchor when a distinct hue is detected", () => {

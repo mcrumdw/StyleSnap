@@ -16,9 +16,10 @@ type Session = ReturnType<typeof usePool> & {
   hasTokens: boolean;
   setToast: (message: string, options?: { undo?: () => void }) => void;
   /**
-   * Edit a derived role value and raise the "Updated … · Undo" toast — the one
-   * place this pattern lives, so the toast-undo wiring can't drift per call
-   * site (it caused a real fire-immediately bug once).
+   * Save a role value edit as a new linked primitive and raise the
+   * "Updated … · Undo" toast — the one place this pattern lives, so the
+   * toast-undo wiring can't drift per call site (it caused a real
+   * fire-immediately bug once).
    */
   editWithUndoToast: (role: string, token: StyleSnapToken) => void;
   requestCopyDesignMd: () => void;
@@ -42,7 +43,7 @@ export function useSession(): Session {
  */
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const poolApi = usePool();
-  const { pool, applyTemplate, editDerivedValue, undo, redo, canUndo, canRedo } =
+  const { pool, applyTemplate, saveRoleAsPrimitive, undo, redo, canUndo, canRedo } =
     poolApi;
   const vm = useSessionViewModel(pool);
   const hasTokens = pool.imports.length > 0;
@@ -68,12 +69,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const editWithUndoToast = useCallback(
     (role: string, token: StyleSnapToken) => {
-      editDerivedValue(role, token);
+      saveRoleAsPrimitive(role, token);
       const label =
         token.type === "color" ? token.value : role.split("/").pop()?.replace(/-/g, " ") ?? role;
-      setToast(`Updated ${label}`);
+      setToast(`Updated ${label}`, { undo: () => undo() });
     },
-    [editDerivedValue, setToast],
+    [saveRoleAsPrimitive, setToast, undo],
   );
 
   useEffect(() => {
@@ -198,7 +199,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             setToastAction(null);
           }}
           action={
-            toastAction && !canUndo
+            toastAction && canUndo
               ? { label: "Undo", onClick: toastAction }
               : undefined
           }

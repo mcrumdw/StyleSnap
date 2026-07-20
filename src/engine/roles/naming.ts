@@ -55,3 +55,26 @@ export function fallbackName(token: StyleSnapToken): string {
     }
   }
 }
+
+/**
+ * Example slash name for rename / add-token placeholders — type-matched so a
+ * font row never suggests `color/brand-blue`.
+ */
+export function namePlaceholder(tokenType: StyleSnapToken["type"]): string {
+  switch (tokenType) {
+    case "color":
+      return "color/brand-blue";
+    case "gradient":
+      return "gradient/hero";
+    case "typography":
+      return "type/inter-16-400";
+    case "spacing":
+      return "space/md";
+    case "border-radius":
+      return "radius/md";
+    case "border-width":
+      return "border-width/default";
+    case "shadow":
+      return "shadow/md";
+  }
+}

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { StyleSnapToken } from "../contract/types";
+import type { StyleSnapToken, TokenType } from "../contract/types";
 import { applyMerges, type MergeRecord } from "../engine/dedup";
 import { deriveRoleCandidates, fallbackName } from "../engine/roles";
 import { resolveAssignments, type TokenDecision } from "../state/pool";
@@ -30,6 +30,9 @@ interface GiveMeaningStepProps {
   userAssignments?: Record<string, string>;
   onEditDerived?: (role: string, token: StyleSnapToken) => void;
   onResetDerived?: (role: string) => void;
+  customRoles?: string[];
+  onAddCustomRole?: (type: TokenType, pathAfterPrefix: string) => void;
+  onRemoveCustomRole?: (role: string) => void;
 }
 
 /** Phase 10 step 2 — semantic role assignment (EditRolesPanel + derived state). */
@@ -49,6 +52,9 @@ export function GiveMeaningStep({
   userAssignments,
   onEditDerived,
   onResetDerived,
+  customRoles,
+  onAddCustomRole,
+  onRemoveCustomRole,
 }: GiveMeaningStepProps) {
   const view = useMemo(() => {
     const merged = applyMerges(entries, merges);
@@ -94,11 +100,11 @@ export function GiveMeaningStep({
   return (
     <section className="flex w-full flex-col gap-4">
         <p className="text-caption text-text-muted">
-          Auto-filled roles show below — click to edit values or swap primitives you disagree with.{" "}
-        <span title="A role is a named slot like color/text/primary — it points at one captured value. One value can fill several roles.">
-          What's a role?
-        </span>
-      </p>
+          Auto-filled roles below — click a value to edit, or use Reassign to swap primitives.{" "}
+          <span title="A role is a named slot like color/text/primary — it points at one captured value. One value can fill several roles.">
+            What's a role?
+          </span>
+        </p>
       <EditRolesPanel
         tokens={systemTokens}
         assignments={resolved}
@@ -114,6 +120,9 @@ export function GiveMeaningStep({
         onResetDerived={onResetDerived}
         focusRoleId={focusRoleId}
         rolePrefix={rolePrefix}
+        customRoles={customRoles}
+        onAddCustomRole={onAddCustomRole}
+        onRemoveCustomRole={onRemoveCustomRole}
       />
     </section>
   );

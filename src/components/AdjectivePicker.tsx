@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { StyleSnapToken } from "../contract/types";
 import type { Anchors } from "../engine/derive-system";
 import {
@@ -24,6 +24,8 @@ interface AdjectivePickerProps {
   applyLabel?: string;
   /** When true, adjective changes live-update snippet-filled note fields. */
   livePreview?: boolean;
+  /** Right-aligned control on the action row (e.g. Continue to colors). */
+  actionsEnd?: ReactNode;
 }
 
 /**
@@ -38,6 +40,7 @@ export function AdjectivePicker({
   onApply,
   applyLabel = "Use this starter",
   livePreview = false,
+  actionsEnd,
 }: AdjectivePickerProps) {
   const [picked, setPicked] = useState<Adjective[]>(initial.filter(isAdjective).slice(0, MAX_ADJECTIVES));
 
@@ -69,8 +72,8 @@ export function AdjectivePicker({
         </p>
         <p className="text-caption text-text-muted">
           {livePreview
-            ? "Notes and style bias update as you pick — your own words are never replaced."
-            : "We'll match snippets per field and tune derived tokens — your own words are never replaced."}
+            ? "Notes update as you pick. Your own words are never overwritten."
+            : "We’ll fill notes and tune empty slots. Your own words are never overwritten."}
         </p>
       </div>
 
@@ -100,23 +103,26 @@ export function AdjectivePicker({
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        {!livePreview && (
-          <Button size="sm" disabled={!assembled} onClick={() => assembled && onApply(assembled, picked)}>
-            {applyLabel}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {!livePreview && (
+            <Button size="sm" disabled={!assembled} onClick={() => assembled && onApply(assembled, picked)}>
+              {applyLabel}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              const auto = autoAdjectives(tokens, anchors);
+              setPicked([...auto]);
+              onApply(assembleDescription(auto), auto, { refresh: livePreview });
+            }}
+          >
+            Pick for me
           </Button>
-        )}
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            const auto = autoAdjectives(tokens, anchors);
-            setPicked([...auto]);
-            onApply(assembleDescription(auto), auto, { refresh: livePreview });
-          }}
-        >
-          Pick for me
-        </Button>
+        </div>
+        {actionsEnd}
       </div>
     </div>
   );

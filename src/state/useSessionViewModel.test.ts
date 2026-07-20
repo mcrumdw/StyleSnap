@@ -42,7 +42,7 @@ function roleColor(pool: TokenPool, role: string) {
       return { ...fill, token: edit.token, origin: "edited" as const };
     }
     const synthetic = fill.token.id.startsWith("derived_");
-    return { ...fill, origin: synthetic ? ("derived" as const) : ("captured" as const) };
+    return { ...fill, origin: synthetic ? ("derived" as const) : ("seeded" as const) };
   });
   const rolesWithFill = new Set(draftFills.map((f) => f.role));
   for (const [r, edit] of Object.entries(pool.derivedEdits ?? {})) {
@@ -190,7 +190,7 @@ describe("derivedEdits overlay", () => {
         return { ...fill, token: edit.token, origin: "edited" as const };
       }
       const synthetic = fill.token.id.startsWith("derived_");
-      return { ...fill, origin: synthetic ? ("derived" as const) : ("captured" as const) };
+      return { ...fill, origin: synthetic ? ("derived" as const) : ("seeded" as const) };
     });
     const display = buildRoleDisplayTokens(draftFills, state.pool.derivedEdits);
     expect(display.get(role)?.value).toBe("#112233");

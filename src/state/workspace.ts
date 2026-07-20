@@ -5,6 +5,7 @@
 // search + filters (FR-7, FR-8). No React in here.
 
 import type { StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types";
+import { isBackdropBlurToken, backdropBlurPx } from "../engine/effect-kinds";
 import { roleOrderIndex } from "../engine/roles";
 import type { TokenPool } from "./pool";
 
@@ -19,8 +20,9 @@ export interface PoolEntry {
   importId?: string;
 }
 
-export function poolEntries(pool: TokenPool): PoolEntry[] {
-  return [
+export function poolEntries(pool: TokenPool, options?: { includeExcluded?: boolean }): PoolEntry[] {
+  const excluded = new Set(pool.excludedIds ?? []);
+  const entries: PoolEntry[] = [
     ...pool.imports.flatMap((imp) =>
       imp.tokens.map(
         (token): PoolEntry => ({ token, origin: imp.meta.source, importId: imp.importId, meta: imp.meta }),
@@ -28,6 +30,8 @@ export function poolEntries(pool: TokenPool): PoolEntry[] {
     ),
     ...pool.manual.map((token): PoolEntry => ({ token, origin: "manual" })),
   ];
+  if (options?.includeExcluded || excluded.size === 0) return entries;
+  return entries.filter((e) => !excluded.has(e.token.id));
 }
 
 // ─────────────────────────────────────────
@@ -127,6 +131,9 @@ export function formatValue(token: StyleSnapToken): string {
     case "border-width":
       return `${token.value}px`;
     case "shadow":
+      if (isBackdropBlurToken(token)) {
+        return `backdrop blur ${backdropBlurPx(token)}px`;
+      }
       return token.value
         .map(
           (l) =>

@@ -1,0 +1,422 @@
+{
+  "meta": {
+    "source": "browser-extension",
+    "exportedAt": "2026-07-17T10:33:13.142Z",
+    "pageUrl": "https://www.fifa.com/de",
+    "version": "2.0"
+  },
+  "tokens": [
+    {
+      "id": "ext_001",
+      "captureId": "cap-1",
+      "source": "div.d-flex.align-items-center",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "color",
+        "element": "div",
+        "selector": ".d-flex",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#FFFFFF",
+      "opacity": 1
+    },
+    {
+      "id": "ext_002",
+      "captureId": "cap-1",
+      "source": "div.d-flex.align-items-center",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "element": "div",
+        "selector": ".d-flex"
+      },
+      "type": "typography",
+      "value": {
+        "fontFamily": "FIFASans Regular",
+        "fontStack": [
+          "FIFASans Regular",
+          "Poppins 500",
+          "Noto Sans Regular",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif"
+        ],
+        "fontSize": 16,
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "lineHeight": 1
+      }
+    },
+    {
+      "id": "ext_003",
+      "captureId": "cap-1",
+      "source": "div.d-flex.align-items-center",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "gap",
+        "element": "div",
+        "selector": ".d-flex"
+      },
+      "type": "spacing",
+      "value": 24
+    },
+    {
+      "id": "ext_004",
+      "captureId": "cap-2",
+      "source": "span",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "color",
+        "element": "span",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#130431",
+      "opacity": 1
+    },
+    {
+      "id": "ext_005",
+      "captureId": "cap-2",
+      "source": "span",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "element": "span"
+      },
+      "type": "typography",
+      "value": {
+        "fontFamily": "FIFASans Medium",
+        "fontStack": [
+          "FIFASans Medium",
+          "Poppins 500",
+          "Noto Sans Regular",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif"
+        ],
+        "fontSize": 16,
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "lineHeight": 1.5
+      }
+    },
+    {
+      "id": "ext_006",
+      "captureId": "cap-3",
+      "source": "a.countdown-section_countdownCta__fFOB-.d-none",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "background-color",
+        "element": "a",
+        "selector": ".countdown-section_countdownCta__fFOB-",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#DAC287",
+      "opacity": 1
+    },
+    {
+      "id": "ext_007",
+      "captureId": "cap-3",
+      "source": "a.countdown-section_countdownCta__fFOB-.d-none",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "color",
+        "element": "a",
+        "selector": ".countdown-section_countdownCta__fFOB-",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#130431",
+      "opacity": 1
+    },
+    {
+      "id": "ext_008",
+      "captureId": "cap-3",
+      "source": "a.countdown-section_countdownCta__fFOB-.d-none",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "element": "a",
+        "selector": ".countdown-section_countdownCta__fFOB-"
+      },
+      "type": "typography",
+      "value": {
+        "fontFamily": "FIFASans Medium",
+        "fontStack": [
+          "FIFASans Medium",
+          "Poppins 500",
+          "Noto Sans Regular",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif"
+        ],
+        "fontSize": 16,
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "lineHeight": 1.5
+      }
+    },
+    {
+      "id": "ext_009",
+      "captureId": "cap-3",
+      "source": "a.countdown-section_countdownCta__fFOB-.d-none",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-radius",
+        "element": "a",
+        "selector": ".countdown-section_countdownCta__fFOB-"
+      },
+      "type": "border-radius",
+      "value": 48
+    },
+    {
+      "id": "ext_010",
+      "captureId": "cap-7",
+      "source": "img.roundBackground-TOOOIv",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-radius",
+        "element": "img",
+        "selector": ".roundBackground-TOOOIv"
+      },
+      "type": "border-radius",
+      "value": 50
+    },
+    {
+      "id": "ext_011",
+      "captureId": "cap-8",
+      "source": "section.storyteller-section_sectionContainer__W+DdJ",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "background-color",
+        "element": "section",
+        "selector": ".storyteller-section_sectionContainer__W+DdJ",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#EEF2FB",
+      "opacity": 1
+    },
+    {
+      "id": "ext_012",
+      "captureId": "cap-8",
+      "source": "section.storyteller-section_sectionContainer__W+DdJ",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "color",
+        "element": "section",
+        "selector": ".storyteller-section_sectionContainer__W+DdJ",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#FFFFFF",
+      "opacity": 1
+    },
+    {
+      "id": "ext_013",
+      "captureId": "cap-8",
+      "source": "section.storyteller-section_sectionContainer__W+DdJ",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "element": "section",
+        "selector": ".storyteller-section_sectionContainer__W+DdJ"
+      },
+      "type": "typography",
+      "value": {
+        "fontFamily": "FIFASans Regular",
+        "fontStack": [
+          "FIFASans Regular",
+          "Poppins 500",
+          "Noto Sans Regular",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif"
+        ],
+        "fontSize": 16,
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "lineHeight": 1
+      }
+    },
+    {
+      "id": "ext_014",
+      "captureId": "cap-8",
+      "source": "section.storyteller-section_sectionContainer__W+DdJ",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "padding",
+        "element": "section",
+        "selector": ".storyteller-section_sectionContainer__W+DdJ"
+      },
+      "type": "spacing",
+      "value": 40
+    },
+    {
+      "id": "ext_015",
+      "captureId": "cap-10",
+      "source": "a.fifa-btn.fifa-btn-inverted-filled",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "background-color",
+        "element": "a",
+        "selector": ".fifa-btn",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#E4E8F0",
+      "opacity": 1
+    },
+    {
+      "id": "ext_016",
+      "captureId": "cap-10",
+      "source": "a.fifa-btn.fifa-btn-inverted-filled",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "color",
+        "element": "a",
+        "selector": ".fifa-btn",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#03122B",
+      "opacity": 1
+    },
+    {
+      "id": "ext_017",
+      "captureId": "cap-10",
+      "source": "a.fifa-btn.fifa-btn-inverted-filled",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "element": "a",
+        "selector": ".fifa-btn"
+      },
+      "type": "typography",
+      "value": {
+        "fontFamily": "FIFASans Regular",
+        "fontStack": [
+          "FIFASans Regular",
+          "Poppins Regular",
+          "Noto Sans Regular",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif"
+        ],
+        "fontSize": 16,
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "lineHeight": 1.5
+      }
+    },
+    {
+      "id": "ext_018",
+      "captureId": "cap-10",
+      "source": "a.fifa-btn.fifa-btn-inverted-filled",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "padding",
+        "element": "a",
+        "selector": ".fifa-btn"
+      },
+      "type": "spacing",
+      "value": 12
+    },
+    {
+      "id": "ext_019",
+      "captureId": "cap-10",
+      "source": "a.fifa-btn.fifa-btn-inverted-filled",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-radius",
+        "element": "a",
+        "selector": ".fifa-btn"
+      },
+      "type": "border-radius",
+      "value": 100
+    },
+    {
+      "id": "ext_020",
+      "captureId": "cap-11",
+      "source": "img.image_img__pNjkh",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-color",
+        "element": "img",
+        "selector": ".image_img__pNjkh",
+        "state": "default"
+      },
+      "type": "color",
+      "value": "#E4E8F0",
+      "opacity": 1
+    },
+    {
+      "id": "ext_021",
+      "captureId": "cap-11",
+      "source": "img.image_img__pNjkh",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "border-width",
+        "element": "img",
+        "selector": ".image_img__pNjkh",
+        "state": "default"
+      },
+      "type": "border-width",
+      "value": 1
+    },
+    {
+      "id": "ext_022",
+      "captureId": "cap-13",
+      "source": "div.image_imgContainer__nDjya",
+      "name": null,
+      "occurrences": 1,
+      "merged": false,
+      "context": {
+        "cssProperty": "padding",
+        "element": "div",
+        "selector": ".image_imgContainer__nDjya"
+      },
+      "type": "spacing",
+      "value": 191.46
+    }
+  ]
+}

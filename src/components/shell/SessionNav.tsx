@@ -1,4 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
+import { useEffect, useRef } from "react";
 import { Wordmark } from "../Wordmark";
 import { sessionNavLinkClass } from "./nav-link-styles";
 import { NavTitleWheel } from "./NavTitleWheel";
@@ -6,7 +7,9 @@ import { AddCaptureMenuButton, StartOverMenuButton } from "./MobileSessionAction
 import { ShareMenuButton } from "./ShareMenuButton";
 import { SessionNavSection, StartOverRailButton } from "./SessionNavSection";
 import { ShareNavSection } from "./ShareNavSection";
-import { TOKEN_CATEGORIES, type TokenCategory } from "./SideNav";
+import { TOKEN_CATEGORIES } from "./SideNav";
+
+const MOBILE_NAV_HEIGHT_VAR = "--session-mobile-nav-height";
 
 interface MobileSessionNavProps {
   notesFilled: number;
@@ -14,17 +17,44 @@ interface MobileSessionNavProps {
 }
 
 interface DesktopSessionRailProps {
-  hints?: Partial<Record<TokenCategory, string>>;
   notesFilled: number;
   notesTotal: number;
 }
 
 /** Phone / tablet: logo + share, then swipeable section title wheel. */
 export function MobileSessionNav({ notesFilled, notesTotal }: MobileSessionNavProps) {
+  const headerRef = useRef<HTMLElement>(null);
+
+  // Publish height so CategoryLayerNav can stick *under* this bar (not at top-0).
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const sync = () => {
+      const hidden = getComputedStyle(header).display === "none";
+      document.documentElement.style.setProperty(
+        MOBILE_NAV_HEIGHT_VAR,
+        hidden ? "0px" : `${header.offsetHeight}px`,
+      );
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(header);
+    window.addEventListener("resize", sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+      document.documentElement.style.removeProperty(MOBILE_NAV_HEIGHT_VAR);
+    };
+  }, []);
+
   return (
-    <header className="sticky top-0 z-sticky bg-surface-page lg:hidden">
+    <header
+      ref={headerRef}
+      id="mobile-session-nav"
+      className="sticky top-0 z-sticky bg-surface-page lg:hidden"
+    >
       <div className="flex items-center justify-between gap-3 border-b-2 border-border-default px-4 py-3">
-        <Link to="/" aria-label="StyleSnap home" className="min-w-0 shrink">
+        <Link to="/" aria-label="StyleSnap home" className="min-w-0 shrink truncate">
           <Wordmark />
         </Link>
         <div className="flex shrink-0 items-center gap-2">
@@ -39,7 +69,7 @@ export function MobileSessionNav({ notesFilled, notesTotal }: MobileSessionNavPr
 }
 
 /** Desktop: sticky left rail — viewport-tall; main page scrolls independently. */
-export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSessionRailProps) {
+export function DesktopSessionRail({ notesFilled, notesTotal }: DesktopSessionRailProps) {
   return (
     <aside className="hidden w-44 shrink-0 flex-col gap-4 lg:sticky lg:top-8 lg:flex lg:h-[calc(100dvh-4rem)] lg:max-h-[calc(100dvh-4rem)] lg:self-start">
       <Link to="/" aria-label="StyleSnap home" className="shrink-0 px-1">
@@ -50,7 +80,7 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSe
           Description
           {notesFilled < notesTotal && (
             <span className="ml-1 font-mono text-badge font-normal text-warning-text">
-              {notesFilled}/{notesTotal}
+              Not filled
             </span>
           )}
         </NavLink>
@@ -64,14 +94,9 @@ export function DesktopSessionRail({ hints, notesFilled, notesTotal }: DesktopSe
             <NavLink
               key={id}
               to={`/tokens/${id}`}
-              className={({ isActive }) =>
-                `flex flex-col ${sessionNavLinkClass(isActive, { rail: true })}`
-              }
+              className={({ isActive }) => sessionNavLinkClass(isActive, { rail: true })}
             >
-              <span className="font-heading text-caption font-bold">{label}</span>
-              {hints?.[id] && (
-                <span className="font-mono text-badge text-text-muted">{hints[id]}</span>
-              )}
+              {label}
             </NavLink>
           ))}
         </nav>

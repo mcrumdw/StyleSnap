@@ -28,7 +28,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check VERCEL_TOKEN is set
         run: |
@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -52,6 +52,20 @@ jobs:
       - name: Build
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
+      - name: Verify local build marker
+        run: |
+          marker='Continue to colors'
+          bundle=$(find .vercel/output/static/assets -name 'index-*.js' | head -1)
+          if [ -z "$bundle" ]; then
+            echo "::error::Local build missing assets/index-*.js"
+            exit 1
+          fi
+          grep -qF "$marker" "$bundle" || {
+            echo "::error::Local build $bundle missing marker ($marker)."
+            exit 1
+          }
+          echo "Local build ok: $bundle"
+
       - name: Deploy to production
         id: deploy
         run: |
@@ -59,22 +73,34 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed to $url"
 
-      - name: Verify production bundle
+      - name: Verify production alias
         run: |
-          html=$(curl -fsSL "https://stylesnap-lac.vercel.app/")
-          if echo "$html" | grep -q 'index-6MiPuC3G.js'; then
-            echo "::error::Production still serves stale bundle index-6MiPuC3G.js (pre-makram2)."
-            echo "Disable Vercel Git auto-deploy for production — rely on this workflow only."
-            exit 1
-          fi
-          js=$(echo "$html" | sed -n 's/.*src="\/assets\/\(index-[^"]*\.js\)".*/\1/p')
-          if [ -z "$js" ]; then
-            echo "::error::Production HTML missing JS bundle reference."
-            exit 1
-          fi
-          bundle=$(curl -fsSL "https://stylesnap-lac.vercel.app/assets/$js")
-          echo "$bundle" | grep -q 'Continue to colors' || {
-            echo "::error::Production bundle missing makram2 marker (Continue to colors)."
-            exit 1
-          }
-          echo "Verified production serves $js with makram2 content."
+          # Unique *.vercel.app deploy URLs may hit Deployment Protection (SSO
+          # interstitial) — only the public production alias is curl-able.
+          marker='Continue to colors'
+          stale='index-6MiPuC3G.js'
+          base='https://stylesnap-lac.vercel.app'
+
+          for attempt in 1 2 3 4 5 6 7 8; do
+            html=$(curl -fsSL -H 'Cache-Control: no-cache' "$base/?v=$RANDOM")
+            if echo "$html" | grep -q "$stale"; then
+              echo "::error::Production still serves stale bundle $stale (pre-makram2)."
+              echo "Disable Vercel Git auto-deploy for production — rely on this workflow only."
+              exit 1
+            fi
+            js=$(echo "$html" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1)
+            if [ -n "$js" ]; then
+              tmp=$(mktemp)
+              if curl -fsSL -H 'Cache-Control: no-cache' "$base/$js" -o "$tmp" \
+                && grep -qF "$marker" "$tmp"; then
+                rm -f "$tmp"
+                echo "Verified production serves $js with expected content."
+                exit 0
+              fi
+              rm -f "$tmp"
+            fi
+            echo "Alias not ready yet (attempt $attempt/8); waiting 10s…"
+            sleep 10
+          done
+          echo "::error::Production alias never served the expected bundle after retries."
+          exit 1
