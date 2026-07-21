@@ -39,6 +39,15 @@ import {
   SPACE_SCALE_ROLES,
   derivePageInsetPx,
 } from "../roles/taxonomy";
+import {
+  defaultInkForSurface,
+  defaultInverseForSurface,
+  firstInverseCandidate,
+  firstInverseSurfaceCandidate,
+  firstReadableOnSurface,
+  isInverseSurfaceFill,
+  passesTextOnSurface,
+} from "./text-on-surface";
 
 export type { AccentSuggestion, Harmony } from "./color";
 export { harmonyFromPrimary } from "./color";
@@ -47,6 +56,9 @@ export type { TypeRatio } from "./type";
 export { DEFAULT_TYPE_RATIO } from "./type";
 export { styleProfileFromFamily, scaleRadius } from "../style-profile";
 export type { StyleProfile, ShadowStyle as StyleShadowStyle } from "../style-profile";
+
+/** Anchor-owned — always the primary anchor primitive, never a separate assignment. */
+export const PRIMARY_ANCHOR_ROLE = "color/action/primary" as const;
 
 export interface DeriveInput {
   /** The cluster-canonical view: confirmed merges applied, open clusters collapsed to canonicals. */
@@ -154,14 +166,24 @@ function capturedInteractionColor(
 }
 
 export function deriveSystem(input: DeriveInput): DeriveResult {
-  const { tokens, assignments } = input;
+  const assignmentMap = new Map(input.assignments);
+  // Anchor-owned — stale assignments must not block the primary role fill.
+  assignmentMap.delete(PRIMARY_ANCHOR_ROLE);
+
+  const { tokens } = input;
   const rawById = input.rawById ?? new Map();
   const anchors = detectAnchors(tokens, rawById, input.overrides);
   const byId = new Map(tokens.map((t) => [t.id, t]));
   const fills: DerivedFill[] = [];
-  const open = (role: string) => !assignments.has(role);
+  const open = (role: string) => !assignmentMap.has(role);
   const fill = (role: string, token: StyleSnapToken, derivedFrom: string, method: string) => {
     if (open(role)) fills.push({ role, token, derivedFrom, method });
+  };
+  const upsertFill = (role: string, token: StyleSnapToken, derivedFrom: string, method: string) => {
+    const entry = { role, token, derivedFrom, method };
+    const i = fills.findIndex((f) => f.role === role);
+    if (i >= 0) fills[i] = entry;
+    else fills.push(entry);
   };
 
   // ── Colors (need a primary anchor) ──
@@ -170,7 +192,7 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   const captureOnlyColors = isSystemColorRecapture(tokens);
   if (primary && primary.type === "color") {
     const from = primary.id;
-    fill("color/action/primary", primary, from, "anchor (your primary color)");
+    upsertFill(PRIMARY_ANCHOR_ROLE, primary, from, "anchor (your primary color)");
 
     const colorCandidates = deriveRoleCandidates(tokens, rawById);
     const claimCaptured = (role: string, method: string) => {
@@ -241,35 +263,9 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
     }
 
     const neutrals = deriveNeutrals(primary.value);
-
-    const linkHex = deriveLinkColor(primary.value, neutrals.surfacePage);
-    if (linkHex.toLowerCase() === primary.value.toLowerCase()) {
-      fill("color/text/link", primary, from, "link = brand primary");
-    } else {
-      claimColor(
-        "color/text/link",
-        syntheticColor("color/text/link", linkHex),
-        from,
-        "link (brand hue, AA-tuned for page surface)",
-        "captured link color",
-      );
-    }
-
     const neutralMethod = (l: string) => `tinted neutral (brand hue, ${l})`;
-    claimColor(
-      "color/text/primary",
-      syntheticColor("color/text/primary", neutrals.textPrimary),
-      from,
-      neutralMethod("L 0.22"),
-      "captured text color",
-    );
-    claimColor(
-      "color/text/muted",
-      syntheticColor("color/text/muted", neutrals.textMuted),
-      from,
-      neutralMethod("L 0.52"),
-      "captured muted text",
-    );
+
+    // Page surface first — body ink must be paired against it (§2.72).
     claimColor(
       "color/surface/page",
       syntheticColor("color/surface/page", neutrals.surfacePage),
@@ -284,6 +280,202 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
       "white card surface",
       "captured card background",
     );
+
+    const pageFill = fills.find((f) => f.role === "color/surface/page");
+    const pageHex =
+      pageFill?.token.type === "color"
+        ? pageFill.token.value
+        : neutrals.surfacePage;
+
+    const opaqueColors = tokens.filter(
+      (t): t is StyleSnapToken & { type: "color"; value: string; opacity: number } =>
+        t.type === "color" && !t.id.startsWith("derived_") && t.opacity >= 0.5,
+    );
+
+    // Dark / brand section bands — pairs with text/inverse (§2.73).
+    if (open("color/surface/inverse")) {
+      const inverseSurfRanked: Array<
+        StyleSnapToken & { type: "color"; value: string; opacity: number }
+      > = [];
+      for (const cand of colorCandidates.get("color/surface/inverse") ?? []) {
+        const tok = byId.get(cand.tokenId);
+        if (tok && tok.type === "color" && !tok.id.startsWith("derived_")) {
+          inverseSurfRanked.push(tok);
+        }
+      }
+      for (const token of opaqueColors) {
+        if (rolePathOf(token) === "color/surface/inverse") {
+          if (!inverseSurfRanked.some((t) => t.id === token.id)) inverseSurfRanked.push(token);
+        }
+      }
+      for (const token of opaqueColors) {
+        const raw = rawById.get(token.id) ?? token;
+        if (raw.context?.cssProperty !== "background-color") continue;
+        if (token.id === pageFill?.token.id) continue;
+        if (inverseSurfRanked.some((t) => t.id === token.id)) continue;
+        const el = raw.context.element;
+        if (
+          el === "button" ||
+          raw.context.ariaRole === "button" ||
+          el === "body" ||
+          el === "html" ||
+          el === "main"
+        ) {
+          continue;
+        }
+        if (isInverseSurfaceFill(token.value, pageHex)) inverseSurfRanked.push(token);
+      }
+      // Prefer primary when it already works as an inverse band fill.
+      if (
+        isInverseSurfaceFill(primary.value, pageHex) &&
+        !inverseSurfRanked.some((t) => t.id === primary.id)
+      ) {
+        inverseSurfRanked.push(primary);
+      }
+      const pickedSurf = firstInverseSurfaceCandidate(inverseSurfRanked, pageHex);
+      if (pickedSurf) {
+        fill(
+          "color/surface/inverse",
+          pickedSurf,
+          pickedSurf.id,
+          "captured section / inverse surface",
+        );
+      } else if (!captureOnlyColors && isInverseSurfaceFill(primary.value, pageHex)) {
+        // Brand CTA fill often doubles as section band — only when it reads as inverse.
+        fill(
+          "color/surface/inverse",
+          primary,
+          from,
+          "inverse surface = brand primary",
+        );
+      }
+      // No synthetic invent — leave empty when the snap has no dark/brand bands.
+    }
+
+    const inverseSurfFill = fills.find((f) => f.role === "color/surface/inverse");
+    const inverseSurfHex =
+      inverseSurfFill?.token.type === "color"
+        ? inverseSurfFill.token.value
+        : undefined;
+
+    const claimTextAgainstPage = (
+      role: "color/text/primary" | "color/text/muted",
+      fallbackHex: string,
+      formulaMethod: string,
+      capturedMethod: string,
+    ) => {
+      if (!open(role)) return;
+      const ranked: Array<StyleSnapToken & { type: "color"; value: string; opacity: number }> = [];
+      for (const cand of colorCandidates.get(role) ?? []) {
+        const tok = byId.get(cand.tokenId);
+        if (tok && tok.type === "color" && !tok.id.startsWith("derived_")) {
+          ranked.push(tok);
+        }
+      }
+      for (const token of opaqueColors) {
+        if (rolePathOf(token) === role && !ranked.some((t) => t.id === token.id)) {
+          ranked.push(token);
+        }
+      }
+      // Body / paragraph colors (cssProperty color) that aren't already ranked.
+      if (role === "color/text/primary") {
+        for (const token of opaqueColors) {
+          const raw = rawById.get(token.id) ?? token;
+          if (raw.context?.cssProperty !== "color") continue;
+          if (ranked.some((t) => t.id === token.id)) continue;
+          ranked.push(token);
+        }
+      }
+      const readable = firstReadableOnSurface(ranked, pageHex);
+      if (readable) {
+        fill(role, readable, readable.id, capturedMethod);
+        return;
+      }
+      if (!captureOnlyColors) {
+        fill(role, syntheticColor(role, fallbackHex), from, formulaMethod);
+      }
+    };
+
+    claimTextAgainstPage(
+      "color/text/primary",
+      defaultInkForSurface(pageHex, neutrals.textPrimary),
+      neutralMethod("L 0.22 — readable on page"),
+      "captured text color (AA on page)",
+    );
+    claimTextAgainstPage(
+      "color/text/muted",
+      neutrals.textMuted,
+      neutralMethod("L 0.52"),
+      "captured muted text (AA on page)",
+    );
+
+    // Inverse = on-media / on-brand text — not body ink.
+    // Prefer AA on surface/inverse when that band exists.
+    if (open("color/text/inverse")) {
+      const inkCheckSurface = inverseSurfHex ?? pageHex;
+      const inverseRanked: Array<
+        StyleSnapToken & { type: "color"; value: string; opacity: number }
+      > = [];
+      for (const cand of colorCandidates.get("color/text/inverse") ?? []) {
+        const tok = byId.get(cand.tokenId);
+        if (tok && tok.type === "color" && !tok.id.startsWith("derived_")) {
+          inverseRanked.push(tok);
+        }
+      }
+      for (const token of opaqueColors) {
+        if (rolePathOf(token) === "color/text/inverse") {
+          if (!inverseRanked.some((t) => t.id === token.id)) inverseRanked.push(token);
+        }
+      }
+      for (const token of opaqueColors) {
+        const raw = rawById.get(token.id) ?? token;
+        if (raw.context?.cssProperty !== "color") continue;
+        if (inverseRanked.some((t) => t.id === token.id)) continue;
+        if (!passesTextOnSurface(token.value, pageHex)) inverseRanked.push(token);
+      }
+      // Prefer text that reads on the inverse band when we have one.
+      const readableOnBand = inverseSurfHex
+        ? firstReadableOnSurface(inverseRanked, inverseSurfHex)
+        : undefined;
+      const picked =
+        readableOnBand ?? firstInverseCandidate(inverseRanked, inkCheckSurface);
+      if (picked) {
+        fill(
+          "color/text/inverse",
+          picked,
+          picked.id,
+          inverseSurfHex
+            ? "captured on-media / inverse text (AA on surface/inverse)"
+            : "captured on-media / inverse text",
+        );
+      } else if (!captureOnlyColors) {
+        fill(
+          "color/text/inverse",
+          syntheticColor(
+            "color/text/inverse",
+            defaultInverseForSurface(pageHex, neutrals.textPrimary),
+          ),
+          from,
+          inverseSurfHex
+            ? "inverse text for surface/inverse bands"
+            : "inverse text for dark / brand / media fills",
+        );
+      }
+    }
+
+    const linkHex = deriveLinkColor(primary.value, pageHex);
+    if (linkHex.toLowerCase() === primary.value.toLowerCase()) {
+      fill("color/text/link", primary, from, "link = brand primary");
+    } else {
+      claimColor(
+        "color/text/link",
+        syntheticColor("color/text/link", linkHex),
+        from,
+        "link (brand hue, AA-tuned for page surface)",
+        "captured link color",
+      );
+    }
+
     claimColor(
       "color/border/default",
       syntheticColor("color/border/default", neutrals.border),
@@ -292,7 +484,7 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
       "captured border color",
     );
 
-    const harvested = harvestFeedbackColors(tokens, assignments, primary.value, rawById);
+    const harvested = harvestFeedbackColors(tokens, assignmentMap, primary.value, rawById);
     for (const { role, token, method } of harvested) {
       fill(FEEDBACK_ROLE_PATHS[role], token, token.id, method);
     }
@@ -568,7 +760,7 @@ export function deriveSystem(input: DeriveInput): DeriveResult {
   ): { token: StyleSnapToken; derivedFrom: string } | undefined => {
     const source = fills.find((f) => f.role === scaleRole);
     if (source) return { token: source.token, derivedFrom: source.derivedFrom };
-    const assignedId = assignments.get(scaleRole);
+    const assignedId = assignmentMap.get(scaleRole);
     const token = assignedId ? byId.get(assignedId) : undefined;
     if (token) return { token, derivedFrom: assignedId! };
     return undefined;

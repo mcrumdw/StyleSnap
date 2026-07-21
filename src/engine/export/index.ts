@@ -328,6 +328,24 @@ function agentRules(input: ExportInput): string {
   if (input.assignments.has("color/border/focus")) {
     extra.push("- **Focus ring** uses `color/border/focus` — never invent a focus color.");
   }
+  if (input.assignments.has("color/text/inverse")) {
+    extra.push(
+      "- **`color/text/inverse` is for dark / brand / photo fills only** — never use it as body text on `color/surface/page`.",
+    );
+  }
+  if (input.assignments.has("color/surface/inverse")) {
+    extra.push(
+      "- **`color/surface/inverse` is for contrasting section bands** (hero, promo, dark footer) — not the default page canvas. Pair with `color/text/inverse`.",
+    );
+  }
+  if (
+    input.assignments.has("color/text/primary") &&
+    input.assignments.has("color/surface/page")
+  ) {
+    extra.push(
+      "- **Keep the page ↔ body ink pair.** Do **not** invent a dark theme page background just to make light text readable. Body uses `color/text/primary` on `color/surface/page`; section bands use `color/surface/inverse` + `color/text/inverse` when listed.",
+    );
+  }
 
   return [
     "## Rules for the coding agent",

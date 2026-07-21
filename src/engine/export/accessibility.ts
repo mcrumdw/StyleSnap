@@ -75,20 +75,35 @@ export function accessibilityPairs(input: ExportInput): ContrastPair[] {
     roleOrderIndex(a) - roleOrderIndex(b) || byString(a, b);
 
   const colorRoles = [...input.assignments.keys()].filter((r) => hexOf(r) !== undefined);
-  const textRoles = colorRoles.filter((r) => r.startsWith("color/text/")).sort(byTaxonomy);
-  const surfaceRoles = colorRoles.filter((r) => r.startsWith("color/surface/")).sort(byString);
+  const bodyTextRoles = colorRoles
+    .filter((r) => r.startsWith("color/text/") && r !== "color/text/inverse")
+    .sort(byTaxonomy);
+  const inverseHex = hexOf("color/text/inverse");
+  // Body ink is measured on page/card — not on inverse bands (§2.73).
+  const pageLikeSurfaces = colorRoles
+    .filter((r) => r === "color/surface/page" || r === "color/surface/card")
+    .sort(byString);
   const fillRoles = colorRoles
     .filter((r) => r.startsWith("color/action/") || r.startsWith("color/feedback/"))
     .sort(byTaxonomy);
 
   const pairs: ContrastPair[] = [];
-  for (const text of textRoles) {
-    for (const surface of surfaceRoles) {
+  for (const text of bodyTextRoles) {
+    for (const surface of pageLikeSurfaces) {
       pairs.push(pair(`\`${text}\` on \`${surface}\``, hexOf(text)!, hexOf(surface)!));
     }
   }
+  // Inverse text ↔ inverse surface + action/feedback fills.
+  const onFillLabel = inverseHex ? "`color/text/inverse`" : "white";
+  const onFillHex = inverseHex ?? "#FFFFFF";
+  const inverseSurf = hexOf("color/surface/inverse");
+  if (inverseHex && inverseSurf) {
+    pairs.push(
+      pair("`color/text/inverse` on `color/surface/inverse`", inverseHex, inverseSurf),
+    );
+  }
   for (const fill of fillRoles) {
-    pairs.push(pair(`white on \`${fill}\``, "#FFFFFF", hexOf(fill)!));
+    pairs.push(pair(`${onFillLabel} on \`${fill}\``, onFillHex, hexOf(fill)!));
   }
   return pairs;
 }

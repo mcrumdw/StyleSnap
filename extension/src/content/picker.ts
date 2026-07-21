@@ -2,9 +2,9 @@
 // Draws a hover outline + inspector chip, captures tokens on click, and reports
 // them to the side panel via the background worker. Pick mode is toggled by message.
 
-import type { CaptureFoundations, PickerMessage } from "../shared/types";
+import type { PickerMessage } from "../shared/types";
 import { extractTokens, previewLabel, describeSource } from "./extract";
-import { scanPageFoundations } from "./foundations";
+import { scanPageFoundationsWithSurface } from "./foundations";
 
 // DESIGN.md brand-primary / success — high-contrast outline over arbitrary pages.
 const ACCENT = "#5B2EFF";
@@ -282,8 +282,12 @@ function onRuntimeMessage(
       return false;
     }
     if (msg.kind === "picker/scanFoundations") {
-      const foundations: CaptureFoundations = scanPageFoundations();
-      sendResponse({ kind: "picker/foundations", foundations } satisfies PickerMessage);
+      const { foundations, tokens } = scanPageFoundationsWithSurface();
+      sendResponse({
+        kind: "picker/foundations",
+        foundations,
+        tokens,
+      } satisfies PickerMessage);
       return false;
     }
   } catch {

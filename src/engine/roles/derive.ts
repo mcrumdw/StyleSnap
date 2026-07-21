@@ -20,6 +20,7 @@
 // without human confirmation (FR-16).
 
 import type { ShadowToken, StyleSnapToken, TokenContext } from "../../contract/types";
+import { isLightSurface } from "../derive-system/text-on-surface";
 import {
   isBackdropBlurToken,
   isDropShadowToken,
@@ -225,6 +226,19 @@ function contextRule(token: StyleSnapToken, ctx: TokenContext): ContextHint | un
         }
         if (element === "button" || ctx.ariaRole === "button") {
           return { role: "color/action/primary" };
+        }
+        // Section bands — dark / non-page fills hint inverse; light → card fallback.
+        if (
+          element === "section" ||
+          element === "footer" ||
+          element === "aside" ||
+          element === "header" ||
+          element === "nav"
+        ) {
+          if (token.type === "color" && !isLightSurface(token.value)) {
+            return { role: "color/surface/inverse" };
+          }
+          return { role: "color/surface/inverse", fallback: true };
         }
         return { role: "color/surface/card", fallback: true };
       case "border-color":

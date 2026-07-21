@@ -12,7 +12,12 @@ import { styleSnapExportSchema, styleSnapTokenSchema } from "../contract/schema"
 import type { StyleSnapExport, StyleSnapMeta, StyleSnapToken, TokenType } from "../contract/types";
 import { applyMerges, detectClusters, type MergeRecord } from "../engine/dedup";
 import { normalizeToken, normalizeTokens } from "../engine/normalize";
-import type { AnchorOverrides, Harmony, TypeRatio } from "../engine/derive-system";
+import {
+  PRIMARY_ANCHOR_ROLE,
+  type AnchorOverrides,
+  type Harmony,
+  type TypeRatio,
+} from "../engine/derive-system";
 import { isBackdropBlurToken, roleCompatibleWithToken } from "../engine/effect-kinds";
 import { styleProfileFromFamily } from "../engine/style-profile";
 import type { Family } from "../engine/templates/families";
@@ -336,6 +341,11 @@ export function assignRole(pool: TokenPool, role: string, tokenId: string): Toke
     pool.imports.flatMap((i) => i.tokens).find((t) => t.id === tokenId);
   if (token && !roleCompatibleWithToken(role, token)) return pool;
 
+  // Primary role is anchor-owned — keep anchor + role in sync (no separate assignment).
+  if (role === PRIMARY_ANCHOR_ROLE) {
+    return setAnchorOverride(pool, { primaryColorId: tokenId });
+  }
+
   let next: TokenPool = { ...pool, assignments: { ...pool.assignments, [role]: tokenId } };
   if (!isCanonicalRole(role)) {
     const type = tokenTypeFromRole(role);
@@ -373,6 +383,23 @@ export function unassignRole(pool: TokenPool, role: string): TokenPool {
   const assignments = { ...pool.assignments };
   delete assignments[role];
   return { ...pool, assignments };
+}
+
+/** Drop stale locks on anchor-owned primary when anchor override is set (§2.71). */
+export function scrubStalePrimaryAnchorRole(pool: TokenPool): TokenPool {
+  const anchorId = pool.anchorOverrides?.primaryColorId;
+  if (!anchorId) return pool;
+  let next = pool;
+  if (pool.assignments[PRIMARY_ANCHOR_ROLE] && pool.assignments[PRIMARY_ANCHOR_ROLE] !== anchorId) {
+    next = unassignRole(next, PRIMARY_ANCHOR_ROLE);
+  }
+  const edit = pool.derivedEdits?.[PRIMARY_ANCHOR_ROLE];
+  if (edit && edit.token.id !== anchorId) {
+    const derivedEdits = { ...(next.derivedEdits ?? {}) };
+    delete derivedEdits[PRIMARY_ANCHOR_ROLE];
+    next = { ...next, derivedEdits };
+  }
+  return next;
 }
 
 /**
@@ -440,6 +467,17 @@ export function setAnchorOverride(
     else (anchorOverrides as Record<string, unknown>)[key] = value;
   }
   let next: TokenPool = { ...pool, anchorOverrides };
+  if ("primaryColorId" in patch && patch.primaryColorId !== undefined) {
+    const prev = pool.anchorOverrides?.primaryColorId;
+    if (prev !== patch.primaryColorId) {
+      next = unassignRole(next, PRIMARY_ANCHOR_ROLE);
+      if (next.derivedEdits?.[PRIMARY_ANCHOR_ROLE]) {
+        const derivedEdits = { ...next.derivedEdits };
+        delete derivedEdits[PRIMARY_ANCHOR_ROLE];
+        next = { ...next, derivedEdits };
+      }
+    }
+  }
   if ("secondaryColorId" in patch && patch.secondaryColorId !== undefined) {
     const accentChoice = { ...next.accentChoice };
     delete accentChoice.harmony;
@@ -912,7 +950,7 @@ export function deserializeDraft(text: string | null): TokenPool | null {
   const customRoles = [...new Set([...declared, ...inferred])].sort();
   if (customRoles.length > 0) pool.customRoles = customRoles;
 
-  return scrubIncompatibleEffectAssignments(pool);
+  return scrubIncompatibleEffectAssignments(scrubStalePrimaryAnchorRole(pool));
 }
 
 export function loadDraft(storage: Pick<Storage, "getItem">): TokenPool | null {

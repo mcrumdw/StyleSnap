@@ -47,7 +47,9 @@ describe("contrastRatio", () => {
 describe("accessibilityPairs", () => {
   it("white on brand-blue passes AA with no margin", () => {
     const pair = accessibilityPairs(input()).find(
-      (p) => p.label === "white on `color/action/primary`",
+      (p) =>
+        p.label === "white on `color/action/primary`" ||
+        p.label === "`color/text/inverse` on `color/action/primary`",
     )!;
     expect(pair.ratioText).toBe("4.5:1");
     expect(pair.passes).toBe(true);

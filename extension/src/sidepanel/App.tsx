@@ -168,12 +168,26 @@ export function App() {
     if (!res) return;
     if (res.kind === "picker/foundations") {
       setFoundations(res.foundations);
+      let pageBgNote = "";
+      if (res.tokens && res.tokens.length > 0) {
+        const pageCap: Capture = {
+          captureId: "cap-page-scan",
+          source: "page surface (scan)",
+          tokens: res.tokens,
+        };
+        setCaptures((prev) => {
+          const without = prev.filter((c) => c.source !== "page surface (scan)");
+          return [...without, withUniqueIds(without, pageCap)];
+        });
+        const bg = res.tokens.find((t) => t.type === "color");
+        if (bg && bg.type === "color") pageBgNote = ` · page ${bg.value}`;
+      }
       const bp = res.foundations.breakpointsPx?.length ?? 0;
       const motion = res.foundations.motion?.length ?? 0;
       const z = res.foundations.zIndex?.length ?? 0;
       flash(
-        bp + motion + z > 0
-          ? `Scanned — ${bp} breakpoints · ${motion} motion · ${z} z-index`
+        bp + motion + z > 0 || pageBgNote
+          ? `Scanned — ${bp} breakpoints · ${motion} motion · ${z} z-index${pageBgNote}`
           : "No page foundations found on this page",
       );
       return;
@@ -256,7 +270,7 @@ export function App() {
           </button>
           <InfoHint
             label="What Scan page does"
-            content="Reads this page’s breakpoints, motion timings, and z-index layers for design.md Agent rules. Doesn’t add tokens to your capture list."
+            content="Reads this page’s breakpoints, motion, z-index, and the main page background color. Adds the page fill to your capture so StyleSnap can seed surface/page."
           />
         </div>
         {foundations && (
@@ -267,6 +281,7 @@ export function App() {
                 : null,
               foundations.motion?.length ? `${foundations.motion.length} motion` : null,
               foundations.zIndex?.length ? `z×${foundations.zIndex.length}` : null,
+              "page bg",
             ]
               .filter(Boolean)
               .join(" · ") || "scanned"}
@@ -280,7 +295,8 @@ export function App() {
             <h2 className="empty-title">Nothing snapped yet</h2>
             <p className="empty-sub">
               Start picking and click any element on the page. Turn on Include
-              parent for denser sketches; Scan page for breakpoints and motion.
+              parent for denser sketches; Scan page for breakpoints, motion, and
+              the page background color.
             </p>
           </div>
         ) : (

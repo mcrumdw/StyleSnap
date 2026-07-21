@@ -22,11 +22,14 @@ const allTokens = [...browserTokens, ...figmaTokens];
 const rawById = new Map(allTokens.map((t) => [t.id, t]));
 
 describe("taxonomy (Appendix B)", () => {
-  it("carries the 17 color roles and 6 type roles in B order", () => {
-    expect(rolesForType("color")).toHaveLength(17);
+  it("carries the 18 color roles and 6 type roles in B order", () => {
+    expect(rolesForType("color")).toHaveLength(18);
     expect(rolesForType("typography")).toHaveLength(6);
     expect(ALL_ROLES.filter((r) => r.required && r.tokenType === "color")).toHaveLength(12);
     expect(roleOrderIndex("color/text/primary")).toBeLessThan(roleOrderIndex("color/action/primary"));
+    expect(roleOrderIndex("color/surface/card")).toBeLessThan(
+      roleOrderIndex("color/surface/inverse"),
+    );
     expect(roleOrderIndex(undefined)).toBe(Number.MAX_SAFE_INTEGER); // role-less last
   });
 

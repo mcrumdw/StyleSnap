@@ -657,9 +657,7 @@ export function AnchorsStep({
       {primary && primary.type === "color" && (
         <div className="rounded-md border-2 border-border-default bg-surface-card p-4 shadow-card">
           <ColorFamilyPreview
-            primaryHex={
-              colorHex(roleDisplayTokens?.get("color/action/primary")) ?? primary.value
-            }
+            primaryHex={primary.value}
             secondaryHex={
               secondaryDisplay?.type === "color"
                 ? secondaryDisplay.value

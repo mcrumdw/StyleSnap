@@ -1,7 +1,13 @@
 // Page-level foundations scan (schema 2.1) — breakpoints, motion, z-index,
-// content max-widths, spacing base. Feeds meta.foundations → design.md.
+// content max-widths, spacing base. Also samples the page background as a
+// color token so surface/page can seed from Scan (§2.72).
 
-import type { CaptureFoundations, CaptureMotionHint } from "../shared/types";
+import type {
+  CaptureFoundations,
+  CaptureMotionHint,
+  ColorToken,
+  StyleSnapToken,
+} from "../shared/types";
 
 function uniqueSorted(nums: number[]): number[] {
   return [...new Set(nums.filter((n) => Number.isFinite(n)))].sort((a, b) => a - b);
@@ -121,6 +127,171 @@ function detectSpacingBase(): number | undefined {
   return undefined;
 }
 
+let colorProbe: HTMLSpanElement | null = null;
+
+/** Normalize any CSS color to hex + opacity (local — keep foundations free of extract.ts). */
+function parseColor(input: string): { hex: string; opacity: number } | null {
+  if (!input || input === "none" || input === "transparent") return null;
+  const m = input.match(
+    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/i,
+  );
+  if (m) {
+    const [r, g, b] = [m[1], m[2], m[3]].map((n) => Math.round(Number(n)));
+    const opacity = m[4] === undefined ? 1 : Number(m[4]);
+    if (opacity === 0) return null;
+    const hex =
+      "#" +
+      [r, g, b]
+        .map((n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase();
+    return { hex, opacity };
+  }
+  if (!colorProbe) {
+    colorProbe = document.createElement("span");
+    colorProbe.style.display = "none";
+    document.documentElement.appendChild(colorProbe);
+  }
+  colorProbe.style.color = "";
+  colorProbe.style.color = input;
+  const computed = getComputedStyle(colorProbe).color;
+  if (!computed || computed === input) return null;
+  return parseColor(computed);
+}
+
+/**
+ * Sample the real painted page fill — SPA roots often hold color while body
+ * is transparent. Prefer the first opaque fill among scaffold candidates.
+ */
+export function samplePageBackground(): {
+  hex: string;
+  opacity: number;
+  element: string;
+  selector?: string;
+} | null {
+  const candidates: Element[] = [];
+  const add = (el: Element | null | undefined) => {
+    if (el && !candidates.includes(el)) candidates.push(el);
+  };
+  add(document.documentElement);
+  add(document.body);
+  add(document.querySelector("main"));
+  add(document.querySelector("[role='main']"));
+  for (const sel of ["#root", "#app", "#__next", "#__nuxt", "[data-reactroot]"]) {
+    add(document.querySelector(sel));
+  }
+
+  for (const el of candidates) {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") continue;
+    const bg = parseColor(cs.backgroundColor);
+    if (!bg || bg.opacity < 0.5) continue;
+    const tag = el.tagName.toLowerCase();
+    const selector =
+      el.id
+        ? `#${el.id}`
+        : typeof el.className === "string" && el.className.trim()
+          ? `.${el.className.trim().split(/\s+/)[0]}`
+          : undefined;
+    return { hex: bg.hex, opacity: bg.opacity, element: tag, selector };
+  }
+  return null;
+}
+
+/** Color token for the scanned page background (added to the capture list). */
+export function pageBackgroundToken(captureId: string, id = "ext_page_bg"): ColorToken {
+  const sample = samplePageBackground();
+  const hex = sample?.hex ?? "#FFFFFF";
+  const opacity = sample?.opacity ?? 1;
+  const element = sample?.element ?? "body";
+  return {
+    id,
+    captureId,
+    source: sample ? `${element}${sample.selector ?? ""}` : "body",
+    name: null,
+    occurrences: 1,
+    merged: false,
+    type: "color",
+    value: hex,
+    opacity,
+    context: {
+      cssProperty: "background-color",
+      element,
+      selector: sample?.selector,
+      state: "default",
+    },
+  };
+}
+
+/**
+ * First large dark/brand section band that differs from the page fill.
+ * Feeds color/surface/inverse.
+ */
+export function sampleInverseSectionBackground(pageHex: string): {
+  hex: string;
+  opacity: number;
+  element: string;
+  selector?: string;
+} | null {
+  const page = pageHex.toUpperCase();
+  const els = document.querySelectorAll(
+    "section, footer, header, aside, [class*='hero'], [class*='banner'], [class*='promo']",
+  );
+  for (const el of Array.from(els).slice(0, 24)) {
+    if (!(el instanceof HTMLElement)) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 120 || r.height < 48) continue;
+    const bg = parseColor(cs.backgroundColor);
+    if (!bg || bg.opacity < 0.5) continue;
+    if (bg.hex.toUpperCase() === page) continue;
+    // Rough luminance: dark or mid-brand (not near-white).
+    const n = parseInt(bg.hex.slice(1), 16);
+    const lum =
+      (0.2126 * ((n >> 16) & 0xff) +
+        0.7152 * ((n >> 8) & 0xff) +
+        0.0722 * (n & 0xff)) /
+      255;
+    if (lum >= 0.85) continue;
+    const tag = el.tagName.toLowerCase();
+    const selector =
+      el.id
+        ? `#${el.id}`
+        : typeof el.className === "string" && el.className.trim()
+          ? `.${el.className.trim().split(/\s+/)[0]}`
+          : undefined;
+    return { hex: bg.hex, opacity: bg.opacity, element: tag, selector };
+  }
+  return null;
+}
+
+export function inverseSurfaceToken(
+  captureId: string,
+  pageHex: string,
+  id = "ext_inverse_surf",
+): ColorToken | null {
+  const sample = sampleInverseSectionBackground(pageHex);
+  if (!sample) return null;
+  return {
+    id,
+    captureId,
+    source: `${sample.element}${sample.selector ?? ""}`,
+    name: null,
+    occurrences: 1,
+    merged: false,
+    type: "color",
+    value: sample.hex,
+    opacity: sample.opacity,
+    context: {
+      cssProperty: "background-color",
+      element: sample.element,
+      selector: sample.selector,
+      state: "default",
+    },
+  };
+}
+
 /** Scan the current page for foundations used in design.md export. */
 export function scanPageFoundations(): CaptureFoundations {
   const foundations: CaptureFoundations = {};
@@ -135,4 +306,19 @@ export function scanPageFoundations(): CaptureFoundations {
   const spacingBasePx = detectSpacingBase();
   if (spacingBasePx !== undefined) foundations.spacingBasePx = spacingBasePx;
   return foundations;
+}
+
+/** Foundations + page / inverse surface tokens from a Scan page click. */
+export function scanPageFoundationsWithSurface(): {
+  foundations: CaptureFoundations;
+  tokens: StyleSnapToken[];
+} {
+  const pageTok = pageBackgroundToken("cap-page-scan");
+  const tokens: StyleSnapToken[] = [pageTok];
+  const inverse = inverseSurfaceToken("cap-page-scan", pageTok.value, "ext_inverse_surf");
+  if (inverse) tokens.push(inverse);
+  return {
+    foundations: scanPageFoundations(),
+    tokens,
+  };
 }
