@@ -95,4 +95,33 @@ describe("parseStyleSnapExport", () => {
       expect(result.details[0]).toMatch(/update the extension/);
     }
   });
+
+  it("repairs typography lineHeight 0 at import (icon/button capture noise)", () => {
+    const base = JSON.parse(fixture("capture-thin.json")) as {
+      meta: Record<string, unknown>;
+      tokens: Array<Record<string, unknown>>;
+    };
+    base.tokens.push({
+      id: "ext_bad_lh",
+      captureId: "cap-bad",
+      source: "span.icon",
+      name: null,
+      occurrences: 1,
+      merged: false,
+      type: "typography",
+      value: {
+        fontFamily: "Inter",
+        fontSize: 14,
+        fontWeight: 400,
+        lineHeight: 0,
+      },
+    });
+    const result = parseStyleSnapExport(JSON.stringify(base));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const bad = result.data.tokens.find((t) => t.id === "ext_bad_lh");
+      expect(bad?.type).toBe("typography");
+      if (bad?.type === "typography") expect(bad.value.lineHeight).toBe(1.2);
+    }
+  });
 });

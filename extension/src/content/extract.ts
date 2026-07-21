@@ -176,6 +176,42 @@ const px = (v: string): number | null => {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 };
 
+/** CSS line-height → unitless ratio (schema requires > 0). */
+function lineHeightRatio(cs: CSSStyleDeclaration): number {
+  const raw = cs.lineHeight?.trim();
+  if (!raw || raw === "normal") return 1.2;
+
+  const fontSizePx = px(cs.fontSize);
+  const fs = fontSizePx && fontSizePx > 0 ? fontSizePx : 16;
+
+  // Unitless multiplier (author or computed).
+  if (/^[\d.]+$/.test(raw)) {
+    const ratio = parseFloat(raw);
+    if (ratio > 0 && ratio <= 10) return Math.round(ratio * 100) / 100;
+    return 1.2;
+  }
+
+  if (raw.endsWith("%")) {
+    const pct = parseFloat(raw);
+    if (pct > 0) return Math.round((pct / 100) * 100) / 100;
+    return 1.2;
+  }
+
+  if (/\d*\.?\d+(em|rem)\s*$/i.test(raw)) {
+    const mult = parseFloat(raw);
+    if (mult > 0 && mult <= 10) return Math.round(mult * 100) / 100;
+    return 1.2;
+  }
+
+  const lhPx = px(raw);
+  if (lhPx !== null && lhPx > 0) {
+    const ratio = Math.round((lhPx / fs) * 100) / 100;
+    if (ratio > 0) return ratio;
+  }
+
+  return 1.2;
+}
+
 /** Split a comma list at top level only (ignores commas inside parentheses). */
 function splitTopLevel(input: string): string[] {
   const out: string[] = [];
@@ -450,12 +486,7 @@ function extractFromComputed(
           fontSize: Math.round(px(cs.fontSize) ?? 16),
           fontWeight: parseInt(cs.fontWeight, 10) || 400,
           fontStyle: cs.fontStyle === "italic" ? "italic" : "normal",
-          lineHeight:
-            cs.lineHeight === "normal"
-              ? 1.2
-              : Math.round(
-                  ((px(cs.lineHeight) ?? 0) / (px(cs.fontSize) ?? 16)) * 100,
-                ) / 100,
+          lineHeight: lineHeightRatio(cs),
           letterSpacing:
             cs.letterSpacing === "normal"
               ? undefined

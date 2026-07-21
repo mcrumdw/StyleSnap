@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 Tags in §6 change history (and on new §2.x when useful):
 
@@ -1389,6 +1389,24 @@ section fills — only the click target’s computed style — so
 
 ---
 
+### 2.70 Typography lineHeight 0 rejected at import `[Bug fix]`
+Decided 2026-07-21. Large browser captures (390+ tokens) failed FR-2 with
+`tokens.N.value.lineHeight: Number must be greater than 0`. Producers emitted
+`lineHeight: 0` when CSS used `line-height: 0` (icons, single-line buttons) or
+when line-height was unparseable.
+
+**Decision:**
+1. **Extension** — `lineHeightRatio()` normalizes unitless / % / px / em and
+   falls back to **1.2** when ≤ 0.
+2. **Figma plugin** — same fallback on export and segment extract.
+3. **Schema** — import coerces invalid `lineHeight` to **1.2** so existing JSON
+   imports without re-capture.
+
+**Key files:** `extension/src/content/extract.ts`, `plugin/src/extract.ts`,
+`plugin/src/export-system.ts`, `docs/schema.ts`, `src/contract/schema.ts`.
+
+---
+
 ### 2.12 Simplified session shell (second pass)
 Decided 2026-07-12 (nav redundancy after §2.11). The route shell shrinks again:
 
@@ -1499,6 +1517,7 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-21 | `[Bug fix]` **Typography lineHeight 0** (§2.70): extension/plugin normalize line-height; import coerces 0 → 1.2. | — |
 | 2026-07-20 | `[Bug fix]` `[Change]` **Page/section backgrounds + created chip** (§2.69): extension samples scaffold/ancestor fills; SPA roots hint `surface/page`; UI chip "derived" → "created". | — |
 | 2026-07-20 | `[Change]` **design.md bans inventing absent shadows/borders** (§2.68): agent rules + Foundations when snap has no elevation / card border tokens. | — |
 | 2026-07-20 | `[Change]` **Figma system recapture = capture-only colors**: ≥5 `color/…/…` named tokens → never invent synthetic color fills (feedback/neutrals/hover). | — |

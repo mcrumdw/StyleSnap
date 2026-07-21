@@ -50,13 +50,18 @@ export const gradientValueSchema = z.object({
   stops: z.array(gradientStopSchema).min(2, "a gradient needs at least 2 stops"),
 });
 
+const lineHeightRatioSchema = z.preprocess(
+  (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 1.2),
+  z.number().positive(),
+);
+
 export const typographyValueSchema = z.object({
   fontFamily: z.string().min(1),
   fontStack: z.array(z.string()).optional(),
   fontSize: z.number().positive(),
   fontWeight: z.number().min(100).max(900), // producers normalize "bold"→700, "normal"→400
   fontStyle: z.enum(["normal", "italic"]).optional(),
-  lineHeight: z.number().positive(), // unitless ratio
+  lineHeight: lineHeightRatioSchema, // unitless ratio — 0 is repaired at import (icon/button noise)
   letterSpacing: z.number().finite().optional(), // px — may legitimately be negative
   textTransform: z.enum(["none", "uppercase", "lowercase", "capitalize"]).optional(),
 });

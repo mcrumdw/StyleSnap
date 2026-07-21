@@ -78,18 +78,21 @@ interface TextSegment {
   textStyleId: string;
 }
 
+/** Schema requires lineHeight > 0 — Figma can export 0px / 0%. */
+function safeLineHeightRatio(
+  lh: LineHeight,
+  fontSize: number,
+): number {
+  let ratio = 1.2;
+  if (lh.unit === "PERCENT") ratio = round2(lh.value / 100);
+  else if (lh.unit === "PIXELS" && fontSize > 0) ratio = round2(lh.value / fontSize);
+  return ratio > 0 ? ratio : 1.2;
+}
+
 function segmentToTypography(seg: TextSegment): TypographyValue {
   const fontSize = seg.fontSize;
 
-  // Normalize Figma lineHeight to a unitless ratio.
-  const lh = seg.lineHeight;
-  const lineHeight =
-    lh.unit === "PERCENT"
-      ? round2(lh.value / 100)
-      : lh.unit === "PIXELS"
-        ? round2(lh.value / fontSize)
-        : 1.2; // AUTO — Figma's default is ~1.2
-
+  const lineHeight = safeLineHeightRatio(seg.lineHeight, fontSize);
   const value: TypographyValue = {
     fontFamily: seg.fontName.family,
     fontSize,
