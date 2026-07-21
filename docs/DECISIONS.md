@@ -4,7 +4,7 @@ A running record of the design and architecture decisions behind the StyleSnap
 ecosystem, so that documentation, onboarding, and future changes stay grounded
 in *why* things are the way they are.
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 Tags in §6 change history (and on new §2.x when useful):
 
@@ -1354,9 +1354,110 @@ survive even when they share a hex (harvest reads `authoredName`).
 no synthetic neutrals / feedback / hover. Missing roles stay empty (gaps),
 never “derived”.
 
-**Key files:** `plugin/src/export-system.ts`, `plugin/src/code.ts`,
-`plugin/src/ui.html`, `docs/FIGMA_HANDOFF.md`,
-`src/engine/derive-system/index.ts`.
+---
+
+### 2.68 Agent rules ban inventing absent shadows/borders `[Change]`
+Decided 2026-07-20. Snaps without drop shadows or card borders still produced
+`design.md` that only said “use listed tokens.” Coding agents invented
+`box-shadow` and card outlines on landing pages.
+
+**Decision:** when the reviewed system has **no** drop-elevation tokens/roles,
+agent rules + Foundations explicitly forbid inventing shadows. When it has
+**no** `border-width/*` / `color/border/default`, forbid inventing card/panel
+borders (focus rings still allowed via `color/border/focus` if listed).
+
+**Key files:** `src/engine/export/index.ts` (`agentRules`, `foundationsSection`).
+
+---
+
+### 2.69 Extension page/section backgrounds + "created" chip `[Bug fix]` `[Change]`
+Decided 2026-07-20. Clicking buttons/text never recorded `html`/`body`/`main`/
+section fills — only the click target’s computed style — so
+`color/surface/page` (and often card) always showed as formula-**derived**.
+
+**Decision:**
+1. **Extension** (`extract.ts`): every click also samples scaffold backgrounds
+   (`html`, `body`, `main`, `[role=main]`, SPA roots `#root`/`#app`/`#__next`/
+   `#__nuxt`, top-level `section`s) and walks ancestors for opaque fills.
+2. **Web roles:** `#root` / `#app` / `#__next` / `#__nuxt` background-color
+   hints `color/surface/page` (body is often transparent in SPAs).
+3. **UI:** origin chip label **derived → created** (internal `origin` /
+   `derived_*` ids unchanged).
+
+**Key files:** `extension/src/content/extract.ts`, `src/engine/roles/derive.ts`,
+`SystemView.tsx`, `RoleValueEditor.tsx`.
+
+---
+
+### 2.70 Typography lineHeight 0 rejected at import `[Bug fix]`
+Decided 2026-07-21. Large browser captures (390+ tokens) failed FR-2 with
+`tokens.N.value.lineHeight: Number must be greater than 0`. Producers emitted
+`lineHeight: 0` when CSS used `line-height: 0` (icons, single-line buttons) or
+when line-height was unparseable.
+
+**Decision:**
+1. **Extension** — `lineHeightRatio()` normalizes unitless / % / px / em and
+   falls back to **1.2** when ≤ 0.
+2. **Figma plugin** — same fallback on export and segment extract.
+3. **Schema** — import coerces invalid `lineHeight` to **1.2** so existing JSON
+   imports without re-capture.
+
+**Key files:** `extension/src/content/extract.ts`, `plugin/src/extract.ts`,
+`plugin/src/export-system.ts`, `docs/schema.ts`, `src/contract/schema.ts`.
+
+---
+
+### 2.71 Color family strip tracks primary anchor `[Bug fix]`
+Decided 2026-07-21. Swapping **anchor/primary** to brand blue (#1A73E8) still
+showed grey in **Your color family → Primary** and **`color/action/primary`**
+because a stale assignment or derived edit blocked re-derivation.
+
+**Decision:** `color/action/primary` is **anchor-owned** — always the primary
+anchor primitive. Derivation upserts it (assignments never block); anchor swap
+clears stale locks; draft load scrubs mismatches; assigning that role updates
+the anchor override instead of a separate assignment.
+
+**Key files:** `src/engine/derive-system/index.ts`, `src/state/pool.ts`,
+`src/state/useSessionViewModel.ts`, `src/components/AnchorsStep.tsx`.
+
+---
+
+### 2.72 Page ↔ body ink pairing + Scan page background `[Bug fix]` `[New feature]`
+Decided 2026-07-21. Sites like Roland Garros use **white text on photo/cards**
+and **dark ink on a light page**. Capturing white-on-media seeded
+`color/text/primary` → coding agents invented a dark page so white body text
+would read.
+
+**Decision:**
+1. **Scan page** also samples the main page fill (`html` / `body` / `main` /
+   SPA roots) and adds it as a color token in the capture.
+2. Claim **`color/surface/page` first**, then only accept **`color/text/primary`**
+   (and muted) candidates that pass AA on that page — white-on-media is rejected
+   for body ink.
+3. Fill **`color/text/inverse`** from light text that fails as body (or `#FFFFFF`
+   on light pages) for dark / brand / media fills.
+4. **design.md** agent rules: keep the page↔ink pair; never invent a dark theme
+   to rescue light body text; inverse is not body.
+
+**Key files:** `extension/src/content/foundations.ts`, `extension/.../App.tsx`,
+`src/engine/derive-system/{index,text-on-surface}.ts`, `accessibility.ts`,
+`export/index.ts`.
+
+---
+
+### 2.73 `color/surface/inverse` for section bands `[New feature]`
+Decided 2026-07-21. Light pages often include dark/brand **section bands**
+(hero, promo, footer). Those are not `surface/page` or `surface/card`.
+
+**Decision:** add optional **`color/surface/inverse`** (Appendix B → 18 color
+roles). Seed from captured section/footer/aside/header fills that contrast
+with the page (or brand primary when it already works as a band). Pair with
+`color/text/inverse`. Do **not** invent a synthetic band when the snap has
+none. Scan page also samples a contrasting section fill when present.
+Agent rules document the page↔ink vs band↔inverse pairs.
+
+**Key files:** `taxonomy.ts`, `PRD` Appendix B, `derive-system`, `roles/derive.ts`,
+`extension/.../foundations.ts`, `accessibility.ts`, `export/index.ts`.
 
 ---
 
@@ -1470,6 +1571,12 @@ missing is what the "complete manually or with AI" step resolves before export.
 
 | Date | Change | Commit |
 |---|---|---|
+| 2026-07-21 | `[New feature]` **`color/surface/inverse`** (§2.73): optional section-band surface; seed from capture/scan; pairs with text/inverse; Appendix B = 18 color roles. | — |
+| 2026-07-21 | `[Bug fix]` `[New feature]` **Page ↔ body ink + Scan page bg** (§2.72): AA-gated text/primary; fill text/inverse; Scan adds page background token; agent rules ban dark-theme invention. | — |
+| 2026-07-21 | `[Bug fix]` **Color family Primary strip** (§2.71): anchor swap clears stale `color/action/primary` lock; strip uses anchor hex. | — |
+| 2026-07-21 | `[Bug fix]` **Typography lineHeight 0** (§2.70): extension/plugin normalize line-height; import coerces 0 → 1.2. | — |
+| 2026-07-20 | `[Bug fix]` `[Change]` **Page/section backgrounds + created chip** (§2.69): extension samples scaffold/ancestor fills; SPA roots hint `surface/page`; UI chip "derived" → "created". | — |
+| 2026-07-20 | `[Change]` **design.md bans inventing absent shadows/borders** (§2.68): agent rules + Foundations when snap has no elevation / card border tokens. | — |
 | 2026-07-20 | `[Change]` **Figma system recapture = capture-only colors**: ≥5 `color/…/…` named tokens → never invent synthetic color fills (feedback/neutrals/hover). | — |
 | 2026-07-20 | `[Bug fix]` **Feedback harvest honors Figma role names**: exact `name` / `authoredName` claims feedback slots even when opacity ≠ 1; also claim via role candidates before conventional derived. | — |
 | 2026-07-20 | `[Bug fix]` **Figma export keeps all style role paths** (§2.67): Color/Text/Effect accordion names each become a token; only drop non-role value dupes. | — |

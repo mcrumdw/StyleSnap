@@ -7,7 +7,7 @@ import { parseStyleSnapExport } from "../../contract/schema";
 import type { StyleSnapToken } from "../../contract/types";
 import { computeChecklist } from "../completeness";
 import { contrastRatio } from "../export/accessibility";
-import { deriveSystem, type DeriveResult } from "./index";
+import { deriveSystem, PRIMARY_ANCHOR_ROLE, type DeriveResult } from "./index";
 
 function fixtureTokens(name: string): StyleSnapToken[] {
   const result = parseStyleSnapExport(
@@ -26,7 +26,101 @@ const fillValue = (result: DeriveResult, role: string) => {
   return fill!;
 };
 
+describe("text ↔ page pairing (§2.72)", () => {
+  it("rejects white-on-media as body ink and fills text/inverse instead", () => {
+    const tokens: StyleSnapToken[] = [
+      {
+        id: "brand",
+        captureId: "c1",
+        source: "button",
+        name: null,
+        occurrences: 8,
+        merged: false,
+        type: "color",
+        value: "#C8102E",
+        opacity: 1,
+        context: {
+          cssProperty: "background-color",
+          element: "button",
+          ariaRole: "button",
+        },
+      },
+      {
+        id: "page",
+        captureId: "c1",
+        source: "body",
+        name: null,
+        occurrences: 2,
+        merged: false,
+        type: "color",
+        value: "#FFFFFF",
+        opacity: 1,
+        context: { cssProperty: "background-color", element: "body" },
+      },
+      {
+        id: "band",
+        captureId: "c1",
+        source: "section.hero",
+        name: null,
+        occurrences: 3,
+        merged: false,
+        type: "color",
+        value: "#1A1A1A",
+        opacity: 1,
+        context: { cssProperty: "background-color", element: "section", selector: ".hero" },
+      },
+      {
+        id: "white_on_card",
+        captureId: "c2",
+        source: "h2.card-title",
+        name: null,
+        occurrences: 20,
+        merged: false,
+        type: "color",
+        value: "#FFFFFF",
+        opacity: 1,
+        context: { cssProperty: "color", element: "h2", selector: ".card-title" },
+      },
+      {
+        id: "body_ink",
+        captureId: "c3",
+        source: "p",
+        name: null,
+        occurrences: 6,
+        merged: false,
+        type: "color",
+        value: "#1A1A1A",
+        opacity: 1,
+        context: { cssProperty: "color", element: "p" },
+      },
+    ];
+    const rawById = new Map(tokens.map((t) => [t.id, t]));
+    const r = deriveSystem({
+      tokens,
+      rawById,
+      assignments: new Map(),
+      overrides: { primaryColorId: "brand" },
+    });
+    expect(fillValue(r, "color/surface/page").token.id).toBe("page");
+    expect(fillValue(r, "color/surface/inverse").token.id).toBe("band");
+    expect(fillValue(r, "color/text/primary").token.id).toBe("body_ink");
+    expect(fillValue(r, "color/text/inverse").token.id).toBe("white_on_card");
+  });
+});
+
 describe("anchor detection (C.1)", () => {
+  it("anchor-owned primary ignores a stale assignment", () => {
+    const tokens = fixtureTokens("capture-browser-messy.json");
+    const rawById = new Map(tokens.map((t) => [t.id, t]));
+    const r = deriveSystem({
+      tokens,
+      rawById,
+      assignments: new Map([[PRIMARY_ANCHOR_ROLE, "ext_008"]]),
+      overrides: { primaryColorId: "ext_001" },
+    });
+    expect(fillValue(r, PRIMARY_ANCHOR_ROLE).token.id).toBe("ext_001");
+  });
+
   it("test-drive: green button bg wins primary; most frequent body + grid-snapped base", () => {
     const r = derive(fixtureTokens("capture-test-drive.json"));
     expect(r.anchors.primaryColorId).toBe("ext_td_01"); // #17A673, 14× on button bg

@@ -38,6 +38,7 @@ import {
   type SystemNotes,
   type SystemNotesField,
 } from "./notes";
+import { isDropShadowToken } from "../effect-kinds";
 import { mergeCaptureFoundations, notesFromFoundations } from "./foundations";
 import { buildFigmaHandoff } from "./figma-handoff";
 import { snippetProvenanceLabel } from "../templates";
@@ -225,6 +226,36 @@ function header(input: ExportInput): string {
   ].join("\n");
 }
 
+function tokenById(input: ExportInput, id: string): StyleSnapToken | undefined {
+  return input.tokens.find((t) => t.id === id) ?? input.rawById.get(id);
+}
+
+/** Drop / elevation shadows present in the reviewed system (not inset/blur). */
+function systemHasDropElevation(input: ExportInput): boolean {
+  for (const [role, id] of input.assignments) {
+    if (!role.startsWith("shadow/") || role === "shadow/inset") continue;
+    if (role.startsWith("blur/") || role.startsWith("effect/")) continue;
+    const token = tokenById(input, id);
+    if (token && isDropShadowToken(token)) return true;
+  }
+  return input.tokens.some((t) => isDropShadowToken(t));
+}
+
+/**
+ * Surface/card chrome borders — border-width roles or default border color.
+ * Focus ring alone does not count (inputs still need focus).
+ */
+function systemHasCardBorder(input: ExportInput): boolean {
+  for (const [role, id] of input.assignments) {
+    if (role.startsWith("border-width/")) {
+      const token = tokenById(input, id);
+      if (token?.type === "border-width" && token.value > 0) return true;
+    }
+    if (role === "color/border/default") return true;
+  }
+  return input.tokens.some((t) => t.type === "border-width" && t.value > 0);
+}
+
 function agentRules(input: ExportInput): string {
   const foundations = mergeCaptureFoundations(input.captures);
   const extra: string[] = [];
@@ -254,12 +285,25 @@ function agentRules(input: ExportInput): string {
   if (input.assignments.has("space/inset")) {
     extra.push("- **Component padding** (cards, buttons, inputs) uses `space/inset`.");
   }
+
+  // Hard bans when the snap never established elevation / card chrome (§2.68).
+  if (!systemHasDropElevation(input)) {
+    extra.push(
+      "- **No drop shadows / elevation.** This system has **no** drop-shadow tokens. Do **not** add `box-shadow`, soft card elevation, layered depth, or invent `shadow/sm|md|lg`. Keep surfaces flat.",
+    );
+  }
   if (input.assignments.has("shadow/inset")) {
     extra.push("- **Inner / carved depth** uses `shadow/inset` — not the elevation scale.");
   }
   if (input.assignments.has("blur/backdrop")) {
     extra.push("- **Frosted glass / modal scrims** use `blur/backdrop` — never a drop shadow.");
   }
+  if (!systemHasCardBorder(input)) {
+    extra.push(
+      "- **No card/panel borders.** This system has **no** surface border tokens (`border-width/*` / `color/border/default`). Do **not** outline cards, panels, or sections with borders or hairlines. Separate surfaces with background color only.",
+    );
+  }
+
   if (foundations?.breakpointsPx?.length) {
     extra.push(
       `- **Breakpoints (do not invent):** ${foundations.breakpointsPx.map((n) => `${n}px`).join(", ")}.`,
@@ -283,6 +327,24 @@ function agentRules(input: ExportInput): string {
   }
   if (input.assignments.has("color/border/focus")) {
     extra.push("- **Focus ring** uses `color/border/focus` — never invent a focus color.");
+  }
+  if (input.assignments.has("color/text/inverse")) {
+    extra.push(
+      "- **`color/text/inverse` is for dark / brand / photo fills only** — never use it as body text on `color/surface/page`.",
+    );
+  }
+  if (input.assignments.has("color/surface/inverse")) {
+    extra.push(
+      "- **`color/surface/inverse` is for contrasting section bands** (hero, promo, dark footer) — not the default page canvas. Pair with `color/text/inverse`.",
+    );
+  }
+  if (
+    input.assignments.has("color/text/primary") &&
+    input.assignments.has("color/surface/page")
+  ) {
+    extra.push(
+      "- **Keep the page ↔ body ink pair.** Do **not** invent a dark theme page background just to make light text readable. Body uses `color/text/primary` on `color/surface/page`; section bands use `color/surface/inverse` + `color/text/inverse` when listed.",
+    );
   }
 
   return [
@@ -550,13 +612,20 @@ function foundationsSection(input: ExportInput): string {
   numericScaleLine("border-radius", "Radius", true);
   numericScaleLine("border-width", "Border width", true);
 
+  if (!systemHasCardBorder(input)) {
+    lines.push(
+      "**Borders** — *none for cards/panels.* Do not invent surface borders; see agent rules.",
+      "",
+    );
+  }
+
   const shadowRows = [
     ...roleRows(input, "shadow").map(({ role, token }) => ({ label: `\`${role}\``, token })),
     ...withoutRole(input, "shadow").map((token) => ({
       label: `*(primitive)* \`${nameOf(token, input.names)}\``,
       token,
     })),
-  ];
+  ].filter(({ token }) => token.type === "shadow");
   if (shadowRows.length > 0) {
     lines.push("**Shadows**", "", "| Token | Value | Provenance |", "|---|---|---|");
     for (const { label, token } of shadowRows) {
@@ -566,6 +635,11 @@ function foundationsSection(input: ExportInput): string {
       );
     }
     lines.push("");
+  } else if (!systemHasDropElevation(input)) {
+    lines.push(
+      "**Shadows** — *none.* Do not invent `box-shadow` or elevation; see agent rules.",
+      "",
+    );
   }
 
   const foundations = mergeCaptureFoundations(input.captures);

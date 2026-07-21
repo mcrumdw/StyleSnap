@@ -22,14 +22,20 @@ export interface RoleDefinition {
   requiredOneOf?: string;
 }
 
-// B.1 — Color roles (17)
+// B.1 — Color roles (18)
 export const COLOR_ROLES: RoleDefinition[] = [
   { role: "color/text/primary", tokenType: "color", meaning: "Default text", required: true },
   { role: "color/text/muted", tokenType: "color", meaning: "Secondary text, captions", required: true },
-  { role: "color/text/inverse", tokenType: "color", meaning: "Text on dark/brand fills", required: false },
+  { role: "color/text/inverse", tokenType: "color", meaning: "Text on dark / brand / media fills (not body on page)", required: false },
   { role: "color/text/link", tokenType: "color", meaning: "Links", required: false },
   { role: "color/surface/page", tokenType: "color", meaning: "App/page background", required: true },
   { role: "color/surface/card", tokenType: "color", meaning: "Cards, panels, inputs", required: true },
+  {
+    role: "color/surface/inverse",
+    tokenType: "color",
+    meaning: "Dark / brand / contrasting section bands (hero, promo, footer) — pairs with text/inverse",
+    required: false,
+  },
   { role: "color/surface/overlay", tokenType: "color", meaning: "Modal scrim", required: false },
   { role: "color/action/primary", tokenType: "color", meaning: "Primary buttons, active nav", required: true },
   { role: "color/action/primary-hover", tokenType: "color", meaning: "Hover state", required: true },

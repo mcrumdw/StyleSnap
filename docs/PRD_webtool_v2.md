@@ -442,16 +442,17 @@ Semantic roles point at user-named **primitives** (two-tier, `DECISIONS.md`
 §2.3). Primitives live under a type prefix with a free name chosen by the
 user: `color/brand-indigo`, `font/space-grotesk`.
 
-### B.1 Color roles (17)
+### B.1 Color roles (18)
 
 | Role | Meaning | Required for "complete" |
 |---|---|---|
 | `color/text/primary` | Default text | ✅ |
 | `color/text/muted` | Secondary text, captions | ✅ |
-| `color/text/inverse` | Text on dark/brand fills | — |
+| `color/text/inverse` | Text on dark/brand/media fills | — |
 | `color/text/link` | Links | — |
 | `color/surface/page` | App/page background | ✅ |
 | `color/surface/card` | Cards, panels, inputs | ✅ |
+| `color/surface/inverse` | Dark / brand / contrasting section bands | — |
 | `color/surface/overlay` | Modal scrim | — |
 | `color/action/primary` | Primary buttons, active nav | ✅ |
 | `color/action/primary-hover` | Hover state | ✅ |
@@ -501,6 +502,7 @@ when parseable. Then:
 |---|---|
 | `background-color` on `body`/`main`/`html` | `color/surface/page` |
 | `background-color` on `button` / `[role=button]` | `color/action/primary` (or `secondary` by frequency rank) |
+| `background-color` on `section`/`footer`/`aside`/`header` (dark / brand band) | `color/surface/inverse` |
 | `background-color` elsewhere | `color/surface/card` |
 | `color` on `h1–h3` | `color/text/primary` + `type/heading` |
 | `color` on `p`/`body` | `color/text/primary` + `type/body` |

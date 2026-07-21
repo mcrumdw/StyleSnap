@@ -317,7 +317,8 @@ function textStyleToTypography(style: TextStyle): TypographyValue | null {
   let lineHeight = 1.2;
   const lh = style.lineHeight;
   if (lh.unit === "PERCENT") lineHeight = round2(lh.value / 100);
-  else if (lh.unit === "PIXELS") lineHeight = round2(lh.value / fontSize);
+  else if (lh.unit === "PIXELS" && fontSize > 0) lineHeight = round2(lh.value / fontSize);
+  if (lineHeight <= 0) lineHeight = 1.2;
 
   const value: TypographyValue = {
     fontFamily: fontName.family,

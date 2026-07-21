@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { parseStyleSnapExport } from "../contract/schema";
 import type { StyleSnapExport } from "../contract/types";
 import { assembleDescription } from "../engine/templates";
+import { applyMerges } from "../engine/dedup";
+import { deriveSystem, PRIMARY_ANCHOR_ROLE } from "../engine/derive-system";
 import {
   addCustomRole,
   addManualToken,
@@ -40,6 +42,7 @@ import {
   setSystemNote,
   unassignRole,
 } from "./pool";
+import { poolEntries } from "./workspace";
 
 const fixture = (name: string) =>
   readFileSync(new URL(`../../docs/fixtures/${name}`, import.meta.url), "utf-8");
@@ -110,23 +113,22 @@ describe("decisions (FR-16 — nothing finalizes without confirmation)", () => {
 });
 
 describe("role assignments (Phase 8 — roles point at primitives)", () => {
-  it("one primitive can carry several roles; removing one leaves the other", () => {
+  it("primary role assignment syncs the anchor override (anchor-owned)", () => {
     let pool = emptyPool();
     pool = assignRole(pool, "color/action/primary", "green_1");
     pool = assignRole(pool, "color/text/link", "green_1");
-    expect(pool.assignments).toEqual({
-      "color/action/primary": "green_1",
-      "color/text/link": "green_1",
-    });
+    expect(pool.anchorOverrides?.primaryColorId).toBe("green_1");
+    expect(pool.assignments).toEqual({ "color/text/link": "green_1" });
     pool = unassignRole(pool, "color/text/link");
-    expect(pool.assignments).toEqual({ "color/action/primary": "green_1" });
+    expect(pool.assignments).toEqual({});
   });
 
-  it("reassigning a role moves it — a role has exactly one primitive", () => {
+  it("reassigning primary updates the anchor override", () => {
     let pool = emptyPool();
     pool = assignRole(pool, "color/action/primary", "blue_1");
     pool = assignRole(pool, "color/action/primary", "blue_2");
-    expect(pool.assignments["color/action/primary"]).toBe("blue_2");
+    expect(pool.anchorOverrides?.primaryColorId).toBe("blue_2");
+    expect(pool.assignments["color/action/primary"]).toBeUndefined();
   });
 
   it("rejects blur on elevation and accepts blur/backdrop (§2.50)", () => {
@@ -177,21 +179,18 @@ describe("role assignments (Phase 8 — roles point at primitives)", () => {
     expect(pool.assignments).toEqual({});
   });
 
-  it("merge remaps assignments to the survivor; un-merge restores them", () => {
+  it("merge remaps assignments to the survivor; primary stays on anchor override", () => {
     let pool = emptyPool();
     pool = assignRole(pool, "color/text/link", "ext_002");
     pool = assignRole(pool, "color/action/primary", "ext_001");
 
-    // ext_002 is absorbed into ext_001 — the link role follows the survivor.
     const merge = { survivorId: "ext_001", mergedIds: ["ext_002"], mergedAt: "t" };
     expect(resolveAssignments(pool.assignments, [merge])).toEqual({
       "color/text/link": "ext_001",
-      "color/action/primary": "ext_001",
     });
-    // Un-merge (the record is removed) — the original target comes back.
+    expect(pool.anchorOverrides?.primaryColorId).toBe("ext_001");
     expect(resolveAssignments(pool.assignments, [])).toEqual({
       "color/text/link": "ext_002",
-      "color/action/primary": "ext_001",
     });
   });
 
@@ -328,6 +327,31 @@ describe("localStorage draft (FR-29)", () => {
 
     // Idempotent right after: everything already merged, nothing new to add.
     expect(autoMergeClusters(pool, "t2").merges).toHaveLength(pool.merges.length);
+  });
+
+  it("primary anchor swap clears stale color/action/primary assignment", () => {
+    let pool = poolWithBothFixtures();
+    pool = {
+      ...pool,
+      assignments: { ...pool.assignments, [PRIMARY_ANCHOR_ROLE]: "ext_008" },
+    };
+    pool = setAnchorOverride(pool, { primaryColorId: "ext_001" }); // brand blue
+
+    expect(pool.assignments["color/action/primary"]).toBeUndefined();
+    expect(pool.derivedEdits?.["color/action/primary"]).toBeUndefined();
+
+    const entries = poolEntries(pool);
+    const tokens = applyMerges(entries, pool.merges).map((e) => e.token);
+    const rawById = new Map(poolTokens(pool).map((t) => [t.id, t]));
+    const draft = deriveSystem({
+      tokens,
+      rawById,
+      assignments: new Map(Object.entries(pool.assignments)),
+      overrides: pool.anchorOverrides,
+    });
+    const primaryFill = draft.fills.find((f) => f.role === "color/action/primary");
+    expect(primaryFill?.token.id).toBe("ext_001");
+    expect(primaryFill?.token.type === "color" && primaryFill.token.value).toBe("#2E6BFF");
   });
 
   it("round-trips Phase 10 derivation decisions; pre-Phase-10 drafts load without them", () => {

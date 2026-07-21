@@ -3,7 +3,7 @@ import type { StyleSnapToken } from "../contract/types";
 import { computeChecklist } from "../engine/completeness";
 import { applyMerges } from "../engine/dedup";
 import { effectiveAccentIds } from "../engine/accents";
-import { deriveSystem, type Anchors, type AccentSuggestion } from "../engine/derive-system";
+import { deriveSystem, PRIMARY_ANCHOR_ROLE, type Anchors, type AccentSuggestion } from "../engine/derive-system";
 import { styleProfileFromFamily } from "../engine/style-profile";
 import {
   generateDesignMd,
@@ -53,14 +53,18 @@ export function buildRoleDisplayTokens(
   tokensById?: ReadonlyMap<string, StyleSnapToken>,
 ): Map<string, StyleSnapToken> {
   const map = new Map<string, StyleSnapToken>();
+  const anchorPrimaryFill = draftFills.find((f) => f.role === PRIMARY_ANCHOR_ROLE);
   for (const fill of draftFills) {
     map.set(fill.role, fill.token);
   }
   for (const [role, entry] of Object.entries(derivedEdits ?? {})) {
+    // Anchor-owned primary — never let a stale edit override the anchor primitive.
+    if (role === PRIMARY_ANCHOR_ROLE && anchorPrimaryFill?.method.includes("anchor")) continue;
     map.set(role, entry.token);
   }
   if (assignments && tokensById) {
     for (const [role, id] of Object.entries(assignments)) {
+      if (role === PRIMARY_ANCHOR_ROLE) continue;
       if (map.has(role)) continue;
       const token = tokensById.get(id);
       if (token) map.set(role, token);
@@ -111,7 +115,12 @@ export function useSessionViewModel(pool: TokenPool) {
     const userAssignments = resolveAssignments(pool.assignments, pool.merges);
     const fills: DraftFill[] = draft.fills.map((fill) => {
       const edit = pool.derivedEdits?.[fill.role];
-      if (edit) {
+      if (
+        edit &&
+        !(
+          fill.role === PRIMARY_ANCHOR_ROLE && fill.method.includes("anchor")
+        )
+      ) {
         return { ...fill, token: edit.token, origin: "edited" as const };
       }
       const synthetic = fill.token.id.startsWith("derived_");
